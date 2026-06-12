@@ -1,0 +1,42 @@
+{
+  "name": "skillshelf",
+  "version": "0.1.0",
+  "description": "Agent-first skill registry + manager for Claude Code and compatible agents.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Wang-Cankun (https://github.com/Wang-Cankun)",
+  "homepage": "https://github.com/Wang-Cankun/skillshelf#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wang-Cankun/skillshelf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Wang-Cankun/skillshelf/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "skills",
+    "agent",
+    "cli",
+    "registry",
+    "bun"
+  ],
+  "bin": {
+    "skl": "./src/cli.ts"
+  },
+  "scripts": {
+    "skl": "bun run src/cli.ts",
+    "test": "bun test"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ]
+}
