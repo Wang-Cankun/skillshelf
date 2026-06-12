@@ -2,8 +2,9 @@
 //
 //   skl new <name> [--domain <d>] [--desc "..."] [--force] [--json]
 //
-// Writes <library>/[<domain>/]<name>/SKILL.md with frontmatter (name,
-// description, domains). Refuses to clobber an existing SKILL.md unless --force.
+// Writes <library>/<name>/SKILL.md with frontmatter (name, description, domains).
+// Layout is FLAT (ADR-0001): `--domain` becomes a frontmatter tag, never a folder.
+// Refuses to clobber an existing SKILL.md unless --force.
 
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -114,9 +115,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
   try {
     const libraryPath = ctx.config.libraryPath;
-    const skillDir = domain
-      ? join(libraryPath, domain, name)
-      : join(libraryPath, name);
+    // Flat, non-semantic layout (ADR-0001): always <library>/<name>/.
+    const skillDir = join(libraryPath, name);
     const bodyPath = join(skillDir, "SKILL.md");
 
     if (existsSync(bodyPath) && !args.force) {
@@ -133,7 +133,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       description: desc || `TODO: describe ${name}.`,
     };
     if (domain) {
-      frontmatterData.primaryDomain = domain;
+      // Domain is a tag, not a folder; primaryDomain is derived as domains[0].
       frontmatterData.domains = [domain];
     }
 

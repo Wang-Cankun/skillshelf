@@ -28,7 +28,8 @@ describe("skl new", () => {
     expect(r.code).toBe(0);
     const j = r.json[0] as any;
     expect(j.created).toBe(true);
-    const bodyPath = join(t.path, "coding", "fresh-skill", "SKILL.md");
+    // flat layout (ADR-0001): --domain is a tag, never a folder
+    const bodyPath = join(t.path, "fresh-skill", "SKILL.md");
     expect(existsSync(bodyPath)).toBe(true);
 
     const raw = await Bun.file(bodyPath).text();
@@ -46,7 +47,7 @@ describe("skl new", () => {
   test("refuses to clobber existing SKILL.md without --force", async () => {
     const t = await tempLibrary();
     cleanups.push(t.cleanup);
-    // repo-search already exists under coding/
+    // repo-search already exists (flat layout) at library/repo-search/
     const r = await runCmd(newCmd, ["repo-search", "--domain", "coding"], {
       library: t.path,
     });

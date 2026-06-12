@@ -72,7 +72,51 @@ export async function resolveConfig(opts: {
         ? abs(fileCfg.globalCore.trim())
         : DEFAULT_GLOBAL_CORE;
 
-  return { libraryPath, globalCoreTarget, configFile: usedConfigFile, source };
+  const roots = normalizeRoots(fileCfg?.roots);
+
+  return {
+    libraryPath,
+    globalCoreTarget,
+    roots,
+    configFile: usedConfigFile,
+    configFilePath,
+    source,
+  };
+}
+
+/** Expand ~, absolutize, and de-duplicate a list of root paths (order-preserving). */
+function normalizeRoots(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of input) {
+    if (typeof r !== "string" || r.trim() === "") continue;
+    const a = abs(r.trim());
+    if (seen.has(a)) continue;
+    seen.add(a);
+    out.push(a);
+  }
+  return out;
+}
+
+/**
+ * Persist a new scan root into the config file (`configFilePath`), expanding ~,
+ * absolutizing, and de-duplicating against existing roots. Preserves the rest of
+ * the config file (library / globalCore). Returns the full updated roots list.
+ */
+export async function addRoot(
+  configFilePath: string,
+  existingRoots: string[],
+  path: string,
+): Promise<string[]> {
+  const a = abs(path.trim());
+  const roots = [...existingRoots];
+  if (!roots.includes(a)) roots.push(a);
+
+  const current = (await readConfigFile(configFilePath)) ?? {};
+  const next: ConfigFile = { ...current, roots };
+  await Bun.write(configFilePath, JSON.stringify(next, null, 2) + "\n");
+  return roots;
 }
 
 /**
@@ -85,12 +129,22 @@ export async function loadContext(opts: {
 } = {}): Promise<Ctx> {
   const config = await resolveConfig(opts);
 
+  let roots = config.roots;
+
   const ctx: Ctx = {
     config,
     libraryPath: config.libraryPath,
     loadLibrary: async (): Promise<Skill[]> => {
       const { loadLibrary } = await import("./core/library.ts");
       return loadLibrary(config.libraryPath);
+    },
+    roots,
+    addRoot: async (path: string): Promise<string[]> => {
+      roots = await addRoot(config.configFilePath, roots, path);
+      // keep the live ctx/config views in sync after a persist
+      ctx.roots = roots;
+      config.roots = roots;
+      return roots;
     },
     log: (...args: unknown[]) => {
       console.log(...args);

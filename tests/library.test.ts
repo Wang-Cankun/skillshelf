@@ -66,15 +66,18 @@ describe("library load + overlay + provenance", () => {
     expect(qc.refFiles[0]!.endsWith("/reference")).toBe(true);
   });
 
-  test("primary-domain derives from physical folder, not just frontmatter", async () => {
+  test("primaryDomain derives from effective domains[0], not the (flat) folder", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
-    // coding/scrna-cluster physically lives in coding/, so primaryDomain=coding
+    // Layout is flat; both copies share name `scrna-cluster` but differ in domains[0].
+    // The "coding" copy lives at scrna-cluster-coding/ with domains: [coding, ...].
     const codingCopy = lib.find(
-      (s) => s.name === "scrna-cluster" && s.path.includes("/coding/"),
+      (s) => s.name === "scrna-cluster" && s.domains[0] === "coding",
     )!;
     expect(codingCopy.primaryDomain).toBe("coding");
+    expect(codingCopy.path.includes("/scrna-cluster-coding")).toBe(true);
+    // The canonical copy lives at scrna-cluster/ with domains: [bioinfo, ...].
     const bioCopy = lib.find(
-      (s) => s.name === "scrna-cluster" && s.path.includes("/bioinfo/"),
+      (s) => s.name === "scrna-cluster" && s.domains[0] === "bioinfo",
     )!;
     expect(bioCopy.primaryDomain).toBe("bioinfo");
   });

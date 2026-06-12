@@ -103,7 +103,7 @@ describe("CLI smoke (subprocess)", () => {
     cleanups.push(t.cleanup);
     const r = await runCli(["new", "smoke-new", "--domain", "coding"], { library: t.path });
     expect(r.code).toBe(0);
-    expect(existsSync(join(t.path, "coding", "smoke-new", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(t.path, "smoke-new", "SKILL.md"))).toBe(true);
   });
 
   test("help <command> prints usage", async () => {

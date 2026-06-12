@@ -140,7 +140,7 @@ describe("skl use / drop symlink lifecycle", () => {
     const link = join(p.path, ".claude", "skills", "rnaseq-qc");
     expect((await lstat(link)).isSymbolicLink()).toBe(true);
     const target = await readlink(link);
-    expect(target).toBe(join(FIXTURE_LIBRARY, "bioinfo", "rnaseq-qc"));
+    expect(target).toBe(join(FIXTURE_LIBRARY, "rnaseq-qc"));
 
     // STATUS sees the bundle
     const st = await runCmd(status, ["--json"], { cwd: p.path });
@@ -210,7 +210,7 @@ describe("skl infer (LLM-free)", () => {
     );
 
     // snapshot the upstream SKILL.md before applying
-    const skillMd = join(t.path, "coding", "repo-search", "SKILL.md");
+    const skillMd = join(t.path, "repo-search", "SKILL.md");
     const before = await Bun.file(skillMd).text();
 
     const r = await runCmd(infer, ["--apply", proposalPath, "--json"], { library: t.path });
@@ -220,7 +220,7 @@ describe("skl infer (LLM-free)", () => {
     expect(res.counts.applied).toBe(1);
 
     // overlay written with merged domains incl. the new tag
-    const overlayPath = join(t.path, "coding", "repo-search", "repo-search.shelf.json");
+    const overlayPath = join(t.path, "repo-search", "repo-search.shelf.json");
     expect(existsSync(overlayPath)).toBe(true);
     const overlay = JSON.parse(await Bun.file(overlayPath).text());
     expect(overlay.domains).toContain("search-tools");

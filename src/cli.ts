@@ -27,6 +27,8 @@ import * as outdated from "./commands/outdated.ts";
 import * as update from "./commands/update.ts";
 import * as infer from "./commands/infer.ts";
 import * as newCmd from "./commands/new.ts";
+import * as scan from "./commands/scan.ts";
+import * as importCmd from "./commands/import.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -37,6 +39,8 @@ const MODULES: CommandModule[] = [
   use,
   drop,
   add,
+  scan,
+  importCmd,
   outdated,
   update,
   init,

@@ -57,16 +57,51 @@ skl drop bioinfo     # unlink when you're done
 Add `--json` to any command for machine-readable output (skillshelf is built to be driven
 by an agent as well as a human).
 
+## Migrating scattered skills
+
+Already have skills strewn across `~/.claude/skills`, an Obsidian vault, and a dozen project
+`.claude` dirs? Consolidate them with three deterministic primitives — `scan` discovers,
+`import` adopts, `infer` tags. The judgment in between (which copies to keep, which drift wins)
+is yours (or your agent's); the tool never guesses.
+
+```bash
+# 1. Register the places your skills live, then take a read-only inventory.
+#    scan moves nothing — it just reports candidates, duplicates, and drift.
+skl scan --add-root ~/.claude/skills
+skl scan --add-root ~/notes/.agents/skills
+skl scan                       # report every candidate + duplicate/drift group
+
+# 2. Adopt the ones you want, one at a time. Each import moves the skill into the
+#    library and leaves a symlink behind so old paths keep resolving.
+skl import rnaseq-qc --from ~/.claude/skills/rnaseq-qc
+skl import xhs-title --from ~/notes/.agents/skills/xhs-title
+
+#    For a skill living inside a project repo, copy instead of move (no symlink left behind):
+skl import deploy-check --from ~/projects/web/.claude/skills/deploy-check --copy
+
+#    When two copies drifted and you've picked the winner, overwrite the loser:
+skl import rnaseq-qc --from ~/projects/lab/.claude/skills/rnaseq-qc --force
+
+# 3. Tag the now-populated library in one pass. Domain is tags, not folders, so this
+#    runs AFTER import with no reorg — no skill ever has to move because a tag changed.
+skl infer --emit               # hand the payload to your agent, then `skl infer --apply`
+```
+
+Domain lives entirely in tags ([ADR-0001](./docs/adr/0001-domain-is-tags-not-folders.md)): the
+library layout is flat (`library/<name>/`) and `import` never decides a domain, so there is no
+chicken-and-egg between adopting a skill and tagging it.
+
 ## How it works
 
 skillshelf separates *owning* a skill from *loading* it.
 
-- **Canonical library** — a dedicated git repo, one file per skill in its primary-domain
-  folder. This is a passive shelf: nothing here auto-loads, which is exactly what kills the
-  all-at-once token cost.
-- **Domain bundles** — bundles are *tag queries*, not folders. A skill tagged
-  `domains: [coding, bioinfo]` shows up in both bundles from a single copy on disk.
-  `skl use bioinfo` resolves every skill carrying that tag.
+- **Canonical library** — a dedicated git repo, one copy per skill in a flat, non-semantic
+  layout (`library/<name>/`). This is a passive shelf: nothing here auto-loads, which is
+  exactly what kills the all-at-once token cost.
+- **Domain bundles** — domain is *tags, not folders* ([ADR-0001](./docs/adr/0001-domain-is-tags-not-folders.md)).
+  A skill tagged `domains: [coding, bioinfo]` shows up in both bundles from a single copy on
+  disk; `skl use bioinfo` resolves every skill carrying that tag. `primaryDomain` is just
+  `domains[0]`, never inferred from a folder.
 - **Thin global core** — a handful of universal skills (commit, search, memory) are
   symlinked permanently into `~/.claude/skills` so they always auto-trigger. Small, bounded
   token cost — "some loaded is fine; all-at-once is the problem."
@@ -95,6 +130,8 @@ See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full design.
 | Command | Summary | Key flags |
 |---|---|---|
 | `skl init` | Set up `~/.skillshelf` config + library and link the global-core skills | `--force` |
+| `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift) | `--add-root <path>` |
+| `skl import <name> --from <path>` | Adopt your own skill into the library (move + symlink-back, or `--copy`) | `--copy`, `--as <slug>`, `--force` |
 | `skl new <name>` | Scaffold a new skill dir + SKILL.md into the library | `--domain <d>`, `--desc "..."`, `--force` |
 | `skl ls [bundle]` | One-line listing of the library, or one bundle | `--all` |
 | `skl search <kw...>` | Fuzzy match over name + description + domains across the library | — |

@@ -27,7 +27,7 @@ export interface Skill {
   name: string;
   /** frontmatter `description` (may be multi-line) */
   description: string;
-  /** primary domain folder this skill physically lives under (library), or inferred. null if unknown */
+  /** derived view = effective `domains[0]` (post-overlay); null if the skill has no domains. NOT folder-derived (see ADR-0001). */
   primaryDomain: string | null;
   /** effective domain tags (primary first), de-duplicated */
   domains: string[];
@@ -136,8 +136,12 @@ export interface Config {
   libraryPath: string;
   /** absolute path to the global-core symlink target (~/.claude/skills) */
   globalCoreTarget: string;
+  /** persisted, absolute, de-duplicated scan roots (`skl scan` searches these) */
+  roots: string[];
   /** absolute path to the config file that was read, if any */
   configFile: string | null;
+  /** absolute path of the config file roots would be persisted to (read or default) */
+  configFilePath: string;
   /** how libraryPath was resolved */
   source: "env" | "config" | "default";
 }
@@ -148,6 +152,8 @@ export interface ConfigFile {
   library?: string;
   /** override global-core target */
   globalCore?: string;
+  /** persisted scan roots (`skl scan`) */
+  roots?: string[];
 }
 
 /**
@@ -161,6 +167,10 @@ export interface Ctx {
   libraryPath: string;
   /** load the canonical library (effective skills, overlays merged) */
   loadLibrary: () => Promise<Skill[]>;
+  /** configured scan roots (absolute, de-duplicated); convenience alias for config.roots */
+  roots: string[];
+  /** add a scan root: expands ~, makes absolute, de-dupes, persists to config.json. Returns the updated roots. */
+  addRoot: (path: string) => Promise<string[]>;
   /** human-readable logging to stdout */
   log: (...args: unknown[]) => void;
   /** machine-parseable single-line JSON to stdout */

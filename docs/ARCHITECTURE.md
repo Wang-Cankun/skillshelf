@@ -40,14 +40,20 @@ matcher.
 - A **dedicated git repo** is the single source of truth — a *passive shelf*.
 - It is **not** `~/.claude/skills`; nothing in the library auto-loads. That is precisely what
   keeps the token cost down.
-- **One file per skill on disk**, in its *primary-domain* folder. Symlinks are used for
-  delivery, never to duplicate the underlying file.
+- **One copy per skill on disk**, in a **flat, non-semantic layout** (`library/<name>/`). The
+  directory name carries no meaning — domain is never inferred from a parent folder. Symlinks
+  are used for delivery, never to duplicate the underlying file.
 
-### Taxonomy — AI-inferred, multi-domain tags
-- Each skill carries domain **tags** (e.g. `domains: [coding, data]`) so cross-domain
-  membership is expressed honestly instead of being forced into a single folder.
+### Taxonomy — domain is tags, not folders
+- Domain membership lives **entirely in tags** (e.g. `domains: [coding, data]`), not in the
+  on-disk layout. See [ADR-0001](../adr/0001-domain-is-tags-not-folders.md) for the decision
+  and its rationale. Cross-domain membership is expressed honestly rather than forced into a
+  single folder.
+- **`primaryDomain` is derived, not folder-derived.** It is defined as `domains[0]` (the first
+  effective domain after overlay merge), or `null` if a skill has no domains — a view over the
+  tags, not a physical constraint.
 - **Bundles are tag queries, not folders.** `skl use data` resolves every skill tagged
-  `data`, regardless of its physical folder. A dual-use skill appears in both bundles from a
+  `data`, regardless of where it sits on disk. A dual-use skill appears in both bundles from a
   single copy on disk.
 - The taxonomy is **AI-inferred and re-runnable** (`skl infer`): cluster skills, propose the
   domain vocabulary (surfacing domains not previously thought of), assign primary + secondary
@@ -130,10 +136,12 @@ value-add is **provenance + overlay + AI taxonomy + bundles** layered on top.
 ## 4. CLI surface (agent-first)
 
 The CLI is designed to be called by an agent from inside Claude Code, with parseable output
-(`--json` on every command). Thirteen commands:
+(`--json` on every command). Fifteen commands:
 
 | Command | Purpose |
 |---|---|
+| `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift). |
+| `skl import <name> --from <path>` | Adopt one of your own skills into the library (move + symlink-back, or `--copy`). |
 | `skl search <kw>` | Fuzzy search over name + description across the whole library. |
 | `skl ls [bundle]` | List all skills, or one bundle, with one-line descriptions. |
 | `skl status` | Which bundles/skills are currently linked into the current project. |
@@ -241,21 +249,48 @@ double quotes, ignores blank and `#`-comment lines, and never throws.
 
 ## 6. Migration
 
-To consolidate scattered skills into the library:
+Consolidating scattered skills is **agent-orchestrated over deterministic primitives** — not
+a single god-command. skillshelf ships small, predictable verbs (`scan`, `import`, `infer`);
+the host agent supplies the judgment (which copy wins a drift, whether a candidate should move
+or be copied, what to tag it). Each primitive does exactly one mechanical thing and reports
+parseable output; nothing irreversible happens implicitly.
 
-- **Move + symlink-back** — move each scattered skill into the library (the true single
-  source) and leave a symlink in its old location so existing projects and tools still
-  resolve it.
-- **Dedupe drift** during the move; surface conflicts (canonical vs divergent copies) for
-  approval rather than silently picking one.
-- **Detect third-party vs hand-written** — skills with a git origin are tracked through the
-  package-manager layer; hand-written ones are not.
+### The flow
 
-A recommended first pass is **read-only**: crawl the roots, list every skill and path, flag
-duplicates/drift, AI-cluster into proposed domains/bundles, classify third-party vs
-hand-written, and output a report for approval **before** moving any files.
+1. **`skl scan [roots…]`** — *read-only discovery.* Crawls the configured roots (or the ones
+   passed positionally), and reports every **candidate** (a discovered skill not yet in the
+   library) with its location, plus duplicate and **drift** groups. It moves nothing and emits
+   no inference payload. Roots are persisted in `config.json` and grown with
+   `skl scan --add-root <path>`.
+
+2. **Agent decides scope + drift winners.** From the scan report the agent (or human) makes
+   the judgment calls the tool deliberately refuses to make: which candidates to adopt, and —
+   when two same-named copies have diverged — which body is canonical. This reasoning step is
+   intentionally outside the primitives.
+
+3. **`skl import <name> --from <path>`** — *adopt one candidate.* Mechanical and deterministic:
+   it **moves** the candidate dir to `library/<name>/` (flat layout, ADR-0001) and leaves a
+   **symlink back** at the original path, so existing projects and tools keep resolving it. Run
+   it once per chosen candidate. No domain is decided here — import is a thin move+symlink-back
+   primitive, not a tagging step.
+   - `--copy` copies instead of moving and leaves the original untouched — the right choice for
+     skills that live inside a **project repo** you don't want to perforate with a symlink.
+   - `--as <slug>` imports under a different library name; `--force` overwrites an existing
+     same-named library skill (e.g. when the agent has picked the drift winner).
+   - These are the user's **own** skills: `source` is `null` and no lockfile entry is written
+     (that is `add`'s job). An empty overlay (`<name>.shelf.json`) is created so taxonomy can be
+     applied later without clobbering the upstream `SKILL.md`.
+
+4. **`skl infer`** — *tag the now-populated library* in one pass (see §5). Because the layout is
+   flat and domain is tags-only, inference runs **after** import with no ordering paradox and no
+   later reorg when a tag changes (ADR-0001).
+
+So the end-to-end shape is **`scan` → (agent reasons) → `import` per candidate → `infer`** —
+deterministic verbs on the outside, judgment in the middle.
 
 ### Crawl rules
+
+The crawl behind `skl scan`:
 - Dedupe by realpath (some roots are aliased mounts of the same directory).
 - Treat `.agents/skills` as bridge mirrors of `.claude/skills`; do not double-count.
 - Skip `_retired/` (tag as retired; do not activate).

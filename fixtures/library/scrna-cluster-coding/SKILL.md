@@ -4,7 +4,7 @@ description: >-
   Cluster single-cell RNA-seq data and annotate cell types. Older copy that also
   ran batch integration with Harmony before clustering. Drifted from the bioinfo
   canonical version — kept here by an old project move.
-domains: [bioinfo, scrna, coding]
+domains: [coding, bioinfo, scrna]
 ---
 
 # scRNA clustering (drifted copy)
