@@ -11,9 +11,12 @@
 // at the original <path> pointing at the library copy, so old paths still resolve
 // (e.g. ~/.claude/skills/<name> keeps working).
 //
-//   --copy        copy instead of move; leave the original untouched (project repos)
-//   --as <slug>   import under a different library name than <name>
-//   --force       overwrite an existing same-named library skill
+//   --copy          copy instead of move; leave the original untouched (project repos)
+//   --no-link-back  move WITHOUT leaving a symlink — the original location is emptied.
+//                   Use to THIN a root (e.g. drop a skill out of ~/.claude/skills so it
+//                   stops auto-loading; reach it on demand via `skl use`). Implies move.
+//   --as <slug>     import under a different library name than <name>
+//   --force         overwrite an existing same-named library skill
 //
 // Provenance: these are the user's OWN skills, not third-party — source is null and
 // NO lockfile entry is written (that is `add`'s job). We still create an EMPTY
@@ -35,7 +38,7 @@ import {
 export const meta = {
   name: "import",
   summary: "Adopt your own skill into the library (move + symlink-back, or --copy)",
-  usage: "skl import <name> --from <path> [--copy] [--as <slug>] [--force] [--json]",
+  usage: "skl import <name> --from <path> [--copy | --no-link-back] [--as <slug>] [--force] [--json]",
 } as const;
 
 interface Flags {
@@ -43,6 +46,7 @@ interface Flags {
   from: string | null;
   as: string | null;
   copy: boolean;
+  noLinkBack: boolean;
   force: boolean;
   json: boolean;
 }
@@ -55,6 +59,7 @@ function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
     from: null,
     as: null,
     copy: false,
+    noLinkBack: false,
     force: false,
     json: false,
   };
@@ -74,6 +79,8 @@ function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
       flags.as = a.slice("--as=".length);
     } else if (a === "--copy") {
       flags.copy = true;
+    } else if (a === "--no-link-back" || a === "--no-link") {
+      flags.noLinkBack = true;
     } else if (a === "--force") {
       flags.force = true;
     } else if (a === "--json") {
@@ -126,6 +133,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   if (!flags.from || flags.from.trim() === "") {
     ctx.error("skl import: --from <path> is required");
     ctx.error(`usage: ${meta.usage}`);
+    return 1;
+  }
+  if (flags.copy && flags.noLinkBack) {
+    ctx.error(
+      "skl import: --copy and --no-link-back are mutually exclusive (--copy keeps the original; --no-link-back removes it)",
+    );
     return 1;
   }
 
@@ -200,20 +213,23 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         filter: (s: string) => basename(s) !== ".git",
       });
     } else {
-      // Move the dir into the library, then symlink the old location back to it so
-      // existing paths keep resolving (move + symlink-back).
+      // Move the dir into the library. By default symlink the old location back so
+      // existing paths keep resolving; with --no-link-back leave the original empty
+      // (thinning a root, e.g. removing a skill from ~/.claude/skills' auto-load).
       await moveDir(fromPath, destDir);
-      await safeSymlink(destDir, fromPath, { force: true });
-      linkedBack = true;
+      if (!flags.noLinkBack) {
+        await safeSymlink(destDir, fromPath, { force: true });
+        linkedBack = true;
 
-      // Verify the symlink actually resolves to the library copy after the move.
-      const linkReal = await realpathOrSelfAsync(fromPath);
-      const movedReal = await realpathOrSelfAsync(destDir);
-      if (linkReal !== movedReal) {
-        ctx.error(
-          `skl import: symlink-back verification failed — ${fromPath} resolves to ${linkReal}, expected ${movedReal}`,
-        );
-        return 1;
+        // Verify the symlink actually resolves to the library copy after the move.
+        const linkReal = await realpathOrSelfAsync(fromPath);
+        const movedReal = await realpathOrSelfAsync(destDir);
+        if (linkReal !== movedReal) {
+          ctx.error(
+            `skl import: symlink-back verification failed — ${fromPath} resolves to ${linkReal}, expected ${movedReal}`,
+          );
+          return 1;
+        }
       }
     }
 
@@ -255,6 +271,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       ctx.log(`  to:    ${destDir}`);
       ctx.log(`  mode:  ${mode}`);
       if (linkedBack) ctx.log(`  link:  ${fromPath} -> ${destDir} (old path still resolves)`);
+      else if (mode === "move") ctx.log(`  note:  original location emptied (no symlink-back) — reach it via \`skl use\``);
       ctx.log("Run `skl infer` to tag it and `skl index` to list it.");
     }
     return 0;

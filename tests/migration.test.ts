@@ -282,6 +282,51 @@ describe("skl import (consolidation)", () => {
     expect(existsSync(join(dest, "SKILL.md"))).toBe(true);
   });
 
+  test("--no-link-back moves into library and EMPTIES the original (thinning)", async () => {
+    const root = await scratch("skl-imp-nolink-");
+    const orig = await writeSkill(root, "thinned", {});
+    const libDir = await scratch("skl-imp-nolink-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-imp-nolink-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(
+      importCmd,
+      ["thinned", "--from", orig, "--no-link-back", "--json"],
+      ctx,
+      buf,
+    );
+    expect(r.code).toBe(0);
+    expect((r.json[0] as any).mode).toBe("move");
+    expect((r.json[0] as any).linkedBack).toBe(false);
+
+    // Original location is gone entirely (no symlink left behind).
+    expect(existsSync(orig)).toBe(false);
+
+    // Library copy is a real dir with the body.
+    const dest = join(library, "thinned");
+    expect((await lstat(dest)).isDirectory()).toBe(true);
+    expect(existsSync(join(dest, "SKILL.md"))).toBe(true);
+  });
+
+  test("--copy and --no-link-back are mutually exclusive", async () => {
+    const root = await scratch("skl-imp-excl-");
+    const orig = await writeSkill(root, "both", {});
+    const libDir = await scratch("skl-imp-excl-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-imp-excl-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(
+      importCmd,
+      ["both", "--from", orig, "--copy", "--no-link-back"],
+      ctx,
+      buf,
+    );
+    expect(r.code).toBe(1);
+    expect(buf.err.join("\n")).toContain("mutually exclusive");
+  });
+
   test("idempotent refusal: importing onto an existing name fails without --force", async () => {
     const root = await scratch("skl-imp-idem-");
     const orig1 = await writeSkill(root, "twin", { body: "# twin\nfirst\n" });
