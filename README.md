@@ -93,6 +93,10 @@ skl import deploy-check --from ~/projects/web/.claude/skills/deploy-check --copy
 #    When two copies drifted and you've picked the winner, overwrite the loser:
 skl import rnaseq-qc --from ~/projects/lab/.claude/skills/rnaseq-qc --force
 
+#    For a skill you actively develop in its own git repo, shelve a LINK instead of a copy —
+#    the repo stays canonical and edits show up live, no drift, no re-sync (ADR-0004):
+skl link --from ~/Documents/GitHub/cairn/skill/cairn
+
 # 3. Tag the now-populated library in one pass. Domain is tags, not folders, so this
 #    runs AFTER import with no reorg — no skill ever has to move because a tag changed.
 skl infer --emit               # hand the payload to your agent, then `skl infer --apply`
@@ -119,9 +123,17 @@ skillshelf separates *owning* a skill from *loading* it.
 - **On-demand `show`** — prints only the SKILL.md instruction body and lists the paths of
   any bundled reference files (without reading them). Progressive disclosure: cheap by
   default, deep when you ask. Works mid-task with no reload.
-- **Sidecar overlay** — installed third-party skills keep a pristine `upstream/` body plus a
-  `<skill>.shelf.json` overlay holding *your* tags, bundle membership, and notes. `skl update`
-  swaps the upstream body cleanly while your taxonomy survives — updates never clobber your tags.
+- **Owned vs linked entries** ([ADR-0004](./docs/adr/0004-owned-vs-linked-entries.md)) — the
+  library is a *bookshelf*: an entry either **owns** its bytes (a real copy; the library is
+  canonical — for downloads and stabilized skills) or is **linked** (a symlink to an external dev
+  repo that stays canonical — for skills you actively develop in their own git, e.g. `cairn`).
+  `skl link --from <dev-repo>` registers a linked entry; `skl where` shows it as a clean
+  `✓ source`; `skl update` / `outdated` skip linked entries so they never pull upstream into your
+  dev repo. The mode is derived from the filesystem (a symlink resolving outside the library),
+  never stored, so it can't go stale.
+- **Updates never clobber your tags** — domain tags live in the central `taxonomy.json`
+  ([ADR-0002](./docs/adr/0002-central-taxonomy-not-sidecars.md)), separate from the skill body, so
+  `skl update` can swap an owned skill's upstream `SKILL.md` cleanly while your taxonomy survives.
 
 ```
                        skl search / ls / show          skl use <bundle>
@@ -142,18 +154,19 @@ See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full design.
 |---|---|---|
 | `skl init` | Set up `~/.skillshelf` config + library and link the global-core skills | `--force` |
 | `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift) | `--add-root <path>` |
-| `skl import <name> --from <path>` | Adopt your own skill into the library (move + symlink-back, or `--copy`) | `--copy`, `--as <slug>`, `--force` |
+| `skl import <name> --from <path>` | Adopt your own skill into the library as an OWNED copy (move + symlink-back, or `--copy`) | `--copy`, `--as <slug>`, `--force` |
+| `skl link [<name>] --from <dev-repo>` | Shelve a dev-repo skill as a LINKED entry (library symlinks to it; the repo stays canonical). `--at <path>` instead collapses a stray copy into the library | `--from`, `--at`, `--force` |
 | `skl new <name>` | Scaffold a new skill dir + SKILL.md into the library | `--domain <d>`, `--desc "..."`, `--force` |
 | `skl ls [bundle]` | One-line listing of the library, or one bundle | `--all` |
 | `skl search <kw...>` | Fuzzy match over name + description + domains across the library | — |
 | `skl show <name>` | Print a skill's SKILL.md body; list reference-file paths (not contents) | — |
 | `skl status` | Show which library skills are linked into `./.claude/skills` | — |
-| `skl where [name]` | Map where each skill is deployed across all agents (Claude, Codex, Cursor…); flags copies, drift, 2nd-sources, dead links | `--problems` |
+| `skl where [name]` | Map where each skill is deployed across all agents (Claude, Codex, Cursor…); flags copies, drift, 2nd-sources, dead links — a dev repo a library entry links to shows as a clean `✓ source` | `--problems` |
 | `skl use <bundle>` | Symlink a bundle's skills into `./.claude/skills/` (hot-loads) | — |
 | `skl drop <bundle>` | Remove a bundle's symlinks from `./.claude/skills/` | — |
 | `skl add <src>` | Install a third-party skill (`github:`/registry), record provenance, auto-tag | `--domain <d>`, `--name <slug>`, `--no-infer`, `--force` |
-| `skl outdated [name]` | Check upstream ref per tracked skill and mark stale ones | — |
-| `skl update [name]` | Re-pull upstream body, preserve domain tags, diff if local body diverged | `--force`, `--dry-run` |
+| `skl outdated [name]` | Check upstream ref per tracked skill and mark stale ones (LINKED dev-repo entries are reported, never probed) | — |
+| `skl update [name]` | Re-pull upstream body, preserve domain tags, diff if local body diverged (LINKED entries are skipped — their own git owns versioning) | `--force`, `--dry-run` |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain) | — |
 | `skl infer` | Re-run AI domain taxonomy over the library (emit/apply/provider modes) | see below |
 
@@ -175,7 +188,7 @@ skl infer [--emit | --apply <file.json> | --provider <name>] \
 - `--emit` — print a self-contained prompt + the library payload as JSON. Hand it to whatever
   agent or model you already have open; it does the reasoning.
 - `--apply <file.json>` — apply the taxonomy proposal the agent produced back into the library
-  (for review/approval), updating tags via the overlay.
+  (for review/approval), writing tags into the central `taxonomy.json`.
 
 **API mode (skillshelf calls an OpenAI-compatible endpoint itself):**
 

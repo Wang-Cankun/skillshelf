@@ -46,13 +46,29 @@ matcher.
   directory name carries no meaning — domain is never inferred from a parent folder. Symlinks
   are used for delivery, never to duplicate the underlying file.
 
+### Entry modes — owned vs linked (the bookshelf)
+The library is a *shelf*, and an entry comes in two modes ([ADR-0004](adr/0004-owned-vs-linked-entries.md)):
+- **OWNED** — the library holds the real bytes; the library is canonical. The default for
+  third-party downloads (`skl add`) and your own skills adopted with `skl import`, plus skills
+  you've stabilized. `skl update` tracks an OWNED skill's upstream.
+- **LINKED** — `library/<name>` is a *symlink to an external dev repo* that stays canonical. The
+  right mode for skills you actively develop in their own git (e.g. `cairn`, skillshelf itself):
+  editing the repo is editing the deployed skill, with zero drift and no copy to keep in sync.
+  Register one with `skl link --from <dev-repo>`.
+- **Mode is derived from reality, never stored.** `entryMode(library, name)` resolves the realpath
+  of `library/<name>`: a symlink landing outside the library is LINKED, anything else is OWNED. It
+  can't go stale because nothing persists it. This drives two behaviours: `skl where` reports a
+  LINKED entry's dev repo as a clean `✓ source` (not a redundant copy), and `skl update`/`outdated`
+  **skip** LINKED entries — following the symlink to re-pull a github body would clobber the dev
+  repo. The lifecycle is *develop as LINKED → `skl import --copy` to freeze to OWNED when stable*.
+
 ### Taxonomy — domain is tags, not folders
 - Domain membership lives **entirely in tags** (e.g. `domains: [coding, data]`), not in the
   on-disk layout. See [ADR-0001](../adr/0001-domain-is-tags-not-folders.md) for the decision
   and its rationale. Cross-domain membership is expressed honestly rather than forced into a
   single folder.
 - **`primaryDomain` is derived, not folder-derived.** It is defined as `domains[0]` (the first
-  effective domain after overlay merge), or `null` if a skill has no domains — a view over the
+  effective domain after taxonomy merge), or `null` if a skill has no domains — a view over the
   tags, not a physical constraint.
 - **Bundles are tag queries, not folders.** `skl use data` resolves every skill tagged
   `data`, regardless of where it sits on disk. A dual-use skill appears in both bundles from a
@@ -105,22 +121,26 @@ localEdits    — whether the upstream body diverged locally
 installedHash — hash of the upstream SKILL.md body as recorded at install/update time
 ```
 
-### Sidecar overlay (the critical piece) — uniform for all skills
-- `upstream` body (`SKILL.md`) = pristine, replaceable.
-- `<skill>.shelf.json` = *your* additions: domain tags, bundle membership, notes.
-- **Effective skill = upstream + overlay**, merged at `show`/`use` time.
-- This lets `skl update` swap the upstream body cleanly while the taxonomy survives.
+### Tag/body separation (the critical piece) — uniform for all skills
+- `SKILL.md` body = pristine, replaceable (the upstream layer).
+- Domain tags, bundle membership, and notes live in the **central `<library>/taxonomy.json`**
+  ([ADR-0002](../adr/0002-central-taxonomy-not-sidecars.md)) — never inside the skill dir.
+- **Effective skill = body + central taxonomy**, merged at `show` / `use` / load time.
+- This lets `skl update` swap the upstream body cleanly while your tags survive — they were never
+  in the file being replaced. (Replaces the earlier per-skill `<skill>.shelf.json` overlay sidecars.)
 
 ### Three-way update (no clobbering)
 
-`skl update` decides what to do by comparing three states, not two:
+LINKED entries (§2) are skipped outright — their own git owns versioning, and following the
+symlink to re-pull a github body would clobber the dev repo. For OWNED skills, `skl update`
+decides what to do by comparing three states, not two:
 
 1. the **current local body** (hashed),
 2. the **recorded `installedHash`** (the upstream body as it was at install/update time),
 3. the **new upstream body** (hashed).
 
 - `localHash == installedHash` → the user never hand-edited the body, so a normal
-  upstream-moved-forward update is applied cleanly and the overlay is preserved.
+  upstream-moved-forward update is applied cleanly and your taxonomy tags are preserved.
 - `localHash != installedHash` **and** local differs from upstream → genuine local edits are
   detected; skillshelf does **not** clobber them. It emits a unified diff for review and
   requires `--force` to overwrite.
@@ -131,19 +151,20 @@ and clears `localEdits` (the on-disk body equals upstream again).
 
 ### Don't reinvent fetching
 The download step is a commodity: `skl add` shells out to existing tooling / git. skillshelf's
-value-add is **provenance + overlay + AI taxonomy + bundles** layered on top.
+value-add is **provenance + central taxonomy + AI inference + bundles** layered on top.
 
 ---
 
 ## 4. CLI surface (agent-first)
 
 The CLI is designed to be called by an agent from inside Claude Code, with parseable output
-(`--json` on every command). Fifteen commands:
+(`--json` on every command). Sixteen commands:
 
 | Command | Purpose |
 |---|---|
 | `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift). |
-| `skl import <name> --from <path>` | Adopt one of your own skills into the library (move + symlink-back, or `--copy`). |
+| `skl import <name> --from <path>` | Adopt one of your own skills into the library as an OWNED copy (move + symlink-back, or `--copy`). |
+| `skl link [<name>] --from <dev-repo>` | Shelve a dev-repo skill as a LINKED entry (library symlinks to it). `--at <path>` instead collapses a stray copy into the library ([ADR-0004](adr/0004-owned-vs-linked-entries.md)). |
 | `skl search <kw>` | Fuzzy search over name + description across the whole library. |
 | `skl ls [bundle]` | List all skills, or one bundle, with one-line descriptions. |
 | `skl status` | Which bundles/skills are currently linked into the current project. |
@@ -152,7 +173,7 @@ The CLI is designed to be called by an agent from inside Claude Code, with parse
 | `skl drop <bundle>` | Remove a bundle's symlinks. |
 | `skl add <src>` | Install a third-party skill, record provenance, AI-tag it. |
 | `skl outdated` | Check upstream commit/version per tracked skill → mark stale. |
-| `skl update [name]` | Re-pull the upstream body, preserve the overlay, diff if diverged. |
+| `skl update [name]` | Re-pull the upstream body (OWNED only), preserve domain tags, diff if diverged. |
 | `skl init` | Initialize a library / global core. |
 | `skl new` | Scaffold a new skill into the library. |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain). |
@@ -172,7 +193,7 @@ testable) from the reasoning step (pluggable). It has three modes:
   a JSON schema and an instruction, and print it to stdout so the **host agent** (Claude Code)
   can reason over it and produce a proposal file. No LLM call happens inside skillshelf.
 - **`--apply <file.json>`** — read the agent's proposal JSON and write the proposed
-  domains/tags into each skill's `<name>.shelf.json` overlay (never the upstream `SKILL.md`).
+  domains/tags into the central `<library>/taxonomy.json` (never the upstream `SKILL.md`).
   Assignments are unioned with existing tags, never destructive.
 - **`--provider <name>` / API mode** — reuse the same corpus-build and proposal-apply
   functions to close the loop automatically against any OpenAI-compatible endpoint.
@@ -280,8 +301,9 @@ parseable output; nothing irreversible happens implicitly.
    - `--as <slug>` imports under a different library name; `--force` overwrites an existing
      same-named library skill (e.g. when the agent has picked the drift winner).
    - These are the user's **own** skills: `source` is `null` and no lockfile entry is written
-     (that is `add`'s job). An empty overlay (`<name>.shelf.json`) is created so taxonomy can be
-     applied later without clobbering the upstream `SKILL.md`.
+     (that is `add`'s job). Domain tags are applied later via the central `taxonomy.json`
+     ([ADR-0002](../adr/0002-central-taxonomy-not-sidecars.md)), never inside the skill dir, so
+     tagging never clobbers the upstream `SKILL.md`.
 
 4. **`skl infer`** — *tag the now-populated library* in one pass (see §5). Because the layout is
    flat and domain is tags-only, inference runs **after** import with no ordering paradox and no
