@@ -1,39 +1,40 @@
-// Load the canonical library: crawl the library root, merge overlays into
-// effective skills, attach provenance from the lockfile, content-hash, list.
+// Load the canonical library: crawl the library root, merge the central taxonomy
+// into effective skills, attach provenance from the lockfile, content-hash, list.
 
 import { existsSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import type { Skill } from "../types.ts";
 import { crawl } from "./crawl.ts";
-import { withOverlay } from "./overlay.ts";
+import { readTaxonomy, applyTaxonomy } from "./taxonomy.ts";
 import { readLockfile, provenanceForName } from "./provenance.ts";
 
 /**
  * Load the canonical library at `libraryPath` into effective Skill[]:
- * crawl + overlay-merge + provenance attach. Returns [] if the path is missing.
+ * crawl + taxonomy-merge + provenance attach. Returns [] if the path is missing.
  *
  * Library layout is FLAT and non-semantic (`library/<name>/`). Domain membership
- * lives entirely in tags (frontmatter + overlay); `primaryDomain` is the derived
- * view `domains[0]` of the *effective* (overlay-merged) tags, or null if a skill
- * has no domains. See docs/adr/0001-domain-is-tags-not-folders.md.
+ * lives entirely in tags (frontmatter + central taxonomy.json); `primaryDomain`
+ * is the derived view `domains[0]` of the *effective* (taxonomy-merged) tags, or
+ * null if a skill has no domains. See docs/adr/0001-domain-is-tags-not-folders.md
+ * and docs/adr/0002-central-taxonomy-not-sidecars.md.
  */
 export async function loadLibrary(libraryPath: string): Promise<Skill[]> {
   if (!existsSync(libraryPath)) return [];
 
   const { skills } = await crawl([libraryPath]);
 
+  // Read the central taxonomy + lockfile ONCE before the loop (both live at the
+  // library root, beside the skill dirs).
+  const tax = await readTaxonomy(libraryPath);
   const lock = await readLockfile(libraryPath);
 
   const effective: Skill[] = [];
   for (const s of skills) {
-    const merged = await withOverlay(s);
-    // primaryDomain is derived from the EFFECTIVE (post-overlay) tags: domains[0].
-    const withPrimary: Skill = {
-      ...merged,
-      primaryDomain: merged.domains.length > 0 ? merged.domains[0]! : null,
-    };
-    const prov = provenanceForName(lock, withPrimary.name);
-    effective.push(prov ? { ...withPrimary, source: prov } : withPrimary);
+    // applyTaxonomy unions taxonomy domains onto frontmatter domains and recomputes
+    // primaryDomain = effective domains[0] (or null).
+    const merged = applyTaxonomy(s, tax);
+    const prov = provenanceForName(lock, merged.name);
+    effective.push(prov ? { ...merged, source: prov } : merged);
   }
   // stable ordering: primaryDomain then name
   effective.sort((a, b) => {

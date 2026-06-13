@@ -1,6 +1,6 @@
 // Download plumbing for `skl add` / `skl update`.
 //
-// skillshelf's value-add is provenance + overlay + taxonomy + bundles — NOT
+// skillshelf's value-add is provenance + central taxonomy + bundles — NOT
 // downloading. So this module only shells out to commodity tools:
 //   - github channel: `git` (clone/ls-remote) + optional `gh api` for latest ref.
 //   - vercel-registry channel: the external `skills` CLI (if installed).

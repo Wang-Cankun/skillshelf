@@ -3,8 +3,8 @@
 // Dual-mode, LLM-FREE core:
 //   skl infer --emit                 print {instruction, schema, corpus} for a
 //                                    host agent to reason over (no LLM call here).
-//   skl infer --apply <file.json>    write the agent's proposal into each skill's
-//                                    <name>.shelf.json overlay (never upstream).
+//   skl infer --apply <file.json>    write the agent's proposal into the central
+//                                    taxonomy.json (never upstream SKILL.md).
 //   skl infer --provider openai      API mode: POST the corpus to an
 //                                    OpenAI-compatible endpoint and apply the
 //                                    strict-JSON result automatically.
@@ -164,7 +164,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         ctx.error("skl infer: proposal contained no assignments");
         return 1;
       }
-      const result = await applyProposal(skills, proposal);
+      const result = await applyProposal(ctx.libraryPath, skills, proposal);
       return reportApply(result, args.json, ctx);
     }
 
@@ -193,7 +193,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         ctx.error("skl infer: gateway returned no assignments");
         return 1;
       }
-      const result = await applyProposal(skills, inferred.proposal);
+      const result = await applyProposal(ctx.libraryPath, skills, inferred.proposal);
       return reportApply(result, args.json, ctx, prov.config.name, prov.config.model);
     }
 
@@ -227,7 +227,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     ctx.error(
       "skl infer: no inference mode available. Provide one of:\n" +
         "  --emit                 print corpus for a host agent to reason over\n" +
-        "  --apply <file.json>    apply an agent proposal into overlays\n" +
+        "  --apply <file.json>    apply an agent proposal into taxonomy.json\n" +
         `  --provider <name>      call an OpenAI-compatible endpoint (${knownProviders().join(", ")})\n` +
         "  --base-url <url>       call a custom OpenAI-compatible endpoint\n" +
         "(auto-emit only activates inside a Claude Code agent context.)",
@@ -268,7 +268,7 @@ function reportApply(
     ctx.log(`  ${a.name}: ${a.domains.join(", ")}${addedNote}`);
   }
   ctx.log(
-    `Applied ${result.applied.length} overlay update${
+    `Applied ${result.applied.length} taxonomy update${
       result.applied.length === 1 ? "" : "s"
     }.`,
   );

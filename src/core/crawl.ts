@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { join, basename, dirname, sep } from "node:path";
 import { readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, type Dirent } from "node:fs";
 import type { Skill } from "../types.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { realpathOrSelf, isDirectory } from "../lib/fs.ts";
@@ -51,7 +51,7 @@ function isSkillDir(dir: string): boolean {
 
 async function listRefFiles(skillDir: string, skillName: string): Promise<string[]> {
   const out: string[] = [];
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(skillDir, { withFileTypes: true });
   } catch {
@@ -138,7 +138,7 @@ async function discoverSkillDirs(
       out.push({ dir, retired });
       return; // do not descend into a skill's own subtree (reference/ etc.)
     }
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {
@@ -249,7 +249,7 @@ export async function crawl(
 export async function expandProjectRoots(parent: string): Promise<string[]> {
   const out: string[] = [];
   if (!existsSync(parent)) return out;
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(parent, { withFileTypes: true });
   } catch {

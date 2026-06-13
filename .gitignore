@@ -5,3 +5,6 @@ dist/
 .env
 .env.*
 .omc/
+
+# local global-core symlinks (machine-specific, created by `skl use`)
+.claude/

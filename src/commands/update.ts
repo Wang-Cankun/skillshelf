@@ -1,7 +1,9 @@
 // skl update [name] — re-pull the upstream SKILL.md body for tracked skills.
 //
 // Invariants (the whole point of this command):
-//   - The overlay (<name>.shelf.json) is NEVER touched: taxonomy/bundles survive.
+//   - Domain tags are NEVER touched: they live in the central <library>/taxonomy.json
+//     (ADR-0002), which is separate from skill bodies, so re-pulling SKILL.md leaves
+//     every skill's domains intact. (There is no longer a per-skill overlay file.)
 //   - Only the upstream body (SKILL.md + bundled reference files) is replaced.
 //   - If the LOCAL body diverged from the previously-installed upstream (the user
 //     hand-edited it), DO NOT clobber. Show a diff and skip, unless --force.
@@ -11,7 +13,7 @@
 // to preview without writing; --force to overwrite diverged local edits.
 
 import { join, basename } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, type Dirent } from "node:fs";
 import { cp, rm, readdir } from "node:fs/promises";
 import type { Ctx, LockEntry } from "../types.ts";
 import { readLockfile, recordEntry } from "../core/provenance.ts";
@@ -28,7 +30,7 @@ import { loadLibrary, findByName } from "../core/library.ts";
 
 export const meta = {
   name: "update",
-  summary: "Re-pull upstream body, preserve overlay, diff if local body diverged",
+  summary: "Re-pull upstream body, preserve domain tags, diff if local body diverged",
   usage: "skl update [name] [--force] [--dry-run] [--json]",
 } as const;
 
@@ -50,11 +52,18 @@ function bodyOf(text: string): string {
   return parseFrontmatter(text).body;
 }
 
-/** Replace SKILL.md + bundled reference files from upstream; preserve overlay/lock. */
-async function applyUpstream(destDir: string, upstreamDir: string, name: string): Promise<void> {
-  const PRESERVE = new Set([`${name}.shelf.json`, "shelf.lock.json"]);
-  // Remove existing upstream-managed files (everything except overlay/lock/.git).
-  let entries: Awaited<ReturnType<typeof readdir>> = [];
+/**
+ * Replace SKILL.md + bundled reference files from upstream within a single skill
+ * dir. Domain tags and provenance are NOT stored inside the skill dir — the central
+ * taxonomy.json and shelf.lock.json both live at the LIBRARY ROOT (ADR-0002), never
+ * inside `destDir` — so the only thing to protect here is the skill's own `.git`.
+ * We still keep `shelf.lock.json`/`taxonomy.json` in the preserve set defensively,
+ * so a stray copy inside a skill dir is never deleted by this cleanup.
+ */
+async function applyUpstream(destDir: string, upstreamDir: string, _name: string): Promise<void> {
+  const PRESERVE = new Set(["shelf.lock.json", "taxonomy.json"]);
+  // Remove existing upstream-managed files (everything except lock/taxonomy/.git).
+  let entries: Dirent[] = [];
   try {
     entries = await readdir(destDir, { withFileTypes: true });
   } catch {
@@ -158,7 +167,8 @@ async function updateOne(
       };
     }
 
-    // Apply: replace body + ref files, preserve overlay/lock.
+    // Apply: replace body + ref files; domain tags + lock live at the library
+    // root (taxonomy.json / shelf.lock.json), untouched by this skill-dir cleanup.
     await applyUpstream(destDir, fetched.skillDir, entry.name);
 
     // Update lockfile ref + record the new installed body hash + clear localEdits
@@ -179,7 +189,7 @@ async function updateOne(
       fromRef: entry.ref,
       toRef: fetched.ref,
       outcome: "updated",
-      note: opts.force && localDiverged ? "overwrote diverged local body" : "upstream body re-pulled; overlay preserved",
+      note: opts.force && localDiverged ? "overwrote diverged local body" : "upstream body re-pulled; domain tags preserved",
     };
   } catch (err) {
     return {

@@ -4,15 +4,15 @@
 //   - emit : assemble an InferenceCorpus + JSON schema + instruction and print it
 //            to stdout so the HOST agent (Claude Code) can reason over it and
 //            produce a proposal file.
-//   - apply: read the agent's proposal JSON and write proposed domains/tags into
-//            each skill's `<name>.shelf.json` overlay (never upstream SKILL.md).
+//   - apply: read the agent's proposal JSON and write proposed domains into the
+//            central taxonomy.json (never upstream SKILL.md).
 //
 // The api.ts adapter reuses buildCorpus() + applyProposal() to close the loop
 // automatically against any OpenAI-compatible LLM endpoint.
 
-import type { InferenceCorpus, Overlay, Skill } from "../../types.ts";
+import type { InferenceCorpus, Skill } from "../../types.ts";
 import { listDomains } from "../../core/library.ts";
-import { readOverlay, writeOverlay } from "../../core/overlay.ts";
+import { readTaxonomy, writeTaxonomy, domainsForName } from "../../core/taxonomy.ts";
 import { parseFrontmatter } from "../../lib/frontmatter.ts";
 
 /** Max characters of SKILL.md body included per skill in the corpus preview. */
@@ -20,8 +20,9 @@ const BODY_PREVIEW_CHARS = 1200;
 
 /**
  * The proposal shape the host agent (or the gateway) must return: a map of
- * skill name -> proposed domains, plus optional primary + notes. Authors apply
- * `domains` into each overlay (unioned with existing, never destructive).
+ * skill name -> proposed domains, plus optional primary + notes. Applying unions
+ * `domains` into the central taxonomy (per skill, never destructive). `notes` is
+ * accepted for backward compatibility but is no longer persisted (ADR-0002).
  */
 export interface InferenceProposalEntry {
   name: string;
@@ -82,7 +83,7 @@ export const INFER_INSTRUCTION = [
   "domain plus any honest secondary tags (a dual-use skill belongs to multiple).",
   "Keep domain tokens lowercase and hyphenated.",
   "Return ONE JSON object that validates against `schema` (no prose, no markdown",
-  "fences). Then run `skl infer --apply <file.json>` to write it into the overlays.",
+  "fences). Then run `skl infer --apply <file.json>` to write it into taxonomy.json.",
 ].join(" ");
 
 /** Build the deterministic InferenceCorpus snapshot from loaded skills. */
@@ -185,7 +186,7 @@ export function normalizeProposal(raw: unknown): InferenceProposal {
 }
 
 export interface ApplyResult {
-  /** skill name -> domains written into its overlay */
+  /** skill name -> domains written into the taxonomy for that skill */
   applied: Array<{ name: string; domains: string[]; added: string[] }>;
   /** assignment names with no matching skill in the library */
   unmatched: string[];
@@ -194,11 +195,13 @@ export interface ApplyResult {
 }
 
 /**
- * Apply a proposal into each skill's overlay. Domains are UNIONED with the
- * skill's existing effective domains (never destructive), written to
- * `<name>.shelf.json` only — upstream SKILL.md is never touched.
+ * Apply a proposal into the central taxonomy (`<library>/taxonomy.json`). For each
+ * assignment, domains are UNIONED with the skill's EXISTING taxonomy entry (never
+ * destructive); upstream SKILL.md is never touched. `notes` is dropped (ADR-0002).
+ * The taxonomy is read once and written once at the end.
  */
 export async function applyProposal(
+  libraryPath: string,
   skills: Skill[],
   proposal: InferenceProposal,
 ): Promise<ApplyResult> {
@@ -208,6 +211,8 @@ export async function applyProposal(
     const existing = byName.get(s.name);
     if (!existing || (existing.mirrorOf && !s.mirrorOf)) byName.set(s.name, s);
   }
+
+  const tax = await readTaxonomy(libraryPath);
 
   const applied: ApplyResult["applied"] = [];
   const unmatched: string[] = [];
@@ -232,8 +237,9 @@ export async function applyProposal(
       continue;
     }
 
-    const prev = await readOverlay(skill);
-    const existingDomains = Array.isArray(prev?.domains) ? prev!.domains : [];
+    // Union with the skill's EXISTING taxonomy domains (non-destructive). Resolve
+    // by the canonical skill name so mirror copies map to the same entry.
+    const existingDomains = domainsForName(tax, skill.name);
     const merged: string[] = [...existingDomains];
     const added: string[] = [];
     for (const d of ordered) {
@@ -243,11 +249,12 @@ export async function applyProposal(
       }
     }
 
-    const next: Overlay = { ...(prev ?? {}), domains: merged };
-    if (a.notes) next.notes = a.notes;
-    await writeOverlay(skill, next);
+    tax.skills[skill.name] = merged;
     applied.push({ name: a.name, domains: merged, added });
   }
+
+  // Persist the whole taxonomy once.
+  await writeTaxonomy(libraryPath, tax);
 
   return { applied, unmatched, skipped };
 }

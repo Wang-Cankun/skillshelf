@@ -19,15 +19,14 @@
 //   --force         overwrite an existing same-named library skill
 //
 // Provenance: these are the user's OWN skills, not third-party — source is null and
-// NO lockfile entry is written (that is `add`'s job). We still create an EMPTY
-// overlay (<name>.shelf.json) so taxonomy can be applied later without clobbering
-// the upstream SKILL.md.
+// NO lockfile entry is written (that is `add`'s job). Import is purely mechanical
+// (move + symlink-back, or --copy); domain tags are applied later by `skl infer`
+// into the central <library>/taxonomy.json, which never touches the SKILL.md body.
 
 import { join, basename, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { rename, cp, rm } from "node:fs/promises";
-import type { Ctx, Skill } from "../types.ts";
-import { writeOverlay } from "../core/overlay.ts";
+import type { Ctx } from "../types.ts";
 import {
   ensureDir,
   safeSymlink,
@@ -264,26 +263,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
     }
 
-    // Empty overlay so taxonomy (domains/bundles) can be applied later via
-    // `skl infer` without touching the upstream SKILL.md. These are the user's own
-    // skills: source/provenance is null and NO lockfile entry is written.
-    const imported: Skill = {
-      name: targetName,
-      description: "",
-      primaryDomain: null,
-      domains: [],
-      path: destDir,
-      bodyPath: join(destDir, "SKILL.md"),
-      refFiles: [],
-      source: null,
-      retired: false,
-      mirrorOf: null,
-      contentHash: "",
-    };
-    const overlayPathStr = join(destDir, `${targetName}.shelf.json`);
-    if (!existsSync(overlayPathStr)) {
-      await writeOverlay(imported, {});
-    }
+    // Import is mechanical: no domain is decided here. Domain tags are applied
+    // later via `skl infer` into the central <library>/taxonomy.json — never into
+    // the upstream SKILL.md. These are the user's own skills: source/provenance is
+    // null and NO lockfile entry is written.
 
     const summary = {
       ok: true,

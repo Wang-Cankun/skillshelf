@@ -39,5 +39,10 @@
     "src",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "22",
+    "typescript": "5.6"
+  }
 }

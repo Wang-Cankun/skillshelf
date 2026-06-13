@@ -1,7 +1,7 @@
 // Filesystem helpers: realpath-dedupe, safe symlink ops, directory walking.
 // Bun built-ins + node:fs/node:path only. No external deps.
 
-import { realpathSync, existsSync, lstatSync } from "node:fs";
+import { realpathSync, existsSync, lstatSync, type Dirent } from "node:fs";
 import {
   mkdir,
   readdir,
@@ -137,7 +137,7 @@ export async function* walk(
   const follow = opts.followSymlinks ?? false;
 
   async function* recurse(dir: string, depth: number): AsyncGenerator<WalkEntry> {
-    let entries: Awaited<ReturnType<typeof readdir>> = [];
+    let entries: Dirent[] = [];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {

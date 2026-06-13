@@ -101,7 +101,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       ctx.log("");
       ctx.log(`${rows.length} tracked, ${stale.length} stale.`);
       if (stale.length > 0) {
-        ctx.log(`run \`skl update [name]\` to re-pull (overlays are preserved).`);
+        ctx.log(`run \`skl update [name]\` to re-pull (domain tags are preserved).`);
       }
     }
     // Non-zero exit when stale skills exist, so agents/CI can branch on it.

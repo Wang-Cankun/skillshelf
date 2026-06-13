@@ -20,14 +20,14 @@ export interface Provenance {
 
 /**
  * A single skill as discovered on disk (crawl) or in the canonical library.
- * `domains` is the *effective* tag list (upstream frontmatter + overlay merged).
+ * `domains` is the *effective* tag list (upstream frontmatter + taxonomy merged).
  */
 export interface Skill {
   /** unique slug, from frontmatter `name` or directory name */
   name: string;
   /** frontmatter `description` (may be multi-line) */
   description: string;
-  /** derived view = effective `domains[0]` (post-overlay); null if the skill has no domains. NOT folder-derived (see ADR-0001). */
+  /** derived view = effective `domains[0]` (post-taxonomy merge); null if the skill has no domains. NOT folder-derived (see ADR-0001). */
   primaryDomain: string | null;
   /** effective domain tags (primary first), de-duplicated */
   domains: string[];
@@ -35,7 +35,7 @@ export interface Skill {
   path: string;
   /** absolute path to the SKILL.md body file */
   bodyPath: string;
-  /** absolute paths to bundled reference files (everything in the dir besides SKILL.md / overlay / lock) */
+  /** absolute paths to bundled reference files (everything in the dir besides SKILL.md / lock) */
   refFiles: string[];
   /** provenance for third-party skills; null for hand-written */
   source: Provenance | null;
@@ -50,16 +50,17 @@ export interface Skill {
 }
 
 /**
- * Sidecar overlay stored as `<skill>.shelf.json` next to SKILL.md.
- * Holds *your* additions that survive upstream `update`.
+ * The central domain taxonomy (`<library>/taxonomy.json`). Maps each skill name
+ * to its domain tags. Replaces the per-skill `<skill>.shelf.json` sidecars
+ * (see docs/adr/0002-central-taxonomy-not-sidecars.md): one logical table (skill -> domains)
+ * lives in ONE file at the library root instead of fragmented across 100+ files.
+ * Holds *your* domain assignments, which survive upstream `update` (taxonomy.json
+ * is separate from skill bodies, so re-pulling SKILL.md never touches tags).
  */
-export interface Overlay {
-  /** extra/override domain tags */
-  domains?: string[];
-  /** explicit bundle membership names */
-  bundles?: string[];
-  /** free-form notes */
-  notes?: string;
+export interface Taxonomy {
+  version: 1;
+  /** skill name -> its domain tags (primary first), de-duped */
+  skills: Record<string, string[]>;
 }
 
 /** A single provenance lockfile entry. */
@@ -148,14 +149,34 @@ export interface Config {
   source: "env" | "config" | "default";
 }
 
+/**
+ * A persisted scan-root entry. Either a bare path string, or an annotated object.
+ * `layout` and `notes` are INFORMATIONAL only — crawl auto-detects layout and
+ * nothing consumes either field programmatically; they exist so a human can
+ * annotate why a root is tracked. On read, an entry is normalized to its absolute
+ * `path` string for crawling.
+ */
+export interface RootEntry {
+  /** the scan-root path (may use ~; normalized to absolute on read) */
+  path: string;
+  /** informational hint about the root's layout (not consumed by crawl) */
+  layout?: string;
+  /** free-form note about why this root is tracked */
+  notes?: string;
+}
+
 /** Optional on-disk config file (~/.skillshelf/config.json). */
 export interface ConfigFile {
   /** override library path */
   library?: string;
   /** override global-core target */
   globalCore?: string;
-  /** persisted scan roots (`skl scan`) */
-  roots?: string[];
+  /**
+   * persisted scan roots (`skl scan`). Each entry may be a bare path string or an
+   * annotated {path, layout?, notes?} object. On read both forms normalize to an
+   * absolute path string (layout/notes are informational; see RootEntry).
+   */
+  roots?: Array<string | RootEntry>;
 }
 
 /**
@@ -167,7 +188,7 @@ export interface Ctx {
   config: Config;
   /** convenience alias for config.libraryPath */
   libraryPath: string;
-  /** load the canonical library (effective skills, overlays merged) */
+  /** load the canonical library (effective skills, taxonomy merged) */
   loadLibrary: () => Promise<Skill[]>;
   /** configured scan roots (absolute, de-duplicated); convenience alias for config.roots */
   roots: string[];

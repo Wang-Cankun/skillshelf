@@ -291,11 +291,32 @@ deterministic verbs on the outside, judgment in the middle.
 ### Crawl rules
 
 The crawl behind `skl scan`:
-- Dedupe by realpath (some roots are aliased mounts of the same directory).
+- Dedupe by realpath (some roots are aliased mounts of the same directory — e.g.
+  `~/Dropbox/...` and `~/Library/CloudStorage/Dropbox/...` resolve to one vault).
 - Treat `.agents/skills` as bridge mirrors of `.claude/skills`; do not double-count.
 - Skip `_retired/` (tag as retired; do not activate).
 - Ignore any path containing `node_modules`.
 - Support both `name/SKILL.md` and `skills/name/SKILL.md` layouts.
+
+These rules were previously duplicated in a `DISCOVERED_ROOTS.local.md` scratchpad at the
+skillshelf home root. That file was an orphan — no code read or wrote it — so the ADR-0002
+migration deletes it and folds its content here (the single source of truth). For reference,
+the live roots it documented and their layouts:
+
+| Root | Layout | Notes |
+|---|---|---|
+| `~/.claude/skills/` | `name/SKILL.md` | main collection |
+| `~/Dropbox/Obsidian/.agents/skills/` | `name/SKILL.md` | `.agents` bridge fmt; CloudStorage/Dropbox is an alias of the same vault (realpath-dedupe) |
+| `/Volumes/Extreme/Project/BioGuider-writing/skills/` | `name/SKILL.md` | external drive, writing skills |
+| `~/Documents/GitHub/nature-skills/skills/` | `skills/name/SKILL.md` | nature-* writing/figure set |
+| `~/Documents/GitHub/everything-claude-code/skills/` | `skills/name/SKILL.md` | coding skills |
+| `~/Documents/GitHub/BMI_infra/.claude/skills/` | `+ .agents` mirror | cloud-cost |
+| `~/Documents/GitHub/sskind/.claude/skills/` | has `_retired/` | bioinfo, plus `_retired` subdir |
+| `~/Documents/GitHub/cairn/skill/` | `skill/name/SKILL.md` | analysis claims |
+
+Persisted scan roots live in `config.json` (machine-local, absolute paths). Each entry may be
+a bare path string or an annotated `{path, layout?, notes?}` object; `layout`/`notes` are
+informational only (crawl auto-detects layout — nothing consumes them programmatically).
 
 ---
 
@@ -316,6 +337,7 @@ The crawl behind `skl scan`:
 - **Output:** every command supports `--json` for agent consumption.
 - **Library location:** resolved from `SKILLSHELF_LIBRARY` (used by the test fixtures and by
   any non-default install).
-- **Overlay is authoritative for taxonomy:** inference and bundle membership only ever write
-  to `<skill>.shelf.json`, never to the upstream `SKILL.md` body — which is what makes the
-  three-way update safe.
+- **Taxonomy is authoritative for tags:** inference and bundle membership only ever write to
+  the central `<library>/taxonomy.json` (see [ADR-0002](../adr/0002-central-taxonomy-not-sidecars.md)),
+  never to the upstream `SKILL.md` body — which is what makes the three-way update safe. (This
+  replaces the earlier per-skill `<skill>.shelf.json` overlay sidecars.)

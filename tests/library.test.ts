@@ -1,6 +1,6 @@
-// Deterministic core against the real fixture library: load + overlay merge,
-// bundle tag-query resolution, dedupe drift classification, index generation,
-// search, and provenance attach.
+// Deterministic core against the real fixture library: load + central-taxonomy
+// merge, bundle tag-query resolution, dedupe drift classification, index
+// generation, search, and provenance attach.
 
 import { describe, expect, test } from "bun:test";
 import {
@@ -11,7 +11,8 @@ import {
   listDomains,
 } from "../src/core/library.ts";
 import { resolveBundle, listBundles } from "../src/core/bundle.ts";
-import { applyOverlay } from "../src/core/overlay.ts";
+import { applyTaxonomy } from "../src/core/taxonomy.ts";
+import type { Taxonomy } from "../src/types.ts";
 import {
   findDuplicates,
   driftedGroups,
@@ -20,7 +21,7 @@ import {
 import { generateIndex } from "../src/core/indexgen.ts";
 import { FIXTURE_LIBRARY } from "./helpers.ts";
 
-describe("library load + overlay + provenance", () => {
+describe("library load + taxonomy + provenance", () => {
   test("loads all 12 skills incl. mirror, retired, drift copies", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     expect(lib.length).toBe(12);
@@ -39,14 +40,14 @@ describe("library load + overlay + provenance", () => {
     expect(activeSkills(lib).length).toBe(11);
   });
 
-  test("overlay merge unions domains onto upstream (xhs-title gains green-card)", async () => {
+  test("taxonomy merge unions domains onto upstream (xhs-title gains green-card)", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     const xhs = findByName(lib, "xhs-title")!;
-    // upstream frontmatter domains: writing, marketing — overlay adds green-card
+    // upstream frontmatter domains: writing, marketing — taxonomy adds green-card
     expect(xhs.domains).toContain("writing");
     expect(xhs.domains).toContain("marketing");
     expect(xhs.domains).toContain("green-card");
-    // primary stays the upstream primary (writing), not the overlay tag
+    // primary stays the upstream primary (writing), not the taxonomy tag
     expect(xhs.primaryDomain).toBe("writing");
   });
 
@@ -82,7 +83,7 @@ describe("library load + overlay + provenance", () => {
     expect(bioCopy.primaryDomain).toBe("bioinfo");
   });
 
-  test("applyOverlay is non-destructive and de-dupes", () => {
+  test("applyTaxonomy is non-destructive and de-dupes", () => {
     const base = {
       name: "x",
       description: "",
@@ -96,8 +97,10 @@ describe("library load + overlay + provenance", () => {
       mirrorOf: null,
       contentHash: "h",
     };
-    const merged = applyOverlay(base, { domains: ["b", "c"] });
+    const tax: Taxonomy = { version: 1, skills: { x: ["b", "c"] } };
+    const merged = applyTaxonomy(base, tax);
     expect(merged.domains).toEqual(["a", "b", "c"]);
+    expect(merged.primaryDomain).toBe("a"); // existing primary preserved
     expect(base.domains).toEqual(["a", "b"]); // input untouched
   });
 });
@@ -113,7 +116,7 @@ describe("bundles = tag queries", () => {
     expect(bio.skills.every((s) => !s.retired)).toBe(true);
   });
 
-  test("green-card bundle pulls xhs-title in via overlay-unioned domain", async () => {
+  test("green-card bundle pulls xhs-title in via taxonomy-unioned domain", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     const gc = await resolveBundle(lib, "green-card");
     const names = gc.skills.map((s) => s.name);
@@ -121,11 +124,14 @@ describe("bundles = tag queries", () => {
     expect(names).toContain("xhs-title");
   });
 
-  test("explicit overlay bundle membership (personal-brand) resolves", async () => {
+  // ADR-0002 drops the separate `bundles` concept entirely (it was a provably
+  // unused field on the old sidecar). A bundle is now purely a domain tag query
+  // over Skill.domains[] — there is no out-of-band "personal-brand" membership, so
+  // resolving a non-domain name yields nothing.
+  test("a name that is not a domain tag resolves to an empty bundle", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     const pb = await resolveBundle(lib, "personal-brand");
-    // personal-brand is NOT a domain tag — only xhs-title's overlay.bundles lists it
-    expect(pb.skills.map((s) => s.name)).toEqual(["xhs-title"]);
+    expect(pb.skills).toEqual([]);
   });
 
   test("includeRetired surfaces retired-tagged skills", async () => {
@@ -136,12 +142,14 @@ describe("bundles = tag queries", () => {
     expect(withRetired.skills.some((s) => s.name === "old-deseq-helper")).toBe(true);
   });
 
-  test("listBundles includes every domain tag and overlay bundle", async () => {
+  test("listBundles includes every domain tag (taxonomy-merged)", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     const names = (await listBundles(lib)).map((b) => b.name);
     expect(names).toContain("bioinfo");
     expect(names).toContain("green-card");
-    expect(names).toContain("personal-brand");
+    // ADR-0002: bundles are domain tags only; "personal-brand" (an old sidecar
+    // bundle, never a domain) no longer exists as a bundle.
+    expect(names).not.toContain("personal-brand");
   });
 });
 

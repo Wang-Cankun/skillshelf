@@ -5,7 +5,9 @@
 //   2. shell out (git / `skills`) to DOWNLOAD only — never reinvent fetching
 //   3. copy the skill dir into the library under its primary-domain folder
 //   4. write a provenance lockfile entry (source + ref + channel + installedAt)
-//   5. create an empty overlay (<name>.shelf.json) so taxonomy survives updates
+//   5. if a domain is known at add time (--domain or an inference hook), record it
+//      centrally in <library>/taxonomy.json (survives upstream updates); otherwise
+//      leave it untagged — `skl infer` tags it later
 //   6. call the inference tagging hook if one is available, else leave untagged
 //
 // Read-only commands take --json; add is a write, but still emits a --json
@@ -24,7 +26,7 @@ import {
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { hashContent } from "../core/crawl.ts";
 import { recordEntry } from "../core/provenance.ts";
-import { writeOverlay } from "../core/overlay.ts";
+import { setDomainsForName } from "../core/taxonomy.ts";
 import { ensureDir } from "../lib/fs.ts";
 
 export const meta = {
@@ -87,7 +89,7 @@ async function deriveName(skillDir: string, override: string | null): Promise<st
  * hook that IS present and THROWS is a real failure — we surface it via `warn`
  * rather than swallowing it, so a bug in an installed tagging hook isn't
  * indistinguishable from "no hook installed". Either way the skill stays
- * untagged (empty overlay). Returns the domains written, if any.
+ * untagged (no taxonomy entry). Returns the domains written, if any.
  */
 async function maybeInferTags(
   skill: Skill,
@@ -183,7 +185,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     };
     await recordEntry(ctx.config.libraryPath, entry);
 
-    // 5. Empty overlay so taxonomy survives future updates.
+    // 5. If a domain is known at add time, record it centrally in taxonomy.json
+    //    (survives upstream updates). The Skill object is also handed to the
+    //    optional inference hook below.
     const installed: Skill = {
       name,
       description: "",
@@ -203,17 +207,17 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       mirrorOf: null,
       contentHash: "",
     };
-    const overlayPathStr = join(destDir, `${name}.shelf.json`);
-    if (!existsSync(overlayPathStr)) {
-      await writeOverlay(installed, domainFolder ? { domains: [domainFolder] } : {});
+    if (domainFolder) {
+      await setDomainsForName(ctx.config.libraryPath, name, [domainFolder]);
     }
 
     // 6. Inference tagging hook (best-effort, leaves untagged if unavailable).
+    //    Any inferred domains are unioned into the central taxonomy (non-destructive).
     let inferredDomains: string[] | null = null;
     if (flags.infer) {
       inferredDomains = await maybeInferTags(installed, (m) => ctx.error(m));
       if (inferredDomains && inferredDomains.length > 0) {
-        await writeOverlay(installed, { domains: inferredDomains });
+        await setDomainsForName(ctx.config.libraryPath, name, inferredDomains);
       }
     }
 

@@ -8,7 +8,7 @@
 import { homedir } from "node:os";
 import { join, resolve, isAbsolute } from "node:path";
 import { existsSync } from "node:fs";
-import type { Config, ConfigFile, Ctx, Skill } from "./types.ts";
+import type { Config, ConfigFile, Ctx, RootEntry, Skill } from "./types.ts";
 
 export const DEFAULT_CONFIG_FILE = join(homedir(), ".skillshelf", "config.json");
 export const DEFAULT_LIBRARY = join(homedir(), ".skillshelf", "library");
@@ -84,14 +84,25 @@ export async function resolveConfig(opts: {
   };
 }
 
-/** Expand ~, absolutize, and de-duplicate a list of root paths (order-preserving). */
+/**
+ * Expand ~, absolutize, and de-duplicate a list of scan roots (order-preserving).
+ * Each entry may be a bare path string OR an annotated {path, layout?, notes?}
+ * object (see RootEntry); both normalize to an absolute path string here.
+ * layout/notes are informational only and dropped — crawl auto-detects layout and
+ * nothing consumes them programmatically.
+ */
 function normalizeRoots(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const r of input) {
-    if (typeof r !== "string" || r.trim() === "") continue;
-    const a = abs(r.trim());
+    let raw: string | null = null;
+    if (typeof r === "string") raw = r;
+    else if (r && typeof r === "object" && typeof (r as { path?: unknown }).path === "string") {
+      raw = (r as { path: string }).path;
+    }
+    if (raw === null || raw.trim() === "") continue;
+    const a = abs(raw.trim());
     if (seen.has(a)) continue;
     seen.add(a);
     out.push(a);
@@ -102,7 +113,10 @@ function normalizeRoots(input: unknown): string[] {
 /**
  * Persist a new scan root into the config file (`configFilePath`), expanding ~,
  * absolutizing, and de-duplicating against existing roots. Preserves the rest of
- * the config file (library / globalCore). Returns the full updated roots list.
+ * the config file (library / globalCore) AND any annotations on existing root
+ * entries ({path, layout?, notes?}): we only APPEND a new bare-path entry when the
+ * resolved path is absent. Returns the full updated roots list as resolved
+ * absolute path strings (the in-memory Config.roots form).
  */
 export async function addRoot(
   configFilePath: string,
@@ -110,13 +124,24 @@ export async function addRoot(
   path: string,
 ): Promise<string[]> {
   const a = abs(path.trim());
-  const roots = [...existingRoots];
-  if (!roots.includes(a)) roots.push(a);
 
+  // Preserve the on-disk roots verbatim (including RootEntry annotations); only
+  // append the new path if it is not already present (compared after resolution).
   const current = (await readConfigFile(configFilePath)) ?? {};
-  const next: ConfigFile = { ...current, roots };
+  const persisted: Array<string | RootEntry> = Array.isArray(current.roots)
+    ? [...current.roots]
+    : [];
+  const resolvedOf = (entry: string | RootEntry): string | null => {
+    const raw = typeof entry === "string" ? entry : entry?.path;
+    return typeof raw === "string" && raw.trim() !== "" ? abs(raw.trim()) : null;
+  };
+  if (!persisted.some((e) => resolvedOf(e) === a)) persisted.push(a);
+
+  const next: ConfigFile = { ...current, roots: persisted };
   await Bun.write(configFilePath, JSON.stringify(next, null, 2) + "\n");
-  return roots;
+
+  // Return the resolved, de-duped absolute path list (Config.roots stays string[]).
+  return normalizeRoots(persisted);
 }
 
 /**

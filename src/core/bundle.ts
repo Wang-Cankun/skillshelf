@@ -1,15 +1,16 @@
 // Bundles = tag queries over domains[]. Resolving a bundle yields every skill
-// tagged with the bundle's domain (regardless of physical folder). Plus explicit
-// overlay bundle membership.
+// tagged with the bundle's domain (regardless of physical folder). Since
+// loadLibrary already merges the central taxonomy into `domains[]`, membership is
+// purely `s.domains.includes(name)` — there is no separate overlay bundle list.
 
 import type { Bundle, Skill } from "../types.ts";
-import { overlayBundles } from "./overlay.ts";
 
 /**
- * Resolve a single bundle name against the library. A skill is in the bundle if:
- *   - its `domains[]` contains the bundle name, OR
- *   - its overlay `bundles[]` lists the bundle name.
- * Retired skills are excluded by default.
+ * Resolve a single bundle name against the library. A skill is in the bundle if
+ * its `domains[]` (frontmatter + taxonomy, already merged by loadLibrary) contains
+ * the bundle name. Retired skills are excluded by default.
+ *
+ * Kept async so existing `await` call sites stay unchanged.
  */
 export async function resolveBundle(
   skills: Skill[],
@@ -20,12 +21,7 @@ export async function resolveBundle(
   const matched: Skill[] = [];
   for (const s of skills) {
     if (s.retired && !opts.includeRetired) continue;
-    if (s.domains.includes(name)) {
-      matched.push(s);
-      continue;
-    }
-    const ob = await overlayBundles(s);
-    if (ob.includes(name)) matched.push(s);
+    if (s.domains.includes(name)) matched.push(s);
   }
   matched.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   return { name, skills: matched };
@@ -34,6 +30,8 @@ export async function resolveBundle(
 /**
  * List every available bundle (one per distinct domain tag) with its resolved
  * skills. Useful for `skl ls` with no argument and the trigger-bridge menu.
+ *
+ * Kept async so existing `await` call sites stay unchanged.
  */
 export async function listBundles(
   skills: Skill[],
@@ -43,7 +41,6 @@ export async function listBundles(
   for (const s of skills) {
     if (s.retired && !opts.includeRetired) continue;
     for (const d of s.domains) names.add(d);
-    for (const b of await overlayBundles(s)) names.add(b);
   }
   const bundles: Bundle[] = [];
   for (const name of [...names].sort()) {
@@ -52,7 +49,7 @@ export async function listBundles(
   return bundles;
 }
 
-/** Synchronous resolve when overlays were already merged into domains[]. */
+/** Synchronous resolve when taxonomy was already merged into domains[]. */
 export function resolveBundleSync(skills: Skill[], bundleName: string): Bundle {
   const name = bundleName.trim();
   const matched = skills

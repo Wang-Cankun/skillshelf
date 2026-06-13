@@ -8,12 +8,12 @@
 //                counts, "candidate" semantics, --add-root persistence, and the
 //                configured-roots fallback when no positional roots are given.
 //   skl import — move + symlink-back (original becomes a symlink resolving to the
-//                library copy; library holds the real dir; empty overlay created;
-//                NO lockfile entry), --copy (original stays real), idempotent
+//                library copy; library holds the real dir; NO per-skill sidecar
+//                and NO lockfile entry), --copy (original stays real), idempotent
 //                refusal on an existing name, --as rename, --force overwrite.
 //
-// Plus the primaryDomain rule (ADR-0001): null until tags are applied; once an
-// overlay carries domains, primaryDomain = domains[0].
+// Plus the primaryDomain rule (ADR-0001): null until tags are applied; once the
+// central taxonomy (ADR-0002) carries domains, primaryDomain = domains[0].
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
@@ -310,10 +310,9 @@ describe("skl import (consolidation)", () => {
     expect((await lstat(orig)).isSymbolicLink()).toBe(true);
     expect(await realpath(orig)).toBe(await realpath(dest));
 
-    // Empty overlay created so taxonomy can be applied later.
-    const overlay = join(dest, "mover.shelf.json");
-    expect(existsSync(overlay)).toBe(true);
-    expect(JSON.parse(await Bun.file(overlay).text())).toEqual({});
+    // ADR-0002: import is mechanical and writes NO per-skill sidecar. Domains are
+    // applied later via `skl infer` into the central <library>/taxonomy.json.
+    expect(existsSync(join(dest, "mover.shelf.json"))).toBe(false);
 
     // NO lockfile entry (these are the user's own skills, not third-party).
     expect(existsSync(join(library, "shelf.lock.json"))).toBe(false);
@@ -433,10 +432,10 @@ describe("skl import (consolidation)", () => {
     expect(r.code).toBe(0);
     expect((r.json[0] as any).name).toBe("renamed");
 
-    // Lands under the renamed slug, with a matching overlay file name.
+    // Lands under the renamed slug (no per-skill sidecar; ADR-0002).
     const dest = join(library, "renamed");
     expect((await lstat(dest)).isDirectory()).toBe(true);
-    expect(existsSync(join(dest, "renamed.shelf.json"))).toBe(true);
+    expect(existsSync(join(dest, "renamed.shelf.json"))).toBe(false);
     expect(existsSync(join(library, "raw-name"))).toBe(false);
   });
 
@@ -575,7 +574,7 @@ describe("skl import (consolidation)", () => {
 // ---------------------------------------------------------------------------
 
 describe("primaryDomain after import (tags, not folders)", () => {
-  test("null until tags applied; equals domains[0] once an overlay adds domains", async () => {
+  test("null until tags applied; equals domains[0] once taxonomy adds domains", async () => {
     const root = await scratch("skl-imp-pd-");
     // Candidate has NO domains in frontmatter.
     const orig = await writeSkill(root, "untagged", {});
@@ -595,12 +594,10 @@ describe("primaryDomain after import (tags, not folders)", () => {
     expect(s0.domains).toEqual([]);
     expect(s0.primaryDomain).toBeNull();
 
-    // Write an overlay with domains; primaryDomain becomes domains[0].
-    const dest = join(library, "untagged");
-    await writeFile(
-      join(dest, "untagged.shelf.json"),
-      JSON.stringify({ domains: ["writing", "green-card"] }, null, 2) + "\n",
-    );
+    // Record domains centrally in <library>/taxonomy.json; primaryDomain becomes
+    // domains[0] (ADR-0002: central taxonomy, not a per-skill sidecar).
+    const { setDomainsForName } = await import("../src/core/taxonomy.ts");
+    await setDomainsForName(library, "untagged", ["writing", "green-card"]);
     const lib1 = await loadLibrary(library);
     const s1 = findByName(lib1, "untagged")!;
     expect(s1.domains).toEqual(["writing", "green-card"]);

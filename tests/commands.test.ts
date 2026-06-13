@@ -45,7 +45,7 @@ describe("skl show", () => {
     expect(j.name).toBe("xhs-title");
     expect(typeof j.body).toBe("string");
     expect(j.body).toContain("RED title");
-    expect(j.domains).toContain("green-card"); // overlay merged
+    expect(j.domains).toContain("green-card"); // taxonomy merged
     expect(j.source.source).toContain("dbskill");
   });
 
@@ -195,7 +195,7 @@ describe("skl infer (LLM-free)", () => {
     expect(p.corpus.observedDomains).toContain("bioinfo");
   });
 
-  test("--apply writes proposed domains into the overlay (never upstream SKILL.md)", async () => {
+  test("--apply writes proposed domains into the central taxonomy (never upstream SKILL.md)", async () => {
     const t = await tempLibrary();
     cleanups.push(t.cleanup);
 
@@ -219,17 +219,19 @@ describe("skl infer (LLM-free)", () => {
     expect(res.ok).toBe(true);
     expect(res.counts.applied).toBe(1);
 
-    // overlay written with merged domains incl. the new tag
-    const overlayPath = join(t.path, "repo-search", "repo-search.shelf.json");
-    expect(existsSync(overlayPath)).toBe(true);
-    const overlay = JSON.parse(await Bun.file(overlayPath).text());
-    expect(overlay.domains).toContain("search-tools");
-    expect(overlay.notes).toBe("code nav");
+    // Central taxonomy (NOT a per-skill sidecar) carries the merged domains for
+    // repo-search incl. the new tag. ADR-0002 drops the `notes` field — only the
+    // domain string[] is persisted, so we no longer assert on notes.
+    const { readTaxonomy } = await import("../src/core/taxonomy.ts");
+    const tax = await readTaxonomy(t.path);
+    expect(tax.skills["repo-search"]).toContain("search-tools");
+    // No sidecar is ever written.
+    expect(existsSync(join(t.path, "repo-search", "repo-search.shelf.json"))).toBe(false);
 
     // upstream SKILL.md untouched
     expect(await Bun.file(skillMd).text()).toBe(before);
 
-    // re-loading the library reflects the new overlay domain
+    // re-loading the library reflects the new taxonomy domain
     const { loadLibrary, findByName } = await import("../src/core/library.ts");
     const lib = await loadLibrary(t.path);
     expect(findByName(lib, "repo-search")!.domains).toContain("search-tools");

@@ -5,9 +5,11 @@
 //
 // What is covered:
 //   1. `skl add <local-git-repo>` installs the skill, records source+ref+
-//      installedHash in the lockfile, and creates the overlay sidecar.
+//      installedHash in the lockfile, and writes NO per-skill sidecar (ADR-0002:
+//      domains live in the central <library>/taxonomy.json).
 //   2. A normal upstream move (new commit changing the body) is re-pulled by
-//      `skl update` WITHOUT being falsely blocked, and the overlay is preserved.
+//      `skl update` WITHOUT being falsely blocked, and the central taxonomy is
+//      preserved (it lives at the library root, never inside the skill dir).
 //   3. A LOCAL hand-edit makes `skl update` report "diverged" and the local edit
 //      is NOT clobbered; `skl update --force` then overwrites it.
 
@@ -20,6 +22,7 @@ import { tmpdir } from "node:os";
 import * as addCmd from "../src/commands/add.ts";
 import * as updateCmd from "../src/commands/update.ts";
 import { readLockfile } from "../src/core/provenance.ts";
+import { setDomainsForName, taxonomyPath } from "../src/core/taxonomy.ts";
 import { runCmd } from "./helpers.ts";
 
 // ---- offline git fixture plumbing -----------------------------------------
@@ -136,8 +139,8 @@ test("offline e2e: add from local git repo, then upstream-move + local-divergenc
   expect(existsSync(join(destDir, "SKILL.md"))).toBe(true);
   // Reference file came along.
   expect(existsSync(join(destDir, "reference.md"))).toBe(true);
-  // Overlay sidecar created.
-  expect(existsSync(join(destDir, "e2e-demo.shelf.json"))).toBe(true);
+  // No per-skill sidecar is written (ADR-0002: domains live centrally).
+  expect(existsSync(join(destDir, "e2e-demo.shelf.json"))).toBe(false);
   // Upstream .git must NOT be copied into the library.
   expect(existsSync(join(destDir, ".git"))).toBe(false);
 
@@ -158,12 +161,11 @@ test("offline e2e: add from local git repo, then upstream-move + local-divergenc
     "Original upstream body, version 1.",
   );
 
-  // Stamp the overlay so we can prove it survives updates.
-  const overlayPath = join(destDir, "e2e-demo.shelf.json");
-  await writeFile(
-    overlayPath,
-    JSON.stringify({ domains: ["demo", "curated"], notes: "human-curated overlay" }, null, 2),
-  );
+  // Stamp a domain into the central taxonomy so we can prove it survives updates.
+  // taxonomy.json lives at the library ROOT (not inside the skill dir), so the
+  // update path — which rewrites the skill dir — must never touch it.
+  await setDomainsForName(library, "e2e-demo", ["demo", "curated"]);
+  const taxPath = taxonomyPath(library);
 
   // ----- 2. upstream moves forward -> update re-pulls (NOT falsely blocked) -
   await writeFile(join(upstream, "SKILL.md"), skillMd("Upstream body, VERSION 2 (moved forward)."));
@@ -183,8 +185,11 @@ test("offline e2e: add from local git repo, then upstream-move + local-divergenc
   expect(bodyAfterUpstreamMove).not.toContain("version 1.");
   // Reference file refreshed too.
   expect(await readFile(join(destDir, "reference.md"), "utf8")).toContain("reference v2");
-  // Overlay PRESERVED across the update.
-  expect(await readFile(overlayPath, "utf8")).toContain("human-curated overlay");
+  // Central taxonomy PRESERVED across the update (it lives at the library root).
+  expect(JSON.parse(await readFile(taxPath, "utf8")).skills["e2e-demo"]).toEqual([
+    "demo",
+    "curated",
+  ]);
 
   // Lockfile advanced ref + new installedHash.
   const lock2 = await readLockfile(library);
@@ -222,6 +227,9 @@ test("offline e2e: add from local git repo, then upstream-move + local-divergenc
   const bodyAfterForce = await readFile(join(destDir, "SKILL.md"), "utf8");
   expect(bodyAfterForce).toContain("VERSION 2 (moved forward)");
   expect(bodyAfterForce).not.toContain("hand-edited body");
-  // Overlay still preserved after force.
-  expect(await readFile(overlayPath, "utf8")).toContain("human-curated overlay");
+  // Central taxonomy still preserved after force.
+  expect(JSON.parse(await readFile(taxPath, "utf8")).skills["e2e-demo"]).toEqual([
+    "demo",
+    "curated",
+  ]);
 });

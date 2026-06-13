@@ -1,6 +1,6 @@
 // CLI subprocess smoke pass: every command routes, runs against the fixture
 // library, and exits with an expected code. Also covers add's write building
-// blocks (copySkillDir + overlay) without network.
+// blocks (copySkillDir + central taxonomy) without network.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { runCli, tempLibrary, tempProject, FIXTURE_LIBRARY } from "./helpers.ts";
 import { copySkillDir, readSkillBody } from "../src/core/fetch.ts";
-import { writeOverlay } from "../src/core/overlay.ts";
+import { setDomainsForName } from "../src/core/taxonomy.ts";
 import { recordEntry, readLockfile } from "../src/core/provenance.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -114,7 +114,7 @@ describe("CLI smoke (subprocess)", () => {
 });
 
 describe("add write building blocks (offline)", () => {
-  test("copySkillDir + recordEntry + writeOverlay produce a tracked, tagged skill", async () => {
+  test("copySkillDir + recordEntry + setDomainsForName produce a tracked, tagged skill", async () => {
     // Simulate a fetched upstream skill dir.
     const stage = await mkdtemp(join(tmpdir(), "skl-stage-"));
     cleanups.push(() => rm(stage, { recursive: true, force: true }));
@@ -134,20 +134,9 @@ describe("add write building blocks (offline)", () => {
     expect(existsSync(join(dest, ".git"))).toBe(false);
     expect(await readSkillBody(dest)).toContain("# Imported");
 
-    const installed = {
-      name: "imported",
-      description: "",
-      primaryDomain: null,
-      domains: [] as string[],
-      path: dest,
-      bodyPath: join(dest, "SKILL.md"),
-      refFiles: [] as string[],
-      source: null,
-      retired: false,
-      mirrorOf: null,
-      contentHash: "",
-    };
-    await writeOverlay(installed, { domains: ["coding"] });
+    // Record the domain centrally in <library>/taxonomy.json (ADR-0002), keyed by
+    // the skill's canonical name — no per-skill sidecar.
+    await setDomainsForName(t.path, "imported", ["coding"]);
     await recordEntry(t.path, {
       name: "imported",
       source: "github:o/r@imported",
