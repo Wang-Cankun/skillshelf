@@ -130,6 +130,12 @@ async function discoverSkillDirs(
   // Otherwise it's a grouping dir (domain folder, `skills/`, `.agents/skills/`,
   // `_retired/`, project root) and we recurse. `_retired` taints everything below.
   const SKIP = new Set(["node_modules", ".git"]);
+  // Hidden (dot-prefixed) child dirs are skipped during descent — they're caches,
+  // editor state, and backups (e.g. `.pre-cloudflare-plugin-backup/`), not active
+  // skills — EXCEPT the known skill-grouping dot-dirs, which must stay reachable
+  // when scanning a project parent. (A root passed in directly, e.g. `.claude/skills`,
+  // is never filtered here; only its children are.)
+  const ALLOW_DOT = new Set([".claude", ".agents"]);
   const MAX_DEPTH = 8;
 
   async function recurse(dir: string, depth: number, retired: boolean): Promise<void> {
@@ -146,6 +152,8 @@ async function discoverSkillDirs(
     }
     for (const e of entries) {
       if (SKIP.has(e.name)) continue;
+      // Skip hidden child dirs (backups/caches) but keep skill-grouping dot-dirs.
+      if (e.name.startsWith(".") && !ALLOW_DOT.has(e.name)) continue;
       const full = join(dir, e.name);
       if (pathHasSegment(full, "node_modules")) continue;
       const isDir =

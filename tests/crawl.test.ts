@@ -46,6 +46,23 @@ describe("crawl rules", () => {
     expect(names).toEqual(["flat-skill", "nested-skill"]);
   });
 
+  test("skips hidden child dirs (backups) but keeps .claude/.agents grouping dirs", async () => {
+    const root = await scratch();
+    await skill(root, "live-skill", ["coding"]);
+    // a hidden backup dir holding a skill — must be ignored
+    await skill(join(root, ".pre-plugin-backup"), "stale-skill", ["coding"]);
+    // skill-grouping dot-dirs under the root must still be descended
+    await skill(join(root, ".claude", "skills"), "claude-skill", ["coding"]);
+    await skill(join(root, ".agents", "skills"), "agents-skill", ["coding"]);
+
+    const { skills } = await crawl([root]);
+    const names = skills.map((s) => s.name).sort();
+    expect(names).toContain("live-skill");
+    expect(names).toContain("claude-skill"); // .claude allowed
+    expect(names).toContain("agents-skill"); // .agents allowed
+    expect(names).not.toContain("stale-skill"); // hidden backup skipped
+  });
+
   test("realpath-dedupe collapses aliased roots AND aliased skill dirs", async () => {
     const root = await scratch();
     await skill(root, "alpha", ["a"]);
