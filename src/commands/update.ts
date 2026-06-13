@@ -26,7 +26,7 @@ import {
 } from "../core/fetch.ts";
 import { hashContent } from "../core/crawl.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
-import { loadLibrary, findByName } from "../core/library.ts";
+import { loadLibrary, findByName, entryMode } from "../core/library.ts";
 
 export const meta = {
   name: "update",
@@ -230,6 +230,22 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
     const results: Result[] = [];
     for (const entry of entries) {
+      // LINKED entries (library/<name> is a symlink to an external dev repo) own their
+      // own versioning via their own git. Re-pulling upstream would follow the symlink
+      // and clobber the dev repo, so skip them outright (ADR-0004). A stale lock entry
+      // can exist if an OWNED import was later converted with `skl link --from --force`.
+      if (entryMode(ctx.config.libraryPath, entry.name) === "linked") {
+        results.push({
+          name: entry.name,
+          source: entry.source,
+          channel: entry.channel,
+          fromRef: entry.ref,
+          toRef: null,
+          outcome: "skipped",
+          note: "LINKED to a dev repo — its own git owns versioning; not pulling upstream",
+        });
+        continue;
+      }
       const skill = findByName(library, entry.name);
       const destDir = skill?.path ?? join(ctx.config.libraryPath, entry.name);
       results.push(await updateOne(ctx, entry, destDir, { force, dryRun }));

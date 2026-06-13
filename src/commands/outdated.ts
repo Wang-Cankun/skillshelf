@@ -8,6 +8,7 @@
 
 import type { Ctx, LockEntry } from "../types.ts";
 import { readLockfile } from "../core/provenance.ts";
+import { entryMode } from "../core/library.ts";
 import { parseStoredSource, latestRef } from "../core/fetch.ts";
 
 export const meta = {
@@ -16,7 +17,7 @@ export const meta = {
   usage: "skl outdated [name] [--json]",
 } as const;
 
-type Status = "stale" | "current" | "unknown";
+type Status = "stale" | "current" | "unknown" | "linked";
 
 interface Row {
   name: string;
@@ -59,6 +60,23 @@ async function checkEntry(entry: LockEntry): Promise<Row> {
   };
 }
 
+/**
+ * A LINKED entry (library/<name> symlinks to an external dev repo) has no tracked
+ * upstream — its own git owns versioning. Report it as such instead of probing a
+ * (possibly stale) github ref (ADR-0004).
+ */
+function linkedRow(entry: LockEntry): Row {
+  return {
+    name: entry.name,
+    channel: "local",
+    source: entry.source,
+    installedRef: entry.ref,
+    latestRef: null,
+    status: "linked",
+    note: "dev repo owns versioning",
+  };
+}
+
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");
   const nameArg = argv.find((a) => !a.startsWith("-")) ?? null;
@@ -76,7 +94,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       return 0;
     }
 
-    const rows = await Promise.all(entries.map((e) => checkEntry(e)));
+    const rows = await Promise.all(
+      entries.map((e) =>
+        entryMode(ctx.config.libraryPath, e.name) === "linked"
+          ? Promise.resolve(linkedRow(e))
+          : checkEntry(e),
+      ),
+    );
     const stale = rows.filter((r) => r.status === "stale");
 
     if (json) {
@@ -88,14 +112,20 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       });
     } else {
       for (const r of rows) {
-        const mark = r.status === "stale" ? "STALE  " : r.status === "current" ? "current" : "unknown";
+        const mark =
+          r.status === "stale" ? "STALE  "
+            : r.status === "current" ? "current"
+              : r.status === "linked" ? "linked "
+                : "unknown";
         const refInfo =
-          r.status === "stale"
-            ? `${shortRef(r.installedRef)} -> ${shortRef(r.latestRef ?? "")}`
-            : r.status === "current"
-              ? shortRef(r.installedRef)
-              : `${shortRef(r.installedRef)} (${r.note})`;
-        const extra = r.note && r.status !== "unknown" ? `  [${r.note}]` : "";
+          r.status === "linked"
+            ? r.note
+            : r.status === "stale"
+              ? `${shortRef(r.installedRef)} -> ${shortRef(r.latestRef ?? "")}`
+              : r.status === "current"
+                ? shortRef(r.installedRef)
+                : `${shortRef(r.installedRef)} (${r.note})`;
+        const extra = r.note && r.status !== "unknown" && r.status !== "linked" ? `  [${r.note}]` : "";
         ctx.log(`${mark}  ${r.name.padEnd(28)} ${r.channel.padEnd(15)} ${refInfo}${extra}`);
       }
       ctx.log("");

@@ -2,11 +2,12 @@
 // into effective skills, attach provenance from the lockfile, content-hash, list.
 
 import { existsSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Skill } from "../types.ts";
 import { crawl } from "./crawl.ts";
 import { readTaxonomy, applyTaxonomy } from "./taxonomy.ts";
 import { readLockfile, provenanceForName } from "./provenance.ts";
+import { isSymlink, realpathOrSelf } from "../lib/fs.ts";
 
 /**
  * Load the canonical library at `libraryPath` into effective Skill[]:
@@ -77,6 +78,28 @@ export function searchSkills(skills: Skill[], query: string): Skill[] {
   }
   scored.sort((a, b) => b.score - a.score || (a.skill.name < b.skill.name ? -1 : 1));
   return scored.map((x) => x.skill);
+}
+
+/** A library entry's storage mode (ADR-0004). */
+export type EntryMode = "owned" | "linked";
+
+/**
+ * Derive a library entry's mode from the filesystem — never stored, so it can't go
+ * stale (per ADR-0004's realpath-based classification). LINKED = the library entry
+ * `<library>/<name>` is a symlink resolving OUTSIDE the library (it points at an
+ * external dev repo that stays canonical). OWNED = a real directory, or a symlink
+ * resolving inside the library.
+ *
+ * Callers use this to keep upstream-pull commands (`outdated`, `update`) away from
+ * LINKED entries: their canonical source is their own git, and following the symlink
+ * to re-pull a github body would clobber the dev repo.
+ */
+export function entryMode(libraryPath: string, name: string): EntryMode {
+  const entry = join(libraryPath, name);
+  if (!isSymlink(entry)) return "owned";
+  const real = realpathOrSelf(entry);
+  const libRoot = realpathOrSelf(libraryPath);
+  return real === libRoot || real.startsWith(libRoot + "/") ? "owned" : "linked";
 }
 
 /** All unique domains across the library (sorted). */

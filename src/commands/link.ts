@@ -32,6 +32,7 @@ import { rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import type { Ctx } from "../types.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
+import { removeEntry } from "../core/provenance.ts";
 import {
   isDirectory,
   isSymlink,
@@ -182,6 +183,10 @@ async function runFrom(flags: Flags, ctx: Ctx): Promise<number> {
       ctx.error(`skl link: verification failed — library/${name} resolves to ${linkReal}, expected ${fromReal}`);
       return 1;
     }
+
+    // A LINKED entry is not a tracked github import — drop any stale lock entry so
+    // `skl update`/`outdated` never try to pull upstream into the dev repo (ADR-0004).
+    await removeEntry(libraryPath, name);
 
     const summary = { ok: true, name, from: fromPath, to: libDir, status: "linked" as const, mode: "linked" as const, discarded };
     if (flags.json) {

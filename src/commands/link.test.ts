@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm, lstat, readlink, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, lstat, readlink, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -109,6 +109,27 @@ describe("skl link --from (LINKED mode)", () => {
     expect(code).toBe(0);
     expect((await lstat(join(library, "cairn"))).isSymbolicLink()).toBe(true);
     expect(json[0]).toMatchObject({ discarded: true, mode: "linked" });
+  });
+
+  test("drops a stale lockfile entry so update/outdated skip the now-LINKED skill", async () => {
+    // An owned import existed (real copy + a github lock entry); now convert to LINKED.
+    await makeSkillDir(library, "cairn");
+    await writeFile(
+      join(library, "shelf.lock.json"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          cairn: { name: "cairn", source: "github:owner/repo", ref: "abc", channel: "github", installedAt: "2020-01-01T00:00:00.000Z", localEdits: false },
+        },
+      }),
+    );
+    const src = await makeSkillDir(devRepo, "cairn");
+    const { ctx } = makeCtx(library);
+
+    const code = await run(["cairn", "--from", src, "--force"], ctx);
+    expect(code).toBe(0);
+    const lock = JSON.parse(await readFile(join(library, "shelf.lock.json"), "utf8"));
+    expect(lock.entries.cairn).toBeUndefined();
   });
 
   test("rejects --at and --from together", async () => {
