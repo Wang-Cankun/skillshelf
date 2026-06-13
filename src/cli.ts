@@ -38,6 +38,7 @@ import * as retag from "./commands/retag.ts";
 import * as rm from "./commands/rm.ts";
 import * as retire from "./commands/retire.ts";
 import * as unretire from "./commands/unretire.ts";
+import * as rename from "./commands/rename.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -58,6 +59,7 @@ const MODULES: CommandModule[] = [
   retag,
   retire,
   unretire,
+  rename,
   rm,
   outdated,
   update,
@@ -70,6 +72,13 @@ const MODULES: CommandModule[] = [
 const COMMANDS = new Map<string, CommandModule>();
 for (const mod of MODULES) {
   COMMANDS.set(mod.meta.name, mod);
+}
+
+// Command aliases (not shown in the help listing; resolve to the canonical module).
+const ALIASES: Record<string, string> = { mv: "rename" };
+for (const [alias, target] of Object.entries(ALIASES)) {
+  const mod = COMMANDS.get(target);
+  if (mod) COMMANDS.set(alias, mod);
 }
 
 function helpText(): string {
