@@ -729,3 +729,59 @@ describe("skl link (thin a redundant copy)", () => {
     expect(buf.err.join("\n")).toMatch(/library copy itself|inside the library/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// scan: new vs already-in-library classification
+// ---------------------------------------------------------------------------
+
+describe("skl scan (new vs imported)", () => {
+  test("flags candidates already in the library and lists only the new ones", async () => {
+    const root = await scratch("skl-newscan-root-");
+    const libDir = await scratch("skl-newscan-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-newscan-cfg-"), "config.json");
+
+    // Root has two candidates; only "already-here" also exists in the library.
+    await writeSkill(root, "already-here");
+    await writeSkill(root, "brand-new");
+    await writeSkill(library, "already-here");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(scan, [root, "--json"], ctx, buf);
+    expect(r.code).toBe(0);
+
+    const j = r.json[0] as any;
+    expect(j.totals.candidates).toBe(2);
+    expect(j.totals.new).toBe(1);
+
+    const byName = Object.fromEntries(j.candidates.map((c: any) => [c.name, c]));
+    expect(byName["already-here"].imported).toBe(true);
+    expect(byName["brand-new"].imported).toBe(false);
+
+    expect(j.newCandidates.map((c: any) => c.name)).toEqual(["brand-new"]);
+    expect(j.perRoot[0]).toMatchObject({ root, candidates: 2, new: 1 });
+  });
+
+  test("human report lists new candidates with an import hint", async () => {
+    const root = await scratch("skl-newscan-h-root-");
+    const libDir = await scratch("skl-newscan-h-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-newscan-h-cfg-"), "config.json");
+
+    await writeSkill(root, "fresh-skill");
+    await writeSkill(library, "owned-skill");
+    await writeSkill(root, "owned-skill");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(scan, [root], ctx, buf);
+    expect(r.code).toBe(0);
+
+    // Per-root breakdown distinguishes new from in-library.
+    expect(r.out).toMatch(/1 new, 1 in library/);
+    // The actionable section names the new skill and shows the import command.
+    expect(r.out).toMatch(/New \(not in library\) — 1:/);
+    expect(r.out).toContain("fresh-skill");
+    expect(r.out).not.toContain("owned-skill"); // already in library → not listed as new
+    expect(r.out).toMatch(/skl import <name> --from <path>/);
+  });
+});
