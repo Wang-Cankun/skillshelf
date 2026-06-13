@@ -32,6 +32,9 @@ import * as roots from "./commands/roots.ts";
 import * as importCmd from "./commands/import.ts";
 import * as link from "./commands/link.ts";
 import * as where from "./commands/where.ts";
+import * as tag from "./commands/tag.ts";
+import * as untag from "./commands/untag.ts";
+import * as retag from "./commands/retag.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -47,6 +50,9 @@ const MODULES: CommandModule[] = [
   roots,
   importCmd,
   link,
+  tag,
+  untag,
+  retag,
   outdated,
   update,
   init,
