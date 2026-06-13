@@ -33,6 +33,8 @@ function labelFor(s: DeploymentSite): string {
   switch (s.kind) {
     case "linked":
       return "✓ linked";
+    case "source":
+      return "✓ source";
     case "dead":
       return "✗ dead link";
     case "foreign-link":

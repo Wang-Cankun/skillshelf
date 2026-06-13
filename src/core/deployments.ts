@@ -80,11 +80,20 @@ export async function inventoryDeployments(
           kind = real === libReal || real.startsWith(libPrefix) ? "linked" : "foreign-link";
         }
       } else if (e.isDirectory() && existsSync(join(full, SKILL_FILE))) {
-        kind = "copy";
-        const want = libHash.get(e.name);
-        if (want) {
-          const got = await bodyHash(full);
-          drift = got != null && got !== want;
+        // Linked-bookshelf mode: the library entry of this name may itself be a
+        // symlink pointing AT this very dir (the dev-repo source). If so, this is
+        // the canonical `source`, not a redundant `copy` — skip the drift check.
+        const real = realpathOrSelf(full);
+        const libEntryReal = realpathOrSelf(join(libraryPath, e.name));
+        if (libNames.has(e.name) && real === libEntryReal) {
+          kind = "source";
+        } else {
+          kind = "copy";
+          const want = libHash.get(e.name);
+          if (want) {
+            const got = await bodyHash(full);
+            drift = got != null && got !== want;
+          }
         }
       } else {
         continue; // loose file or non-skill dir — not a deployment entry
@@ -107,7 +116,7 @@ export async function inventoryDeployments(
       ? a.name < b.name ? -1 : 1
       : a.surface < b.surface ? -1 : a.surface > b.surface ? 1 : 0,
   );
-  const problems = sites.filter((s) => s.kind !== "linked");
+  const problems = sites.filter((s) => s.kind !== "linked" && s.kind !== "source");
   return { surfaces: realSurfaces, sites, problems };
 }
 

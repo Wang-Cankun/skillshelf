@@ -121,10 +121,12 @@ export interface DuplicateGroup {
  * How a discovered deployment entry relates to the library (see `skl where`).
  *   - `linked`       — a symlink whose realpath is inside the library (clean deploy)
  *   - `foreign-link` — a symlink resolving OUTSIDE the library (a second source)
+ *   - `source`       — a real dir that IS the canonical external source the library
+ *                      symlinks AT (linked-bookshelf mode); not a redundant copy
  *   - `copy`         — a real skill dir (untracked, or drifted vs a library skill)
  *   - `dead`         — a symlink whose target no longer exists
  */
-export type DeploymentKind = "linked" | "foreign-link" | "copy" | "dead";
+export type DeploymentKind = "linked" | "foreign-link" | "source" | "copy" | "dead";
 
 /** One skill entry found in a deployment surface (a dir tools read skills from). */
 export interface DeploymentSite {
