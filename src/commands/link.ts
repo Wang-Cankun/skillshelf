@@ -1,21 +1,30 @@
-// `skl link <name> --at <path>` — collapse a redundant copy into a symlink to the
-// library. The inverse companion of `import`'s symlink-back: where `import` MOVES a
-// skill into the library and leaves a symlink behind, `link` takes a skill the library
-// ALREADY owns and replaces some *other* on-disk copy of it with a symlink into the
-// library — fulfilling the one-canonical-copy rule for locations that were never
-// consolidated (e.g. an old `.claude/skills/<name>` duplicate).
+// `skl link` — manage the symlink relationship between the library and on-disk copies.
 //
-//   skl link <name> --at <path> [--force] [--json]
+// Two modes (the bookshelf model, ADR-0004):
 //
-//   <name>     a skill that already exists in the library (<library>/<name>)
-//   --at       the redundant copy to replace with a symlink into the library
-//   --force    proceed even if <path>'s body differs from the library copy
-//              (the divergent copy is DISCARDED). Without it, a content mismatch is
-//              refused — pick a winner explicitly: keep library (this, with --force)
-//              or make <path> canonical (`skl import <name> --from <path> --force`).
+//   skl link <name> --at <path>          OWNED side. The library already owns <name>; replace
+//                                        some other on-disk copy at <path> with a symlink INTO
+//                                        the library — fulfilling the one-canonical-copy rule for
+//                                        locations that were never consolidated (e.g. an old
+//                                        `.claude/skills/<name>` duplicate).
 //
-// Safety: never touches the library copy; refuses to operate on a path inside the
-// library; idempotent when <path> already points at the library copy.
+//   skl link [<name>] --from <dev-repo>  LINKED side. Register an external dev-repo skill as a
+//                                        library entry: make <library>/<name> a symlink pointing
+//                                        AT the dev repo, which stays canonical. The inverse of
+//                                        --at — the library shelves a reference instead of owning
+//                                        the bytes (for skills you actively develop in their own
+//                                        git repo). Name defaults to the dev-repo dir's basename.
+//
+//   --force   --at:   replace even if <path>'s body differs from the library copy (the divergent
+//                     copy is DISCARDED). Without it, a content mismatch is refused — pick a
+//                     winner: keep library (this, with --force) or make <path> canonical
+//                     (`skl import <name> --from <path> --force`).
+//             --from: replace an existing library entry (its current contents are DISCARDED).
+//   --json    machine-readable summary.
+//
+// Safety: --at never touches the library copy and refuses paths inside the library; --from
+// refuses a source inside the library; both verify the resulting symlink resolves as intended and
+// are idempotent when the link already points where intended.
 
 import { join, resolve, basename } from "node:path";
 import { existsSync } from "node:fs";
@@ -32,19 +41,20 @@ import {
 
 export const meta = {
   name: "link",
-  summary: "Replace a redundant copy of an owned skill with a symlink into the library",
-  usage: "skl link <name> --at <path> [--force] [--json]",
+  summary: "Link a skill to the library: collapse a copy (--at) or shelve a dev repo (--from)",
+  usage: "skl link <name> --at <path>  |  skl link [<name>] --from <dev-repo>  [--force] [--json]",
 } as const;
 
 interface Flags {
   name: string | null;
   at: string | null;
+  from: string | null;
   force: boolean;
   json: boolean;
 }
 
 function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
-  const flags: Flags = { name: null, at: null, force: false, json: false };
+  const flags: Flags = { name: null, at: null, from: null, force: false, json: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--at") {
@@ -53,6 +63,12 @@ function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
       flags.at = v;
     } else if (a.startsWith("--at=")) {
       flags.at = a.slice("--at=".length);
+    } else if (a === "--from") {
+      const v = argv[++i];
+      if (v === undefined) return { error: "--from requires a <dev-repo path>" };
+      flags.from = v;
+    } else if (a.startsWith("--from=")) {
+      flags.from = a.slice("--from=".length);
     } else if (a === "--force") {
       flags.force = true;
     } else if (a === "--json") {
@@ -89,19 +105,111 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   }
   const flags = parsed.flags;
 
-  if (!flags.name || flags.name.trim() === "") {
-    ctx.error("skl link: a <name> is required");
+  if (flags.at && flags.from) {
+    ctx.error("skl link: --at and --from are mutually exclusive (collapse a copy vs. shelve a dev repo)");
     ctx.error(`usage: ${meta.usage}`);
     return 1;
   }
-  if (!flags.at || flags.at.trim() === "") {
-    ctx.error("skl link: --at <path> is required");
+  if (!flags.at && !flags.from) {
+    ctx.error("skl link: one of --at <path> or --from <dev-repo> is required");
+    ctx.error(`usage: ${meta.usage}`);
+    return 1;
+  }
+
+  return flags.from
+    ? await runFrom(flags, ctx)
+    : await runAt(flags, ctx);
+}
+
+/**
+ * LINKED mode: register an external dev-repo skill as a library symlink. The library entry
+ * <library>/<name> becomes a symlink pointing AT the dev repo (which stays canonical).
+ */
+async function runFrom(flags: Flags, ctx: Ctx): Promise<number> {
+  const fromPath = resolve(flags.from!.trim());
+  const name = (flags.name?.trim()) || basename(fromPath);
+  if (!name || name === "." || name === "/") {
+    ctx.error("skl link: could not determine a <name> — pass one explicitly");
+    return 1;
+  }
+  const libraryPath = ctx.config.libraryPath;
+  const libDir = join(libraryPath, name);
+
+  try {
+    // The source must be a real skill dir (has a SKILL.md).
+    if (!existsSync(fromPath) || !(await isDirectory(fromPath))) {
+      ctx.error(`skl link: --from must be an existing directory: ${fromPath}`);
+      return 1;
+    }
+    if (!existsSync(join(fromPath, "SKILL.md"))) {
+      ctx.error(`skl link: ${fromPath} has no SKILL.md (not a skill dir).`);
+      return 1;
+    }
+
+    // Refuse a source inside the library — that would link the library to itself.
+    const fromReal = await realpathOrSelfAsync(fromPath);
+    const libRoot = await realpathOrSelfAsync(libraryPath);
+    if (fromReal === libRoot || fromReal.startsWith(libRoot + "/")) {
+      ctx.error(`skl link: --from is inside the library (${fromPath}) — nothing to register`);
+      return 1;
+    }
+
+    // Idempotent: library entry is already a symlink resolving to this source.
+    if (isSymlink(libDir)) {
+      const cur = await realpathOrSelfAsync(libDir);
+      if (cur === fromReal) {
+        const summary = { ok: true, name, from: fromPath, to: libDir, status: "already" as const, mode: "linked" as const, discarded: false };
+        if (flags.json) ctx.json(summary);
+        else ctx.log(`link: library/${name} already points at ${fromPath}`);
+        return 0;
+      }
+    }
+
+    // An existing library entry won't be clobbered silently.
+    const exists = existsSync(libDir) || isSymlink(libDir);
+    if (exists && !flags.force) {
+      ctx.error(`skl link: '${name}' already exists in the library (${libDir}).`);
+      ctx.error("Pass --force to replace it with a symlink to the dev repo (its current contents are discarded).");
+      return 1;
+    }
+    const discarded = exists && !isSymlink(libDir); // a real OWNED copy is being dropped
+    if (exists) await rm(libDir, { recursive: true, force: true });
+    await safeSymlink(fromPath, libDir, { force: true });
+
+    // Verify the library entry resolves to the dev repo.
+    const linkReal = await realpathOrSelfAsync(libDir);
+    if (linkReal !== fromReal) {
+      ctx.error(`skl link: verification failed — library/${name} resolves to ${linkReal}, expected ${fromReal}`);
+      return 1;
+    }
+
+    const summary = { ok: true, name, from: fromPath, to: libDir, status: "linked" as const, mode: "linked" as const, discarded };
+    if (flags.json) {
+      ctx.json(summary);
+    } else {
+      ctx.log(`shelved ${name} -> ${fromPath} (LINKED)`);
+      if (discarded) ctx.log("  (discarded the previous owned library copy; library now points at the dev repo)");
+    }
+    return 0;
+  } catch (err) {
+    ctx.error(`skl link: failed: ${err instanceof Error ? err.message : String(err)}`);
+    return 1;
+  }
+}
+
+/**
+ * OWNED mode: replace a redundant on-disk copy at <path> with a symlink INTO the library copy
+ * the library already owns.
+ */
+async function runAt(flags: Flags, ctx: Ctx): Promise<number> {
+  if (!flags.name || flags.name.trim() === "") {
+    ctx.error("skl link: a <name> is required with --at");
     ctx.error(`usage: ${meta.usage}`);
     return 1;
   }
 
   const name = flags.name.trim();
-  const atPath = resolve(flags.at.trim());
+  const atPath = resolve(flags.at!.trim());
   const libraryPath = ctx.config.libraryPath;
   const libDir = join(libraryPath, name);
 
