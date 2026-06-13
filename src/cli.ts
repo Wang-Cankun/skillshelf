@@ -30,12 +30,14 @@ import * as newCmd from "./commands/new.ts";
 import * as scan from "./commands/scan.ts";
 import * as importCmd from "./commands/import.ts";
 import * as link from "./commands/link.ts";
+import * as where from "./commands/where.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
   search,
   ls,
   status,
+  where,
   show,
   use,
   drop,

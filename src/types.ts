@@ -118,6 +118,45 @@ export interface DuplicateGroup {
 }
 
 /**
+ * How a discovered deployment entry relates to the library (see `skl where`).
+ *   - `linked`       — a symlink whose realpath is inside the library (clean deploy)
+ *   - `foreign-link` — a symlink resolving OUTSIDE the library (a second source)
+ *   - `copy`         — a real skill dir (untracked, or drifted vs a library skill)
+ *   - `dead`         — a symlink whose target no longer exists
+ */
+export type DeploymentKind = "linked" | "foreign-link" | "copy" | "dead";
+
+/** One skill entry found in a deployment surface (a dir tools read skills from). */
+export interface DeploymentSite {
+  /** entry basename (the skill name as deployed) */
+  name: string;
+  /** the surface dir this entry was found directly under */
+  surface: string;
+  /** absolute path of the entry */
+  path: string;
+  kind: DeploymentKind;
+  /** raw symlink target (as stored); null for a real copy */
+  target: string | null;
+  /** true if a library skill of this name exists */
+  inLibrary: boolean;
+  /** for a `copy` of a library skill: its SKILL.md body diverged from the library copy */
+  drift: boolean;
+}
+
+/**
+ * The computed deployment map (`skl where`): every place a skill is deployed across
+ * the scanned surfaces, classified. Derived from reality (no stored state).
+ */
+export interface DeploymentReport {
+  /** surfaces actually scanned (existing dirs, realpath-de-duplicated) */
+  surfaces: string[];
+  /** every classified entry across all surfaces */
+  sites: DeploymentSite[];
+  /** the subset that is not a clean `linked` deployment */
+  problems: DeploymentSite[];
+}
+
+/**
  * Snapshot fed to the AI inference pass (`skl infer`). Deterministic core only
  * assembles this; the LLM call lives elsewhere.
  */
