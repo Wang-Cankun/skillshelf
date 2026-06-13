@@ -7,11 +7,17 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/Wang-Cankun/skillshelf/ci.yml?branch=main)](https://github.com/Wang-Cankun/skillshelf/actions)
 [![npm](https://img.shields.io/npm/v/skillshelf.svg)](https://www.npmjs.com/package/skillshelf)
 
-Your skills are scattered: some in `~/.claude/skills`, some buried in Obsidian or notes
-vaults, more copied into a dozen per-project `.claude` directories. You forget which ones
-exist, rewrite ones you already have, and copies drift out of sync. The naive fix — dump
-everything into `~/.claude/skills` — makes every session pay the token cost of loading
-hundreds of skill descriptions at once.
+Your skills are scattered across **every agent you use** — some in `~/.claude/skills`, some in
+`~/.codex/skills` or `~/.cursor/skills`, some buried in Obsidian or notes vaults, more copied into
+a dozen per-project `.claude` / `.codex` directories. Each tool scatters its own copies and
+symlinks; you forget which ones exist, rewrite ones you already have, and copies drift out of sync.
+The naive fix — dump everything into one agent's dir — makes every session pay the token cost of
+loading hundreds of skill descriptions at once.
+
+skillshelf is **agent-agnostic** (Claude Code, Codex, Cursor, and compatible agents): the library
+is a neutral source, and `skl where` maps where every skill is actually deployed across all of
+them — surfacing untracked copies, drift, and dead links. It's the curation layer *over* your
+agent dirs, complementary to installers like [`vercel-labs/skills`](https://github.com/vercel-labs/skills).
 
 skillshelf is the middle path: a single git-backed **library** that is a *passive shelf*
 (nothing auto-loads), plus a CLI to **search, tag, bundle, and load** exactly the skills a
@@ -142,11 +148,12 @@ See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full design.
 | `skl search <kw...>` | Fuzzy match over name + description + domains across the library | — |
 | `skl show <name>` | Print a skill's SKILL.md body; list reference-file paths (not contents) | — |
 | `skl status` | Show which library skills are linked into `./.claude/skills` | — |
+| `skl where [name]` | Map where each skill is deployed across all agents (Claude, Codex, Cursor…); flags copies, drift, 2nd-sources, dead links | `--problems` |
 | `skl use <bundle>` | Symlink a bundle's skills into `./.claude/skills/` (hot-loads) | — |
 | `skl drop <bundle>` | Remove a bundle's symlinks from `./.claude/skills/` | — |
 | `skl add <src>` | Install a third-party skill (`github:`/registry), record provenance, auto-tag | `--domain <d>`, `--name <slug>`, `--no-infer`, `--force` |
 | `skl outdated [name]` | Check upstream ref per tracked skill and mark stale ones | — |
-| `skl update [name]` | Re-pull upstream body, preserve overlay, diff if local body diverged | `--force`, `--dry-run` |
+| `skl update [name]` | Re-pull upstream body, preserve domain tags, diff if local body diverged | `--force`, `--dry-run` |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain) | — |
 | `skl infer` | Re-run AI domain taxonomy over the library (emit/apply/provider modes) | see below |
 

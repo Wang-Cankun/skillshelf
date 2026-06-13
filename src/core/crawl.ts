@@ -132,10 +132,12 @@ async function discoverSkillDirs(
   const SKIP = new Set(["node_modules", ".git"]);
   // Hidden (dot-prefixed) child dirs are skipped during descent — they're caches,
   // editor state, and backups (e.g. `.pre-cloudflare-plugin-backup/`), not active
-  // skills — EXCEPT the known skill-grouping dot-dirs, which must stay reachable
-  // when scanning a project parent. (A root passed in directly, e.g. `.claude/skills`,
-  // is never filtered here; only its children are.)
-  const ALLOW_DOT = new Set([".claude", ".agents"]);
+  // skills — EXCEPT the known agent skill-grouping dot-dirs, which must stay
+  // reachable when scanning a project parent. skillshelf is agent-agnostic
+  // (ADR-0003): these track the cross-agent ecosystem (`.claude`, `.codex`,
+  // `.opencode`, `.cursor`) plus Claude's `.agents` bridge format. (A root passed
+  // in directly, e.g. `.codex/skills`, is never filtered here; only its children.)
+  const ALLOW_DOT = new Set([".claude", ".agents", ".codex", ".opencode", ".cursor"]);
   const MAX_DEPTH = 8;
 
   async function recurse(dir: string, depth: number, retired: boolean): Promise<void> {

@@ -51,15 +51,17 @@ describe("crawl rules", () => {
     await skill(root, "live-skill", ["coding"]);
     // a hidden backup dir holding a skill — must be ignored
     await skill(join(root, ".pre-plugin-backup"), "stale-skill", ["coding"]);
-    // skill-grouping dot-dirs under the root must still be descended
+    // agent skill-grouping dot-dirs under the root must still be descended
     await skill(join(root, ".claude", "skills"), "claude-skill", ["coding"]);
     await skill(join(root, ".agents", "skills"), "agents-skill", ["coding"]);
+    await skill(join(root, ".codex", "skills"), "codex-skill", ["coding"]);
 
     const { skills } = await crawl([root]);
     const names = skills.map((s) => s.name).sort();
     expect(names).toContain("live-skill");
     expect(names).toContain("claude-skill"); // .claude allowed
     expect(names).toContain("agents-skill"); // .agents allowed
+    expect(names).toContain("codex-skill"); // .codex allowed (agent-agnostic, ADR-0003)
     expect(names).not.toContain("stale-skill"); // hidden backup skipped
   });
 

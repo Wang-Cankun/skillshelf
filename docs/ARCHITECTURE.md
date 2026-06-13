@@ -1,7 +1,9 @@
 # skillshelf — Architecture
 
-> Agent-first skill registry + manager for Claude Code and compatible agents.
-> CLI package: `skillshelf` · bin: `skl` · run via `bunx skillshelf`.
+> Agent-agnostic skill registry + manager — Claude Code, Codex, Cursor, and compatible agents
+> ([ADR-0003](adr/0003-agent-agnostic-surfaces.md)). The library is a neutral source; each agent
+> is just a deployment surface (`~/<agent>/skills`). CLI package: `skillshelf` · bin: `skl` ·
+> run via `bunx skillshelf`.
 
 This document describes the design of skillshelf: a single, git-backed library that holds
 all of an agent's skills, plus a CLI for organizing, loading, and installing them — without

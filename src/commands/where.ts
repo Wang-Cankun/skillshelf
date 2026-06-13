@@ -14,6 +14,7 @@
 import { homedir } from "node:os";
 import type { Ctx, DeploymentSite } from "../types.ts";
 import { inventoryDeployments, suggestionFor } from "../core/deployments.ts";
+import { knownAgentSurfacePaths } from "../core/surfaces.ts";
 
 export const meta = {
   name: "where",
@@ -71,7 +72,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
   try {
     const lib = await ctx.loadLibrary();
-    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget];
+    // Surfaces = configured roots + the global-core target + the well-known
+    // cross-agent global skill dirs (claude, codex, …) so sprawl across agents
+    // shows up without manual `skl scan --add-root`. inventoryDeployments
+    // realpath-de-duplicates and skips missing dirs.
+    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths()];
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
 
     // --- single skill ----------------------------------------------------
