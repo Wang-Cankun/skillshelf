@@ -25,12 +25,14 @@ import {
   rm,
   lstat,
   realpath,
+  symlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { loadContext } from "../src/config.ts";
 import type { Ctx, CommandModule } from "../src/types.ts";
 import * as scan from "../src/commands/scan.ts";
 import * as importCmd from "../src/commands/import.ts";
+import * as linkCmd from "../src/commands/link.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -213,6 +215,70 @@ describe("skl scan (migration discovery)", () => {
     expect(j.candidates.map((c: any) => c.name)).toContain("configured-skill");
     expect(j.perRoot.map((p: any) => p.root)).toContain(rootA);
   });
+
+  // Fix #1 regression: a skill reached through a SYMLINK inside a root must still
+  // be attributed to that root. Previously rootOf() realpath'd the path, so the
+  // symlink target (outside the root) fell to root:null and per-root undercounted.
+  test("attributes a symlinked candidate to its declared root (no root:null)", async () => {
+    const root = await scratch("skl-mig-link-");
+    await writeSkill(root, "alpha", { domains: ["x"] });
+    // A skill that physically lives OUTSIDE the root, surfaced via a symlink inside it.
+    const extRoot = await scratch("skl-mig-link-ext-");
+    const target = await writeSkill(extRoot, "linked", {});
+    await symlink(target, join(root, "linked"));
+
+    const libDir = await scratch("skl-mig-link-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-mig-link-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(scan, [root, "--json"], ctx, buf);
+    expect(r.code).toBe(0);
+    const j = r.json[0] as any;
+
+    expect(j.totals.candidates).toBe(2);
+    const perRootSum = j.perRoot.reduce((a: number, p: any) => a + p.candidates, 0);
+    expect(perRootSum).toBe(j.totals.candidates);
+    expect(j.candidates.filter((c: any) => c.root === null).length).toBe(0);
+
+    const perRoot = Object.fromEntries(j.perRoot.map((p: any) => [p.root, p.candidates]));
+    expect(perRoot[root]).toBe(2);
+    const linked = j.candidates.find((c: any) => c.name === "linked");
+    expect(linked.root).toBe(root);
+    expect(linked.path.startsWith(root)).toBe(true);
+  });
+
+  // Fix #2: a faithful `.agents` bridge mirror of a `.claude` skill is the intended
+  // relationship, not a conflict — it must NOT be reported as a duplicate/drift group.
+  // A mirror that has DRIFTED (different body) is still surfaced as drift.
+  test("suppresses faithful .agents/.claude mirrors but keeps drifted ones", async () => {
+    const root = await scratch("skl-mig-mirror-");
+    const claudeSkills = join(root, ".claude", "skills");
+    const agentsSkills = join(root, ".agents", "skills");
+
+    // foo: identical in both -> faithful mirror -> suppressed.
+    await writeSkill(claudeSkills, "foo", { body: "# foo\nshared body\n" });
+    await writeSkill(agentsSkills, "foo", { body: "# foo\nshared body\n" });
+    // bar: drifted between the two -> kept as drift.
+    await writeSkill(claudeSkills, "bar", { body: "# bar\nversion ONE\n" });
+    await writeSkill(agentsSkills, "bar", { body: "# bar\nversion TWO — diverged\n" });
+
+    const libDir = await scratch("skl-mig-mirror-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-mig-mirror-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(scan, [root, "--json"], ctx, buf);
+    expect(r.code).toBe(0);
+    const j = r.json[0] as any;
+
+    const groups = Object.fromEntries(j.duplicateGroups.map((g: any) => [g.name, g]));
+    // The faithful mirror is gone from the conflict view...
+    expect(groups.foo).toBeUndefined();
+    // ...but the drifted one remains, classified as drift.
+    expect(groups.bar).toBeDefined();
+    expect(groups.bar.kind).toBe("drift");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -374,6 +440,31 @@ describe("skl import (consolidation)", () => {
     expect(existsSync(join(library, "raw-name"))).toBe(false);
   });
 
+  test("rejects a path-traversal --as slug and never escapes the library", async () => {
+    const root = await scratch("skl-imp-trav-");
+    const orig = await writeSkill(root, "legit", {});
+    const libDir = await scratch("skl-imp-trav-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-imp-trav-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(
+      importCmd,
+      ["legit", "--from", orig, "--as", "../../etc/evil", "--json"],
+      ctx,
+      buf,
+    );
+    // SLUG_RE rejects the traversal BEFORE any filesystem mutation.
+    expect(r.code).toBe(1);
+    expect(buf.err.join("\n")).toContain("invalid skill name");
+    // The candidate is untouched (not moved, not symlinked).
+    expect((await lstat(orig)).isSymbolicLink()).toBe(false);
+    expect((await lstat(orig)).isDirectory()).toBe(true);
+    // Nothing was written outside (or inside) the library.
+    expect(existsSync(join(libDir, "etc"))).toBe(false);
+    expect(existsSync(library)).toBe(false);
+  });
+
   test("--force overwrites an existing library skill", async () => {
     const root = await scratch("skl-imp-force-");
     const orig1 = await writeSkill(root, "victim", { body: "# victim\nOLD body\n" });
@@ -399,6 +490,83 @@ describe("skl import (consolidation)", () => {
     );
     expect(r.code).toBe(0);
     expect(await Bun.file(join(dest, "SKILL.md")).text()).toContain("NEW body");
+  });
+
+  // Fix #3: a symlinked source dir is refused unless --follow (option b). A move
+  // would rename the LINK (library owns no real copy); a copy would copy the link.
+  test("refuses a symlinked --from without --follow", async () => {
+    const root = await scratch("skl-imp-link-");
+    const target = await writeSkill(root, "tgt", { body: "# tgt\nreal body\n" });
+    const link = join(root, "lnk");
+    await symlink(target, link);
+    const libDir = await scratch("skl-imp-link-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-imp-link-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(importCmd, ["linked", "--from", link, "--json"], ctx, buf);
+    expect(r.code).toBe(1);
+    expect(buf.err.join("\n")).toContain("--follow");
+
+    // The link and its target are untouched; nothing landed in the library.
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(target, "SKILL.md"))).toBe(true);
+    expect(existsSync(join(library, "linked"))).toBe(false);
+  });
+
+  test("--follow dereferences the symlink and copies the target into the library", async () => {
+    const root = await scratch("skl-imp-follow-");
+    const target = await writeSkill(root, "tgt", { body: "# tgt\nreal body\n" });
+    const link = join(root, "lnk");
+    await symlink(target, link);
+    const libDir = await scratch("skl-imp-follow-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-imp-follow-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(
+      importCmd,
+      ["linked", "--from", link, "--follow", "--json"],
+      ctx,
+      buf,
+    );
+    expect(r.code).toBe(0);
+    const j = r.json[0] as any;
+    expect(j.mode).toBe("copy");
+    expect(j.followed).toBe(true);
+
+    // The library owns a REAL directory (not a symlink) with the body.
+    const dest = join(library, "linked");
+    const st = await lstat(dest);
+    expect(st.isSymbolicLink()).toBe(false);
+    expect(st.isDirectory()).toBe(true);
+    expect(await Bun.file(join(dest, "SKILL.md")).text()).toContain("real body");
+
+    // Source link + its target are left intact (library holds an independent copy).
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    const tst = await lstat(target);
+    expect(tst.isDirectory()).toBe(true);
+    expect(tst.isSymbolicLink()).toBe(false);
+  });
+
+  test("--follow and --no-link-back are mutually exclusive", async () => {
+    const root = await scratch("skl-imp-follow-excl-");
+    const target = await writeSkill(root, "tgt", {});
+    const link = join(root, "lnk");
+    await symlink(target, link);
+    const libDir = await scratch("skl-imp-follow-excl-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-imp-follow-excl-cfg-"), "config.json");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(
+      importCmd,
+      ["linked", "--from", link, "--follow", "--no-link-back"],
+      ctx,
+      buf,
+    );
+    expect(r.code).toBe(1);
+    expect(buf.err.join("\n")).toContain("cannot be combined");
   });
 });
 
@@ -437,5 +605,130 @@ describe("primaryDomain after import (tags, not folders)", () => {
     const s1 = findByName(lib1, "untagged")!;
     expect(s1.domains).toEqual(["writing", "green-card"]);
     expect(s1.primaryDomain).toBe("writing");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// link — collapse a redundant copy into a symlink to the library (the inverse
+// companion of import's symlink-back). Fulfills the one-canonical-copy rule for
+// locations that were never consolidated.
+// ---------------------------------------------------------------------------
+
+describe("skl link (thin a redundant copy)", () => {
+  /** Seed a real skill dir directly in the library (no import needed). */
+  async function seedLibrarySkill(
+    library: string,
+    name: string,
+    body: string,
+  ): Promise<string> {
+    return writeSkill(library, name, { body });
+  }
+
+  test("identical duplicate: replaced with a symlink into the library (no --force)", async () => {
+    const libDir = await scratch("skl-link-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-link-cfg-"), "config.json");
+    await seedLibrarySkill(library, "foo", "# foo\nshared body\n");
+
+    // A redundant real copy elsewhere with IDENTICAL body.
+    const dupRoot = await scratch("skl-link-dup-");
+    const dup = await writeSkill(dupRoot, "foo", { body: "# foo\nshared body\n" });
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(linkCmd, ["foo", "--at", dup, "--json"], ctx, buf);
+    expect(r.code).toBe(0);
+    const j = r.json[0] as any;
+    expect(j.status).toBe("linked");
+    expect(j.discarded).toBe(true);
+
+    // The duplicate is now a symlink resolving to the library copy.
+    expect((await lstat(dup)).isSymbolicLink()).toBe(true);
+    expect(await realpath(dup)).toBe(await realpath(join(library, "foo")));
+    // The library copy is untouched.
+    expect(await Bun.file(join(library, "foo", "SKILL.md")).text()).toContain("shared body");
+  });
+
+  test("divergent copy: refused without --force (nothing mutated)", async () => {
+    const libDir = await scratch("skl-link-div-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-link-div-cfg-"), "config.json");
+    await seedLibrarySkill(library, "foo", "# foo\nLIBRARY body\n");
+
+    const dupRoot = await scratch("skl-link-div-dup-");
+    const dup = await writeSkill(dupRoot, "foo", { body: "# foo\nDIFFERENT body\n" });
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(linkCmd, ["foo", "--at", dup], ctx, buf);
+    expect(r.code).toBe(1);
+    expect(buf.err.join("\n")).toContain("differs");
+    // The divergent copy is left untouched (still a real dir).
+    expect((await lstat(dup)).isSymbolicLink()).toBe(false);
+    expect((await lstat(dup)).isDirectory()).toBe(true);
+  });
+
+  test("--force discards a divergent copy and links it; library copy wins", async () => {
+    const libDir = await scratch("skl-link-force-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-link-force-cfg-"), "config.json");
+    await seedLibrarySkill(library, "foo", "# foo\nLIBRARY body\n");
+
+    const dupRoot = await scratch("skl-link-force-dup-");
+    const dup = await writeSkill(dupRoot, "foo", { body: "# foo\nstale DIFFERENT body\n" });
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(linkCmd, ["foo", "--at", dup, "--force", "--json"], ctx, buf);
+    expect(r.code).toBe(0);
+
+    // Duplicate is now a symlink; the library (winner) content is unchanged.
+    expect((await lstat(dup)).isSymbolicLink()).toBe(true);
+    expect(await realpath(dup)).toBe(await realpath(join(library, "foo")));
+    expect(await Bun.file(join(library, "foo", "SKILL.md")).text()).toContain("LIBRARY body");
+  });
+
+  test("idempotent: a path already pointing at the library copy is a no-op", async () => {
+    const libDir = await scratch("skl-link-idem-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-link-idem-cfg-"), "config.json");
+    await seedLibrarySkill(library, "foo", "# foo\nbody\n");
+
+    const dupRoot = await scratch("skl-link-idem-dup-");
+    const dup = join(dupRoot, "foo");
+    await symlink(join(library, "foo"), dup);
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(linkCmd, ["foo", "--at", dup, "--json"], ctx, buf);
+    expect(r.code).toBe(0);
+    expect((r.json[0] as any).status).toBe("already");
+    expect((await lstat(dup)).isSymbolicLink()).toBe(true);
+  });
+
+  test("refuses when the skill is not in the library", async () => {
+    const libDir = await scratch("skl-link-missing-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-link-missing-cfg-"), "config.json");
+    await mkdir(library, { recursive: true });
+
+    const dupRoot = await scratch("skl-link-missing-dup-");
+    const dup = await writeSkill(dupRoot, "ghost", {});
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(linkCmd, ["ghost", "--at", dup], ctx, buf);
+    expect(r.code).toBe(1);
+    expect(buf.err.join("\n")).toContain("not in the library");
+    // Untouched.
+    expect((await lstat(dup)).isSymbolicLink()).toBe(false);
+  });
+
+  test("safety: refuses to operate on a path inside the library", async () => {
+    const libDir = await scratch("skl-link-inside-lib-");
+    const library = join(libDir, "library");
+    const cfg = join(await scratch("skl-link-inside-cfg-"), "config.json");
+    await seedLibrarySkill(library, "foo", "# foo\nbody\n");
+
+    const { ctx, buf } = await makeCtxAt({ library, configFilePath: cfg });
+    const r = await runWith(linkCmd, ["foo", "--at", join(library, "foo")], ctx, buf);
+    expect(r.code).toBe(1);
+    // It is the library copy itself.
+    expect(buf.err.join("\n")).toMatch(/library copy itself|inside the library/);
   });
 });

@@ -45,6 +45,8 @@ export interface Skill {
   mirrorOf: string | null;
   /** sha-256 of the SKILL.md body content (for dedupe/drift detection) */
   contentHash: string;
+  /** the scan root this skill was discovered under (literal crawl root); absent for library/synthetic skills */
+  discoveredRoot?: string | null;
 }
 
 /**

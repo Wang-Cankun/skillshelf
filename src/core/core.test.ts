@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { loadLibrary, searchSkills, findByName } from "./library.ts";
-import { findDuplicates, driftedGroups } from "./dedupe.ts";
+import { findDuplicates, driftedGroups, genuineConflictGroups } from "./dedupe.ts";
 import { resolveBundle } from "./bundle.ts";
 import { generateIndex } from "./indexgen.ts";
 
@@ -38,6 +38,19 @@ describe("core against fixtures", () => {
 
     const commit = groups.find((g) => g.name === "commit-push");
     expect(commit?.identical).toBe(true);
+  });
+
+  test("genuineConflictGroups drops faithful mirrors but keeps real drift", async () => {
+    const lib = await loadLibrary(FIXTURES);
+    const groups = findDuplicates(lib);
+    // findDuplicates still surfaces the faithful commit-push mirror...
+    expect(groups.some((g) => g.name === "commit-push")).toBe(true);
+
+    // ...but the user-facing conflict view suppresses it (intended bridge mirror)
+    // while keeping the genuinely drifted scrna-cluster.
+    const genuine = genuineConflictGroups(groups).map((g) => g.name);
+    expect(genuine).toContain("scrna-cluster");
+    expect(genuine).not.toContain("commit-push");
   });
 
   test("bundle resolves by domain + overlay membership", async () => {

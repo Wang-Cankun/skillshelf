@@ -32,13 +32,14 @@ import {
   ensureDir,
   safeSymlink,
   isDirectory,
+  isSymlink,
   realpathOrSelfAsync,
 } from "../lib/fs.ts";
 
 export const meta = {
   name: "import",
   summary: "Adopt your own skill into the library (move + symlink-back, or --copy)",
-  usage: "skl import <name> --from <path> [--copy | --no-link-back] [--as <slug>] [--force] [--json]",
+  usage: "skl import <name> --from <path> [--copy | --no-link-back] [--follow] [--as <slug>] [--force] [--json]",
 } as const;
 
 interface Flags {
@@ -47,6 +48,7 @@ interface Flags {
   as: string | null;
   copy: boolean;
   noLinkBack: boolean;
+  follow: boolean;
   force: boolean;
   json: boolean;
 }
@@ -60,6 +62,7 @@ function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
     as: null,
     copy: false,
     noLinkBack: false,
+    follow: false,
     force: false,
     json: false,
   };
@@ -81,6 +84,8 @@ function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
       flags.copy = true;
     } else if (a === "--no-link-back" || a === "--no-link") {
       flags.noLinkBack = true;
+    } else if (a === "--follow" || a === "--deref") {
+      flags.follow = true;
     } else if (a === "--force") {
       flags.force = true;
     } else if (a === "--json") {
@@ -141,6 +146,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     );
     return 1;
   }
+  if (flags.follow && flags.noLinkBack) {
+    ctx.error(
+      "skl import: --follow copies the dereferenced target; it cannot be combined with --no-link-back (a move option)",
+    );
+    return 1;
+  }
 
   // The library name is --as if given, else <name>.
   const targetName = (flags.as ?? flags.name).trim();
@@ -167,6 +178,23 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     if (!existsSync(join(fromPath, "SKILL.md"))) {
       ctx.error(
         `skl import: no SKILL.md found in ${fromPath} — not a skill directory`,
+      );
+      return 1;
+    }
+
+    // Symlink safety (option b): a symlinked source dir is refused unless --follow.
+    // Without it, a move would `rename` the LINK (the library would point back at the
+    // target and own no real copy) and a copy would copy the link itself. With
+    // --follow we dereference to the real target and COPY its contents (below).
+    const linkSource = isSymlink(fromPath);
+    if (linkSource && !flags.follow) {
+      const tgt = await realpathOrSelfAsync(fromPath);
+      ctx.error(`skl import: --from is a symlink (${fromPath} -> ${tgt}).`);
+      ctx.error(
+        "Refusing to import a symlink source: a move would relocate the link, not the content.",
+      );
+      ctx.error(
+        "Re-run with --follow (alias --deref) to dereference and copy the target's real contents into the library.",
       );
       return 1;
     }
@@ -202,12 +230,15 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       await rm(destDir, { recursive: true, force: true });
     }
 
-    const mode: "move" | "copy" = flags.copy ? "copy" : "move";
+    // A symlinked source with --follow: copy the dereferenced TARGET's contents
+    // (never move — that would relocate the canonical store the link points at).
+    const srcDir = linkSource ? await realpathOrSelfAsync(fromPath) : fromPath;
+    const mode: "move" | "copy" = linkSource ? "copy" : flags.copy ? "copy" : "move";
     let linkedBack = false;
 
     if (mode === "copy") {
       // Copy into the library; leave the original untouched (no symlink-back).
-      await cp(fromPath, destDir, {
+      await cp(srcDir, destDir, {
         recursive: true,
         force: true,
         filter: (s: string) => basename(s) !== ".git",
@@ -261,6 +292,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       to: destDir,
       mode,
       linkedBack,
+      followed: linkSource,
     };
 
     if (flags.json) {
@@ -268,6 +300,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     } else {
       ctx.log(`imported ${targetName}`);
       ctx.log(`  from:  ${fromPath}`);
+      if (linkSource) ctx.log(`  follow: ${fromPath} -> ${srcDir} (copied target contents)`);
       ctx.log(`  to:    ${destDir}`);
       ctx.log(`  mode:  ${mode}`);
       if (linkedBack) ctx.log(`  link:  ${fromPath} -> ${destDir} (old path still resolves)`);

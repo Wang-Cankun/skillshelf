@@ -29,6 +29,7 @@ import * as infer from "./commands/infer.ts";
 import * as newCmd from "./commands/new.ts";
 import * as scan from "./commands/scan.ts";
 import * as importCmd from "./commands/import.ts";
+import * as link from "./commands/link.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -41,6 +42,7 @@ const MODULES: CommandModule[] = [
   add,
   scan,
   importCmd,
+  link,
   outdated,
   update,
   init,

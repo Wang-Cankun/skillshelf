@@ -65,3 +65,39 @@ export function driftedGroups(groups: DuplicateGroup[]): DuplicateGroup[] {
 export function exactDuplicateGroups(groups: DuplicateGroup[]): DuplicateGroup[] {
   return groups.filter((g) => g.identical && g.duplicates.length > 0);
 }
+
+/**
+ * A copy that is a faithful bridge mirror of the canonical: it points at the
+ * canonical (`mirrorOf`) AND has identical content. Such a copy is the intended
+ * `.agents/skills` <-> `.claude/skills` relationship, not a conflict to resolve.
+ */
+function isFaithfulMirror(s: Skill, canonical: Skill): boolean {
+  return (
+    s.mirrorOf != null &&
+    s.mirrorOf === canonical.path &&
+    s.contentHash === canonical.contentHash
+  );
+}
+
+/**
+ * User-facing conflict view: strip faithful mirrors from each group and drop any
+ * group that is *nothing but* faithful mirrors. A mirror that has DRIFTED (different
+ * content from its canonical) is kept — a stale bridge is a genuine signal.
+ *
+ * `findDuplicates` deliberately keeps mirrors (the raw grouping is the source of
+ * truth for tests/other consumers); this filter is the presentation policy `scan`
+ * applies so the report shows only decisions the user actually has to make.
+ */
+export function genuineConflictGroups(groups: DuplicateGroup[]): DuplicateGroup[] {
+  const out: DuplicateGroup[] = [];
+  for (const g of groups) {
+    const duplicates = g.duplicates.filter((s) => !isFaithfulMirror(s, g.canonical));
+    const divergent = g.divergent.filter((s) => !isFaithfulMirror(s, g.canonical));
+    if (duplicates.length === 0 && divergent.length === 0) continue;
+    const hashes = new Set(
+      [g.canonical, ...duplicates, ...divergent].map((s) => s.contentHash),
+    );
+    out.push({ ...g, duplicates, divergent, identical: hashes.size === 1 });
+  }
+  return out;
+}

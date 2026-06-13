@@ -14,13 +14,13 @@
 //   --add-root <path>   persist a scan root into config.json, then report roots
 //   --json              emit a structured object instead of the human report
 
-import { sep } from "node:path";
 import type { Ctx, Skill, DuplicateGroup } from "../types.ts";
 import { crawl } from "../core/crawl.ts";
 import {
   findDuplicates,
   driftedGroups,
   exactDuplicateGroups,
+  genuineConflictGroups,
 } from "../core/dedupe.ts";
 import { realpathOrSelf } from "../lib/fs.ts";
 
@@ -59,20 +59,14 @@ function parseArgs(argv: string[]): { args: Args } | { error: string } {
   return { args };
 }
 
-/** True if a discovered skill dir lives under `root` (by realpath prefix). */
-function underRoot(skillPath: string, root: string): boolean {
-  const r = realpathOrSelf(root);
-  const p = realpathOrSelf(skillPath);
-  if (p === r) return true;
-  return p.startsWith(r.endsWith(sep) ? r : r + sep);
-}
-
-/** Attribute a discovered skill to the first matching scan root (else null). */
-function rootOf(skill: Skill, roots: string[]): string | null {
-  for (const root of roots) {
-    if (underRoot(skill.path, root)) return root;
-  }
-  return null;
+/**
+ * Attribute a discovered skill to the scan root it was crawled under. crawl records
+ * this at discovery time (`Skill.discoveredRoot`); we must NOT re-derive it via
+ * realpath, because a skill reached through a symlink resolves OUTSIDE its declared
+ * root and would be mis-attributed to no root (the per-root undercount bug).
+ */
+function rootOf(skill: Skill): string | null {
+  return skill.discoveredRoot ?? null;
 }
 
 interface CandidateView {
@@ -84,12 +78,12 @@ interface CandidateView {
   mirror: boolean;
 }
 
-function toCandidate(s: Skill, roots: string[]): CandidateView {
+function toCandidate(s: Skill): CandidateView {
   return {
     name: s.name,
     description: s.description,
     path: s.path,
-    root: rootOf(s, roots),
+    root: rootOf(s),
     retired: s.retired,
     mirror: s.mirrorOf != null,
   };
@@ -185,12 +179,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const perRoot = new Map<string, number>();
     for (const r of roots) perRoot.set(r, 0);
     for (const s of skills) {
-      const r = rootOf(s, roots);
+      const r = rootOf(s);
       if (r != null) perRoot.set(r, (perRoot.get(r) ?? 0) + 1);
     }
 
-    const candidates = skills.map((s) => toCandidate(s, roots));
-    const allGroups = findDuplicates(skills);
+    const candidates = skills.map((s) => toCandidate(s));
+    // Surface only genuine conflicts: faithful `.agents`/`.claude` bridge mirrors are
+    // a known, intended relationship, not a decision the user has to resolve.
+    const allGroups = genuineConflictGroups(findDuplicates(skills));
     const drifted = driftedGroups(allGroups);
     const exact = exactDuplicateGroups(allGroups);
     const reported = [...drifted, ...exact].sort((a, b) =>

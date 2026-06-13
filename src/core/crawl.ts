@@ -69,7 +69,12 @@ async function listRefFiles(skillDir: string, skillName: string): Promise<string
 
 async function buildSkill(
   skillDir: string,
-  opts: { retired: boolean; mirrorOf: string | null; primaryDomain: string | null },
+  opts: {
+    retired: boolean;
+    mirrorOf: string | null;
+    primaryDomain: string | null;
+    discoveredRoot: string | null;
+  },
 ): Promise<Skill | null> {
   const bodyPath = join(skillDir, SKILL_FILE);
   if (!existsSync(bodyPath)) return null;
@@ -104,6 +109,7 @@ async function buildSkill(
     retired: opts.retired,
     mirrorOf: opts.mirrorOf,
     contentHash: hashContent(body),
+    discoveredRoot: opts.discoveredRoot,
   };
 }
 
@@ -231,6 +237,7 @@ export async function crawl(
       retired: f.retired,
       mirrorOf,
       primaryDomain,
+      discoveredRoot: f.root,
     });
     if (skill) byReal.set(real, skill);
   }
