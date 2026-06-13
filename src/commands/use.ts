@@ -3,15 +3,15 @@
 // links without error. Reports what was linked (and is JSON-parseable on --json).
 
 import { join } from "node:path";
-import type { Ctx } from "../types.ts";
+import type { Ctx, Skill } from "../types.ts";
 import { resolveBundle } from "../core/bundle.ts";
-import { activeSkills } from "../core/library.ts";
+import { activeSkills, findByName } from "../core/library.ts";
 import { safeSymlink, isSymlink, realpathOrSelf, realpathOrSelfAsync } from "../lib/fs.ts";
 
 export const meta = {
   name: "use",
-  summary: "Symlink a bundle's skills into ./.claude/skills/ (hot-loads)",
-  usage: "skl use <bundle> [--json]",
+  summary: "Symlink a bundle (or a single skill) into ./.claude/skills/ (hot-loads)",
+  usage: "skl use <bundle|skill> [--json]",
 } as const;
 
 interface LinkResult {
@@ -37,17 +37,31 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     }
 
     const skills = await ctx.loadLibrary();
-    const bundle = await resolveBundle(activeSkills(skills), bundleName);
+    const active = activeSkills(skills);
 
-    if (bundle.skills.length === 0) {
+    // Resolve the arg as a SINGLE SKILL first (exact name), then fall back to a
+    // bundle (a domain tag query). This makes `skl use <skill>` a first-class
+    // single-skill deploy instead of erroring 'empty-bundle' and forcing a hand
+    // `ln -s` — the exact manual symlink skillshelf exists to eliminate.
+    let target: { name: string; kind: "skill" | "bundle"; skills: Skill[] };
+    const single = findByName(active, bundleName);
+    if (single) {
+      target = { name: single.name, kind: "skill", skills: [single] };
+    } else {
+      const bundle = await resolveBundle(active, bundleName);
+      target = { name: bundle.name, kind: "bundle", skills: bundle.skills };
+    }
+
+    if (target.skills.length === 0) {
       if (json) {
-        ctx.json({ bundle: bundleName, linked: [], skillsDir: projectSkillsDir(), error: "empty-bundle" });
+        ctx.json({ bundle: bundleName, kind: "bundle", linked: [], skillsDir: projectSkillsDir(), error: "empty-bundle" });
       } else {
-        ctx.error(`No active skills match bundle '${bundleName}'.`);
+        ctx.error(`No active skill or bundle matches '${bundleName}'.`);
       }
       return 1;
     }
 
+    const bundle = { name: target.name, skills: target.skills };
     const skillsDir = projectSkillsDir();
     const results: LinkResult[] = [];
 
@@ -74,9 +88,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const conflicts = results.filter((r) => r.status === "conflict");
 
     if (json) {
-      ctx.json({ bundle: bundle.name, skillsDir, linked: results });
+      ctx.json({ bundle: bundle.name, kind: target.kind, skillsDir, linked: results });
     } else {
-      ctx.log(`Bundle '${bundle.name}' -> ${skillsDir}`);
+      const label = target.kind === "skill" ? `Skill '${bundle.name}'` : `Bundle '${bundle.name}'`;
+      ctx.log(`${label} -> ${skillsDir}`);
       for (const r of results) {
         const tag =
           r.status === "linked" ? "linked" : r.status === "already" ? "ok" : "SKIP (real file present)";
