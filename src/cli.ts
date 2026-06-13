@@ -35,6 +35,9 @@ import * as where from "./commands/where.ts";
 import * as tag from "./commands/tag.ts";
 import * as untag from "./commands/untag.ts";
 import * as retag from "./commands/retag.ts";
+import * as rm from "./commands/rm.ts";
+import * as retire from "./commands/retire.ts";
+import * as unretire from "./commands/unretire.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -53,6 +56,9 @@ const MODULES: CommandModule[] = [
   tag,
   untag,
   retag,
+  retire,
+  unretire,
+  rm,
   outdated,
   update,
   init,
