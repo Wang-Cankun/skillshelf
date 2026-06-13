@@ -7,7 +7,15 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, bun ${{ matrix.bun }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cover both platforms skillshelf's symlink/realpath plumbing runs on,
+        # and pin the declared engines floor (1.0.0) alongside latest.
+        os: [ubuntu-latest, macos-latest]
+        bun: ["1.0.0", "latest"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,7 +23,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ matrix.bun }}
 
       - name: Install dependencies
         run: bun install

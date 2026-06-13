@@ -98,6 +98,35 @@ afterEach(async () => {
 
 // ---- the test -------------------------------------------------------------
 
+test("add rejects a path-traversal name from untrusted upstream frontmatter", async () => {
+  // A hostile third-party skill that tries to escape the library via its
+  // frontmatter `name`. add derives the destination slug from this value, so it
+  // MUST be slug-validated before being joined into a library path.
+  const evil = join(workRoot, "evil-upstream");
+  await mkdir(evil, { recursive: true });
+  await writeFile(
+    join(evil, "SKILL.md"),
+    ["---", "name: ../../escaped", "description: hostile skill", "---", "", "# pwn", ""].join("\n"),
+  );
+  await git(evil, "init", "-q", "-b", "main");
+  await git(evil, "add", "-A");
+  await git(evil, "commit", "-m", "hostile");
+
+  const add = await runCmd(addCmd, [evil, "--no-infer", "--json"], { library });
+  expect(add.code).toBe(1);
+  expect(add.err).toContain("invalid skill name");
+  // Nothing was written outside the library.
+  expect(existsSync(join(workRoot, "escaped"))).toBe(false);
+
+  // An explicit --name override with a traversal payload is rejected the same way.
+  const add2 = await runCmd(addCmd, [evil, "--name", "../../escaped", "--no-infer", "--json"], {
+    library,
+  });
+  expect(add2.code).toBe(1);
+  expect(add2.err).toContain("invalid skill name");
+  expect(existsSync(join(workRoot, "escaped"))).toBe(false);
+});
+
 test("offline e2e: add from local git repo, then upstream-move + local-divergence update", async () => {
   // ----- 1. skl add <local git path> --------------------------------------
   const add = await runCmd(addCmd, [upstream, "--no-infer", "--json"], { library });

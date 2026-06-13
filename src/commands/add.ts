@@ -42,6 +42,12 @@ interface Flags {
   src: string | null;
 }
 
+// A skill slug is lowercase letters/digits/hyphens. This is also a SECURITY
+// guard: `name` may be derived from an untrusted third-party SKILL.md frontmatter
+// and `domain` from a flag, and both are joined into a library path. Rejecting
+// anything outside this charset stops `..`/`/` path traversal out of the library.
+const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
+
 function parseFlags(argv: string[]): Flags {
   const f: Flags = { json: false, domain: null, name: null, infer: true, force: false, src: null };
   for (let i = 0; i < argv.length; i++) {
@@ -77,27 +83,37 @@ async function deriveName(skillDir: string, override: string | null): Promise<st
  * `tagSkill(skill) => string[]`. The specifier is built at runtime so a missing
  * module degrades gracefully instead of becoming a static import error.
  *
- * On any failure the skill stays untagged (empty overlay) — a valid state.
- * Returns the domains written, if any.
+ * A MISSING hook module is expected and stays silent (untagged is valid). But a
+ * hook that IS present and THROWS is a real failure — we surface it via `warn`
+ * rather than swallowing it, so a bug in an installed tagging hook isn't
+ * indistinguishable from "no hook installed". Either way the skill stays
+ * untagged (empty overlay). Returns the domains written, if any.
  */
-async function maybeInferTags(skill: Skill): Promise<string[] | null> {
+async function maybeInferTags(
+  skill: Skill,
+  warn?: (msg: string) => void,
+): Promise<string[] | null> {
   const candidates = ["../core/infer.ts", "../adapters/inference/tag.ts"];
   for (const rel of candidates) {
+    // Non-literal specifier + .catch: a missing optional module degrades to
+    // "untagged" at runtime instead of becoming a static resolution error.
+    const spec: string = rel;
+    const mod: unknown = await import(spec).catch(() => null);
+    if (!mod || typeof mod !== "object") continue;
+    const hook = (mod as Record<string, unknown>).tagSkill;
+    if (typeof hook !== "function") continue;
+    // The hook EXISTS: from here, errors are real and must be surfaced.
     try {
-      // Non-literal specifier: keeps a missing optional module from becoming a
-      // static import/resolution error; degrades to "untagged" at runtime.
-      const spec: string = rel;
-      const mod: unknown = await import(spec).catch(() => null);
-      if (!mod || typeof mod !== "object") continue;
-      const hook = (mod as Record<string, unknown>).tagSkill;
-      if (typeof hook !== "function") continue;
       const result = await (hook as (s: Skill) => Promise<string[] | null>)(skill);
       if (Array.isArray(result)) {
         return result.filter((d) => typeof d === "string" && d.trim() !== "");
       }
       return null;
-    } catch {
-      /* try next candidate / leave untagged */
+    } catch (err) {
+      warn?.(
+        `add: inference hook ${rel} failed (skill left untagged): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
     }
   }
   return null;
@@ -123,7 +139,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     // 3. Determine destination in the library.
     const name = await deriveName(fetched.skillDir, flags.name);
+    if (!SLUG_RE.test(name)) {
+      ctx.error(
+        `add: invalid skill name "${name}" — use lowercase letters, digits, and hyphens (override with --name <slug>)`,
+      );
+      return 1;
+    }
     const domainFolder = flags.domain && flags.domain.trim() !== "" ? flags.domain.trim() : null;
+    if (domainFolder !== null && !SLUG_RE.test(domainFolder)) {
+      ctx.error(
+        `add: invalid --domain "${domainFolder}" — use lowercase letters, digits, and hyphens`,
+      );
+      return 1;
+    }
     const destDir = domainFolder
       ? join(ctx.config.libraryPath, domainFolder, name)
       : join(ctx.config.libraryPath, name);
@@ -183,7 +211,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // 6. Inference tagging hook (best-effort, leaves untagged if unavailable).
     let inferredDomains: string[] | null = null;
     if (flags.infer) {
-      inferredDomains = await maybeInferTags(installed);
+      inferredDomains = await maybeInferTags(installed, (m) => ctx.error(m));
       if (inferredDomains && inferredDomains.length > 0) {
         await writeOverlay(installed, { domains: inferredDomains });
       }

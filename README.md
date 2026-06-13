@@ -22,6 +22,11 @@ actually use.
 
 skillshelf runs on [Bun](https://bun.sh) (>= 1.0). No other runtime dependencies.
 
+> **Bun is required, not optional.** The `skl` bin is a TypeScript entrypoint with a
+> `#!/usr/bin/env bun` shebang — there is no compiled Node build. `npm i -g skillshelf`
+> will *not* give you a working `skl` (a `preinstall` guard aborts with a pointer to Bun);
+> use `bunx` or `bun add -g` instead.
+
 ```bash
 # Run it without installing
 bunx skillshelf <command>
