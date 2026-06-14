@@ -60,6 +60,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `skipped (linked)`; `skl outdated --check-local` checks local divergence offline.
 
 ### Security
+- **Repo-wide `add` hardening (adversarial review)** ([ADR-0006](./docs/adr/0006-repo-wide-add.md)).
+  A multi-agent review of the repo-wide `add` diff (independent security / correctness / regression /
+  discovery lenses, each finding adversarially verified) caught and fixed defects where discovery
+  walks an untrusted cloned repo:
+  - **Escaping symlinks** can no longer leak out-of-checkout content into the library: `discoverSkills`
+    won't follow / surface a dir whose realpath escapes the checkout, and `copySkillDir` drops any
+    symlink whose target escapes the source dir (was an arbitrary-file-read / exfiltration vector —
+    `skills/x -> /etc`, `notes.txt -> ~/.ssh/id_rsa`).
+  - **Subpath traversal** (`owner/repo/../../x`) is rejected (containment-checked).
+  - **Clobber through a symlinked ancestor**: the leaf-only link guard is replaced by a
+    nearest-ancestor realpath-containment check (`destEscapesLibrary`), so `--force` with a symlinked
+    `--domain` folder can't write through into an external tree; single-skill add refuses a linked
+    leaf even with `--force`.
+  - **Name-collision clobber**: two upstream skills sharing a frontmatter `name` are no longer
+    silently merged (last-write-wins) — the duplicate is skipped, so N-installed == N-on-disk.
+  - **Symlink-cycle** (`self -> .`) no longer duplicates skills or records a phantom lockfile subpath
+    (dedup keys by realpath; subpath derives from the realpath).
 - **Path-traversal hardening**: name-keyed mutations (`rm`/`retire`/`unretire`/`rename`) validate the
   `<name>` at the `locateEntry` choke point (`assertSafeName` rejects path separators / `..` / NUL),
   so a crafted or agent-supplied name can no longer escape the library to delete/move outside it.
