@@ -1,7 +1,7 @@
 # 8. Align the built UI with the Workbench design (visual port, multi-agent, drawer)
 
-Date: 2026-06-14 (rev. 2 — updated to the remade design with the Detail Drawer + multi-agent;
-section-by-section fidelity-audited against `Workbench.dc.html` and reconciled)
+Date: 2026-06-14 (rev. 3 — view layer switches **Svelte 5 → React 19** (see §0); rev. 2
+fidelity-audited the design against `Workbench.dc.html` and added the Drawer + multi-agent)
 
 ## Status
 
@@ -36,6 +36,29 @@ opt-in deferred suggestion (ADR-0007): the drawer's **Explanation tab is "coming
 slim Inspector's "near-duplicate" block is **deferred/omitted** for v1 (it's the one AI-as-fact
 remnant; do not render an LLM judgment as fact).
 
+### 0. Stack — view layer moves to React (rev. 3)
+
+Since rev. 2 is a near-total UI rebuild anyway, the sunk cost of staying on Svelte is ~nil, so we
+pick the framework with the most forward leverage for **how this app is actually built**:
+**React 19 + Vite + plain CSS** (no Tailwind, no shadcn).
+
+- **Why React** — agents generate React + plain CSS more reliably than Svelte 5 runes (this app is
+  built largely by agents), and the React ecosystem / skills-manage adjacency is deeper. This is the
+  real driver — **not** "1:1 code reuse" (the mockup is a bespoke `DCLogic` DSL, not React, and
+  ports to either framework with equal effort) and **not** shadcn polish (the mockup is hand-rolled
+  and uses zero shadcn).
+- **Why plain CSS (not Tailwind/shadcn)** — the design is hand-rolled inline tokens + keyframes;
+  lifting them verbatim into CSS keeps the build **maximally faithful to `Workbench.dc.html` and
+  dependency-light**, matching the function-first/transparent identity. Drop `@tailwindcss/vite`
+  and the svelte plugin; no UI-component dependency.
+- **What this does NOT touch** — `skl.ts`, `types.ts`, `fixtures.ts`, and all of `src-tauri/**`
+  are framework-agnostic and carry over **untouched** (§1). Only `App.svelte` + the components are
+  rebuilt — which rev. 2 was already rebuilding.
+- **One real cost (do not wave off)** — the dispatch/error contract (§1) is *security-sensitive*
+  logic (the `ALLOWED_VERBS` sync that regressed once, path-traversal + rm-guard, `res.ok`/`stderr`
+  surfacing). Re-implement it in React **deliberately and re-run the same review pass** — don't
+  treat the port as free.
+
 ### 1. Preserve (DO NOT rewrite — passed review + verification)
 
 - `app/src/lib/skl.ts` — bridge (`IS_TAURI`, `invokeJson` guarded parse + non-zero throw,
@@ -45,9 +68,12 @@ remnant; do not render an LLM judgment as fact).
 - `app/src-tauri/**` — Rust shell: absolute-`skl`-path resolution (Finder launch), subcommand
   **allowlist** (`ALLOWED_VERBS` — keep covering every dispatched verb; **add `agents`, `show`,
   `diff`** as they get used), `SklResult`, CSP.
-- The **dispatch + error contract** in `App.svelte`: `dispatch(args,onOk)` checks `res.ok`,
-  surfaces `res.stderr`, reloads only on success; `loadAll` uses `Promise.allSettled`; bulk tag
-  needs a domain; valid verbs only.
+- The **dispatch + error contract** currently in `App.svelte` — **the behaviour, not the file**:
+  `dispatch(args,onOk)` checks `res.ok`, surfaces `res.stderr`, reloads only on success; `loadAll`
+  uses `Promise.allSettled`; bulk tag needs a domain; valid verbs only. Re-implement verbatim in the
+  React root (it's security-sensitive — §0) and re-review.
+- `app/src/lib/skl.ts` / `types.ts` / `fixtures.ts` are **framework-agnostic** — they're plain TS,
+  so React imports them unchanged (no Svelte store/`.svelte` coupling to unwind).
 
 ### 2. Design tokens (from the mockup `<style>` — use everywhere)
 
@@ -59,8 +85,9 @@ remnant; do not render an LLM judgment as fact).
   browser `#65A30D`, media `#9333EA`, `_unclassified` `#C7C7CC`
 - type: `system-ui` sans (chrome) + `ui-monospace,'SF Mono',Menlo` (paths/commands/names/counts).
   radii 6–14px, 1px borders. Markdown body styles + `livepulse`/`drawerIn`/`scrimIn`/`toastIn`
-  keyframes: copy from the mockup. Rendered markdown uses a Svelte markdown lib (`marked` + GFM +
-  sanitize); strip frontmatter before render.
+  keyframes: copy from the mockup verbatim into plain CSS (no Tailwind). Rendered markdown uses
+  `marked` + GFM + `DOMPurify` sanitize (or `react-markdown` + `remark-gfm` + `rehype-sanitize`);
+  strip frontmatter before render.
 
 ### 3. Layout shell
 
@@ -123,8 +150,8 @@ this ADR specifies structure + behavior, not each token.)*
   buckets fall back to `_unclassified`). Row: checkbox (bulk) + name (mono, **click → open
   drawer**) + domains + source chip + modified (mono) + deploys (mono) + description. Multi-select
   → dark sticky **bulk bar**: a `▸ {n} selected` summary + **Tag** (needs a domain) + **Retire**
-  only (drop Export/Update for v1, or wire only if valid) + an `⌫ clear`. Bulk echo = `$derived`
-  of the real verb + full names.
+  only (drop Export/Update for v1, or wire only if valid) + an `⌫ clear`. Bulk echo = a derived
+  value (`useMemo`) of the real verb + full names.
 
 ### 5. Detail Drawer ⭐ (the centerpiece — `feature-scope-v2.md §7.1`)
 
@@ -222,9 +249,13 @@ animation, **Esc closes**. Three columns:
 
 ## Build, run, verify
 
+First re-point the toolchain: swap `@sveltejs/vite-plugin-svelte` + `@tsconfig/svelte` + `svelte`
++ `@tailwindcss/vite` for `@vitejs/plugin-react` + `react`/`react-dom` (+ types); `check` becomes
+`tsc --noEmit` (not `svelte-check`). Then:
+
 ```bash
 cd /Users/wang.13246/Documents/GitHub/skillshelf-ui/app
-bun install && bun run check        # svelte-check 0/0
+bun install && bun run check        # tsc --noEmit → 0 errors
 bun run build                       # vite green
 source "$HOME/.cargo/env" && ( cd src-tauri && cargo check )   # clean
 bunx --bun @tauri-apps/cli build --debug --bundles app         # skillshelf.app (no dmg)
@@ -242,7 +273,8 @@ Dev (real fixtures, no Rust): `bun run dev`. Live desktop (real `skl`): `bun run
 - **Detail works:** drawer opens from any skill name; Rendered/Raw load real body + ref files.
 - **Library:** sort (Modified default) + group + Modified/Deploys columns from real data.
 - **Function-first/ADR-0007 honored:** valid verbs, errors surfaced, undo, no AI-as-fact.
-- **Toolchain:** `bun run check` 0/0, `bun run build` green, `cargo check` clean, `tauri build`
+- **Toolchain:** `bun run check` (`tsc --noEmit`) 0 errors, `bun run build` green, `cargo check`
+  clean, `tauri build`
   produces a launchable app that finds `skl` from Finder.
 
 ## Consequences

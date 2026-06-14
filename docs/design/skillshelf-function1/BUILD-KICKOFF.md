@@ -8,10 +8,15 @@
 
 ## Mission
 
-Rebuild the **presentation layer** of the Tauri + Svelte skill manager so it faithfully
-reproduces the approved design mockup, wired to **real deterministic `skl --json` data**, and
-finally **reads as multi-agent**. Preserve every hardened bridge/Rust behaviour from the prior
+Rebuild the **presentation layer** of the Tauri skill manager in **React 19 + Vite + plain CSS**
+(see ADR-0008 §0 — the view layer is migrating off Svelte; **no Tailwind, no shadcn**), so it
+faithfully reproduces the approved design mockup, wired to **real deterministic `skl --json` data**,
+and finally **reads as multi-agent**. Preserve every hardened bridge/Rust behaviour from the prior
 review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never rendered as fact.
+
+**First, re-point the toolchain:** swap `@sveltejs/vite-plugin-svelte` + `@tsconfig/svelte` +
+`svelte` + `@tailwindcss/vite` for `@vitejs/plugin-react` + `react`/`react-dom` (+ `@types/*`);
+`bun run check` becomes `tsc --noEmit`. `src-tauri/**` + `src/lib/*.ts` are untouched.
 
 ## Read these first (in order, in full)
 
@@ -34,15 +39,20 @@ review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never ren
   **allowlist** `ALLOWED_VERBS`, `SklResult`, CSP. ⚠ **Add `agents`, `show`, `diff` to
   `ALLOWED_VERBS`** before dispatching them — a missing verb fails silently at the bridge (this
   exact regression bit us once).
-- The dispatch + error contract in `App.svelte`: `dispatch(args,onOk)` checks `res.ok`, surfaces
-  `res.stderr`, reloads only on success; `loadAll` uses `Promise.allSettled`; valid verbs only.
+- `app/src/lib/{skl,types,fixtures}.ts` are **plain framework-agnostic TS** — React imports them
+  unchanged.
+- The dispatch + error **contract** (currently in `App.svelte`) — preserve the *behaviour*,
+  re-implement in the React root: `dispatch(args,onOk)` checks `res.ok`, surfaces `res.stderr`,
+  reloads only on success; `loadAll` uses `Promise.allSettled`; valid verbs only. ⚠ It's
+  security-sensitive — port deliberately and **re-run the review pass** (don't treat it as free).
 
 ## Build order (P1 — ship this)
 
 1. **Tokens + shell.** Lift the `<style>` design tokens (surfaces/borders/text/status/12 domain
-   hues, radii, fonts, the `livepulse/drawerIn/scrimIn/toastIn` keyframes) into the Svelte app.
-   Layout: top bar (46px) · three panes · health strip (30px). Rendered markdown via `marked` +
-   GFM + sanitize, frontmatter stripped.
+   hues, radii, fonts, the `livepulse/drawerIn/scrimIn/toastIn` keyframes) **verbatim into plain
+   CSS** (no Tailwind). Layout: top bar (46px) · three panes · health strip (30px). Rendered
+   markdown via `marked` + GFM + `DOMPurify` (or `react-markdown` + `remark-gfm` +
+   `rehype-sanitize`), frontmatter stripped.
 2. **Sidebar (234px).** SMART VIEWS (5 rows: ⚠ Needs attention·6 → Inbox; ◆ Vendored·21 /
    ● Local·92 / 🏷 Untagged·1 → Library+filter; ◇ All·113 → Library, clears filter) / BY DOMAIN·12
    (hue dot + count + bar normalized to max domain) / PROVENANCE + pinned card `◆ dbskill @a58f647`.
@@ -51,7 +61,7 @@ review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never ren
 3. **Tabs + Library.** Columns `☐·SKILL·DOMAINS·SOURCE·MODIFIED·DEPLOYS·DESCRIPTION`; SORT pills
    (`Modified·Name·Domain·Deploys` + dir toggle, default **Modified ↓**); VIEW pills
    (`List·By domain·By family`); multi-select → dark bulk bar (**Tag** needs a domain + **Retire**;
-   drop Export/Update for v1 unless the verb is real). Echo = `$derived` of the real verb.
+   drop Export/Update for v1 unless the verb is real). Echo = a `useMemo`-derived value of the real verb.
 4. **Inbox.** Deterministic triage from real signals (UNTAGGED/STUB/**THIN TAGS**/TRACKED/FAMILY
    from the sample; DRIFT/DEAD/UNTRACKED/2ND-SOURCE from the real `where --problems` feed).
    **Intentionally omit the NEAR-DUP row** (LLM ≈-judgment = AI-as-fact; the mockup renders it but
@@ -101,7 +111,7 @@ review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never ren
 
 ```bash
 cd app
-bun install && bun run check        # svelte-check 0/0
+bun install && bun run check        # tsc --noEmit → 0 errors
 bun run build                       # vite green
 source "$HOME/.cargo/env" && ( cd src-tauri && cargo check )   # clean
 bunx --bun @tauri-apps/cli build --debug --bundles app         # launchable skillshelf.app
