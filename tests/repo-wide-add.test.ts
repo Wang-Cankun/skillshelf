@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import * as addCmd from "../src/commands/add.ts";
-import { discoverSkills } from "../src/core/fetch.ts";
+import { discoverSkills, copySkillDir } from "../src/core/fetch.ts";
 import { readLockfile } from "../src/core/provenance.ts";
 import { runCmd } from "./helpers.ts";
 
@@ -336,5 +336,206 @@ describe("skl add — repo-wide (offline git: channel)", () => {
     expect(alphaRow.reason).toContain("linked");
     // The dev repo body was NOT clobbered through the symlink.
     expect(await readFile(join(devRepo, "SKILL.md"), "utf8")).toContain("DEV REPO BODY");
+  });
+});
+
+// ===========================================================================
+// Adversarial-review hardening regressions (ADR-0006) — one test per confirmed
+// finding from the multi-agent security/correctness review.
+// ===========================================================================
+
+describe("discoverSkills — review hardening (security/robustness)", () => {
+  let root: string;
+  let ext: string;
+  beforeEach(async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), "skl-hard-")));
+    ext = await realpath(await mkdtemp(join(tmpdir(), "skl-ext-")));
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+    await rm(ext, { recursive: true, force: true });
+  });
+
+  test("does NOT follow a directory symlink that escapes the checkout", async () => {
+    await writeSkill(join(root, "skills", "good"), "good", "Good skill");
+    // hostile: skills/evil -> an external dir containing a SKILL.md (outside the checkout)
+    await writeSkill(ext, "evilname", "Hostile external skill");
+    await symlink(ext, join(root, "skills", "evil"));
+    const found = await discoverSkills(root);
+    // Only the in-checkout skill is discovered; the escaping symlink is ignored.
+    expect(found.map((d) => d.name)).toEqual(["good"]);
+  });
+
+  test("rejects a subpath that climbs out of the checkout (..)", async () => {
+    await writeSkill(join(root, "skills", "alpha"), "alpha", "Alpha skill");
+    expect(await discoverSkills(root, "..")).toEqual([]);
+    expect(await discoverSkills(root, "../../etc")).toEqual([]);
+    expect(await discoverSkills(root, "skills/../..")).toEqual([]);
+  });
+
+  test("symlink cycle (self -> .) does not duplicate or record a phantom subpath", async () => {
+    await writeSkill(join(root, "pkg", "x"), "realz", "Realz skill"); // nested → recursive fallback
+    await symlink(".", join(root, "self")); // a cycle back to the root
+    const found = await discoverSkills(root);
+    expect(found.map((d) => d.name)).toEqual(["realz"]); // exactly once, not via self/pkg/x too
+    expect(found[0]!.subpath).toBe("pkg/x"); // canonical committed path, not "self/pkg/x"
+  });
+
+  test("repo-root catalog scan does not sweep examples/ or templates/ into discovery", async () => {
+    await writeSkill(join(root, "skills", "real"), "real", "Real skill");
+    await writeSkill(join(root, "examples", "sample"), "sample", "Sample (example, not a skill)");
+    await writeSkill(join(root, "templates", "starter"), "starter", "Starter (template, not a skill)");
+    const found = await discoverSkills(root);
+    expect(found.map((d) => d.name)).toEqual(["real"]);
+  });
+});
+
+describe("copySkillDir — escaping-symlink containment", () => {
+  let work: string;
+  beforeEach(async () => {
+    work = await realpath(await mkdtemp(join(tmpdir(), "skl-copy-")));
+  });
+  afterEach(async () => {
+    await rm(work, { recursive: true, force: true });
+  });
+
+  test("drops a file symlink whose target escapes the source dir (no secret leak)", async () => {
+    const secret = join(work, "secret.txt");
+    await writeFile(secret, "TOP SECRET");
+    const src = join(work, "src", "legit");
+    await writeSkill(src, "legit", "Legit skill");
+    await symlink(secret, join(src, "notes.txt")); // escaping symlink inside the skill
+    // an internal (contained) symlink should still be copied
+    await writeFile(join(src, "real.md"), "real content");
+    await symlink(join(src, "real.md"), join(src, "alias.md"));
+
+    const dest = join(work, "dest", "legit");
+    await copySkillDir(src, dest);
+    expect(existsSync(join(dest, "SKILL.md"))).toBe(true);
+    expect(existsSync(join(dest, "notes.txt"))).toBe(false); // escaping symlink dropped
+    expect(existsSync(join(dest, "alias.md"))).toBe(true); // contained symlink kept
+  });
+});
+
+describe("skl add — review hardening (correctness/conformance)", () => {
+  let work: string;
+  let repo: string;
+  let library: string;
+  let home: string;
+  let gitSrc: string;
+
+  beforeEach(async () => {
+    work = await realpath(await mkdtemp(join(tmpdir(), "skl-hard2-")));
+    repo = join(work, "repo");
+    library = join(work, "library");
+    home = join(work, "home");
+    await mkdir(library, { recursive: true });
+    await mkdir(home, { recursive: true });
+    await writeSkill(join(repo, "skills", "alpha"), "alpha", "Alpha skill", "ALPHA v1");
+    await writeSkill(join(repo, "skills", "bravo"), "bravo", "Bravo skill", "BRAVO v1");
+    await initRepo(repo);
+    gitSrc = `git:${repo}`;
+  });
+  afterEach(async () => {
+    await rm(work, { recursive: true, force: true });
+  });
+  const env = (): NodeJS.ProcessEnv => ({ HOME: home, SKILLSHELF_CONFIG: join(home, "config.json") });
+
+  test("two upstream skills with the same frontmatter name don't silently clobber", async () => {
+    const dup = join(work, "duprepo");
+    await writeSkill(join(dup, "skills", "one"), "samename", "Dup one", "ONE BODY");
+    await writeSkill(join(dup, "skills", "two"), "samename", "Dup two", "TWO BODY");
+    await initRepo(dup);
+
+    const r = await runCmd(addCmd, [`git:${dup}`, "--all", "--force", "--no-infer", "--json"], { library, env: env() });
+    expect(r.code).toBe(0);
+    const out = r.json[0] as { counts: { installed: number }; results: { name: string; status: string; verdict: string }[] };
+    expect(out.counts.installed).toBe(1); // not 2 — the collision is not double-counted
+    const dupRow = out.results.find((x) => x.status === "skipped" && x.verdict === "duplicate")!;
+    expect(dupRow).toBeDefined();
+    // exactly one lockfile entry + one on-disk dir survive (first by subpath: skills/one)
+    const lock = await readLockfile(library);
+    expect(Object.keys(lock.entries)).toEqual(["samename"]);
+    expect(await readFile(join(library, "samename", "SKILL.md"), "utf8")).toContain("ONE BODY");
+  });
+
+  test("single-skill repo whose SKILL.md omits a description still installs (no regression)", async () => {
+    const sparse = join(work, "sparserepo");
+    await mkdir(join(sparse, "skills", "only"), { recursive: true });
+    await writeFile(join(sparse, "skills", "only", "SKILL.md"), "---\nname: only\n---\n\n# only\n\nbody\n");
+    await initRepo(sparse);
+
+    const r = await runCmd(addCmd, [`git:${sparse}`, "--no-infer", "--json"], { library, env: env() });
+    expect(r.code).toBe(0);
+    expect((r.json[0] as { name: string }).name).toBe("only");
+    expect(existsSync(join(library, "only", "SKILL.md"))).toBe(true);
+  });
+
+  test("--force does not clobber an external tree through a symlinked --domain folder", async () => {
+    const extTree = await realpath(await mkdtemp(join(tmpdir(), "skl-domext-")));
+    try {
+      await writeSkill(join(extTree, "alpha"), "alpha", "Alpha dev", "EXTERNAL DEV BODY");
+      await symlink(extTree, join(library, "tools")); // symlinked DOMAIN folder → external tree
+
+      const r = await runCmd(addCmd, [gitSrc, "--all", "--domain", "tools", "--force", "--no-infer", "--json"], { library, env: env() });
+      expect(r.code).toBe(0);
+      const out = r.json[0] as { results: { name: string; status: string; reason: string }[] };
+      const alphaRow = out.results.find((x) => x.name === "alpha")!;
+      expect(alphaRow.status).toBe("skipped");
+      expect(alphaRow.reason).toContain("outside the library");
+      // The external dev tree was NOT written through the symlinked parent.
+      expect(await readFile(join(extTree, "alpha", "SKILL.md"), "utf8")).toContain("EXTERNAL DEV BODY");
+      expect(existsSync(join(extTree, "bravo"))).toBe(false);
+    } finally {
+      await rm(extTree, { recursive: true, force: true });
+    }
+  });
+
+  test("single-skill add refuses to write through a LINKED leaf even with --force", async () => {
+    await runCmd(addCmd, [gitSrc, "--skill", "alpha", "--no-infer", "--json"], { library, env: env() });
+    const dev = join(work, "dev-alpha");
+    await writeSkill(dev, "alpha", "Alpha dev", "DEV BODY");
+    await rm(join(library, "alpha"), { recursive: true, force: true });
+    await symlink(dev, join(library, "alpha"));
+
+    const r = await runCmd(addCmd, [`git:${repo}#skills/alpha`, "--force", "--no-infer", "--json"], { library, env: env() });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("symlink");
+    expect(await readFile(join(dev, "SKILL.md"), "utf8")).toContain("DEV BODY"); // dev repo intact
+  });
+
+  test("--all drops an escaping file symlink inside a skill (no secret leak via clone)", async () => {
+    const secretDir = await realpath(await mkdtemp(join(tmpdir(), "skl-secret-")));
+    try {
+      await writeFile(join(secretDir, "secret.txt"), "TOP SECRET KEY MATERIAL");
+      const leak = join(work, "leakrepo");
+      await writeSkill(join(leak, "skills", "legit"), "legit", "Legit skill");
+      await symlink(join(secretDir, "secret.txt"), join(leak, "skills", "legit", "notes.txt"));
+      await initRepo(leak);
+
+      const r = await runCmd(addCmd, [`git:${leak}`, "--all", "--no-infer", "--json"], { library, env: env() });
+      expect(r.code).toBe(0);
+      expect(existsSync(join(library, "legit", "SKILL.md"))).toBe(true);
+      // the escaping symlink was NOT copied into the library
+      expect(existsSync(join(library, "legit", "notes.txt"))).toBe(false);
+    } finally {
+      await rm(secretDir, { recursive: true, force: true });
+    }
+  });
+
+  test("installs into a not-yet-created library (fresh add — no false symlink-escape)", async () => {
+    const fresh = join(work, "fresh-lib"); // deliberately NOT pre-created
+    const r = await runCmd(addCmd, [`git:${repo}#skills/alpha`, "--no-infer", "--json"], { library: fresh, env: env() });
+    expect(r.code).toBe(0);
+    expect(existsSync(join(fresh, "alpha", "SKILL.md"))).toBe(true);
+  });
+
+  test("--list / --dry-run on a bare registry name are rejected (not a hidden fetch)", async () => {
+    const list = await runCmd(addCmd, ["some-bare-registry-name", "--list", "--json"], { library, env: env() });
+    expect(list.code).toBe(1);
+    expect(list.err).toContain("github:/git: repo sources");
+    const dry = await runCmd(addCmd, ["some-bare-registry-name", "--dry-run", "--json"], { library, env: env() });
+    expect(dry.code).toBe(1);
+    expect(dry.err).toContain("github:/git: repo sources");
   });
 });

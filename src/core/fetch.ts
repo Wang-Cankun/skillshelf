@@ -11,9 +11,9 @@
 import { join, basename, isAbsolute, resolve, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { existsSync, type Dirent } from "node:fs";
+import { existsSync, lstatSync, realpathSync, type Dirent } from "node:fs";
 import { mkdtemp, rm, readdir, cp } from "node:fs/promises";
-import { isDirectory } from "../lib/fs.ts";
+import { isDirectory, realpathOrSelf } from "../lib/fs.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 
 export type Channel = "github" | "vercel-registry" | "git";
@@ -217,8 +217,24 @@ function isSkillDir(dir: string): boolean {
   return existsSync(join(dir, "SKILL.md"));
 }
 
-/** Immediate sub-DIRECTORIES of `dir` (incl. symlinked dirs), minus skip/hidden. */
-async function childDirs(dir: string): Promise<string[]> {
+/** True if `childReal` is the root realpath or nested beneath it. */
+function containedUnder(childReal: string, rootReal: string): boolean {
+  return childReal === rootReal || childReal.startsWith(rootReal + sep);
+}
+
+/** True if a subpath tries to climb out of the checkout (`..` segment). */
+function subpathClimbs(cleanSub: string): boolean {
+  return cleanSub.split("/").includes("..");
+}
+
+/**
+ * Immediate sub-DIRECTORIES of `dir` (incl. symlinked dirs), minus skip/hidden — and
+ * minus any symlinked dir whose realpath ESCAPES `rootReal`. Following an escaping
+ * symlink would let a cloned repo's `skills/x -> /etc` pull the host filesystem into
+ * discovery (and copy it into the library); containment keeps the walk inside the
+ * checkout (security).
+ */
+async function childDirs(dir: string, rootReal: string): Promise<string[]> {
   let entries: Dirent[] = [];
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -230,7 +246,12 @@ async function childDirs(dir: string): Promise<string[]> {
     if (DISCOVERY_SKIP.has(e.name)) continue;
     if (e.name.startsWith(".") && !DISCOVERY_ALLOW_DOT.has(e.name)) continue;
     const full = join(dir, e.name);
-    if (e.isDirectory() || (e.isSymbolicLink() && (await isDirectory(full)))) out.push(full);
+    if (e.isDirectory()) {
+      out.push(full);
+    } else if (e.isSymbolicLink() && (await isDirectory(full))) {
+      // Only follow a symlinked dir whose target stays inside the checkout.
+      if (containedUnder(realpathOrSelf(full), rootReal)) out.push(full);
+    }
   }
   return out;
 }
@@ -238,9 +259,14 @@ async function childDirs(dir: string): Promise<string[]> {
 /** Build a DiscoveredSkill from a dir, applying the name+description validity gate. */
 async function buildDiscovered(
   dir: string,
-  root: string,
+  rootReal: string,
   opts: { requireValid: boolean },
 ): Promise<DiscoveredSkill | null> {
+  // Containment: never surface a skill dir whose realpath escapes the checkout (an
+  // escaping symlink target), so its content can't be copied into the library and its
+  // lockfile subpath can't become a phantom path.
+  const dirReal = realpathOrSelf(dir);
+  if (!containedUnder(dirReal, rootReal)) return null;
   const md = join(dir, "SKILL.md");
   if (!existsSync(md)) return null;
   let raw: string;
@@ -255,10 +281,13 @@ async function buildDiscovered(
   // A DISCOVERED (walked) skill must declare BOTH name and description — the
   // convention gate that keeps template/example SKILL.md stubs out of `--all`
   // (ADR-0006 §3). An EXPLICIT subpath pointer is exempt (requireValid:false): the
-  // user named it, so a sparse SKILL.md still installs (today's single-skill path).
+  // user named it, so a sparse SKILL.md still installs. (The single-skill resolution
+  // path — locateSkillDir — also tolerates a sparse SKILL.md via locateSingleLenient.)
   if (opts.requireValid && (fmName === "" || description === "")) return null;
-  const name = fmName !== "" ? fmName : basename(dir);
-  const rel = relative(root, dir);
+  const name = fmName !== "" ? fmName : basename(dirReal);
+  // Subpath is computed from the REALPATH (relative to the checkout realpath), so an
+  // aliased / symlink-cycle path like `self/x` records the canonical committed `x`.
+  const rel = relative(rootReal, dirReal);
   const subpath = rel === "" ? "" : rel.split(sep).join("/");
   return { name, dir, subpath, description };
 }
@@ -266,17 +295,21 @@ async function buildDiscovered(
 /** Bounded recursive fallback: collect every valid skill dir under `start`. */
 async function recurseDiscover(
   dir: string,
-  root: string,
+  rootReal: string,
   depth: number,
   add: (d: DiscoveredSkill | null) => void,
+  seen: Set<string>,
 ): Promise<void> {
   if (depth > DISCOVERY_MAX_DEPTH) return;
+  const real = realpathOrSelf(dir);
+  if (seen.has(real)) return; // break symlink cycles (self -> ., parent loops)
+  seen.add(real);
   if (isSkillDir(dir)) {
-    add(await buildDiscovered(dir, root, { requireValid: true }));
+    add(await buildDiscovered(dir, rootReal, { requireValid: true }));
     return; // a skill dir is a leaf — never descend into its reference subtree
   }
-  for (const child of await childDirs(dir)) {
-    await recurseDiscover(child, root, depth + 1, add);
+  for (const child of await childDirs(dir, rootReal)) {
+    await recurseDiscover(child, rootReal, depth + 1, add, seen);
   }
 }
 
@@ -289,71 +322,140 @@ async function recurseDiscover(
  *   - an explicit `subpath` that directly names a skill dir → that one dir (lenient,
  *     no validity gate — preserves `skl add owner/repo/path/to/skill`).
  *   - else scan conventional CONTAINER dirs (repo root, `skills/`, and its
- *     `.curated`/`.experimental`/`.system` subdirs) for flat `<name>/SKILL.md` and
- *     catalog `<cat>/<name>/SKILL.md` layouts.
+ *     `.curated`/`.experimental`/`.system` subdirs): flat `<name>/SKILL.md` everywhere,
+ *     catalog `<cat>/<name>/SKILL.md` only under the `skills/` family (NOT the repo
+ *     root — else `examples/`/`templates/` get swept in).
  *   - if the containers yield NOTHING, a bounded recursive fallback (depth ≤
  *     DISCOVERY_MAX_DEPTH) catches oddly-nested repos.
- * De-duplicated by dir, sorted by subpath for stable output.
+ * De-duplicated by REALPATH (collapses aliases / symlink cycles), sorted by subpath.
+ * Symlinks that escape the checkout are never followed or surfaced (security).
  */
 export async function discoverSkills(root: string, subpath = ""): Promise<DiscoveredSkill[]> {
   const cleanSub = subpath.replace(/^\/+|\/+$/g, "");
+  // A subpath must never climb out of the checkout (`..`): a crafted/stored source
+  // could otherwise read & copy foreign content with a non-round-trippable provenance.
+  if (subpathClimbs(cleanSub)) return [];
   const base = cleanSub ? join(root, cleanSub) : root;
   if (!existsSync(base)) return [];
 
+  const rootReal = realpathOrSelf(root);
+  // Defense-in-depth: the resolved base must still be inside the checkout.
+  if (!containedUnder(realpathOrSelf(base), rootReal)) return [];
+
   // Explicit pointer: the named subpath IS a skill dir. Return it verbatim (lenient).
   if (cleanSub && isSkillDir(base)) {
-    const one = await buildDiscovered(base, root, { requireValid: false });
+    const one = await buildDiscovered(base, rootReal, { requireValid: false });
     return one ? [one] : [];
   }
 
-  const byDir = new Map<string, DiscoveredSkill>();
+  // De-duplicate by REALPATH (not the raw string) so aliased / symlink-cycle paths
+  // collapse to a single entry (mirrors crawl.ts).
+  const byReal = new Map<string, DiscoveredSkill>();
   const add = (d: DiscoveredSkill | null): void => {
-    if (d) byDir.set(d.dir, d);
+    if (!d) return;
+    const key = realpathOrSelf(d.dir);
+    if (!byReal.has(key)) byReal.set(key, d);
   };
 
-  // 1) Conventional container scan (flat depth-1 + catalog depth-2). When a subpath
-  //    scopes discovery, the scoped base is the only container.
+  // 1) Conventional container scan (flat depth-1 +, under skills/, catalog depth-2).
+  //    When a subpath scopes discovery, the scoped base is the only container.
   const containers = cleanSub
     ? [base]
     : DISCOVERY_CONTAINERS.map((c) => (c ? join(root, c) : root));
   for (const container of containers) {
     if (!existsSync(container)) continue;
+    const isRepoRoot = realpathOrSelf(container) === rootReal;
     if (isSkillDir(container)) {
       // The container itself is a skill (e.g. the repo root holds SKILL.md). The repo
       // root is lenient so a bare single-skill repo with a sparse SKILL.md still
       // resolves (today's behavior); deeper containers stay gated.
-      add(await buildDiscovered(container, root, { requireValid: container !== root }));
+      add(await buildDiscovered(container, rootReal, { requireValid: !isRepoRoot }));
       continue; // a skill dir has no child skills to scan
     }
-    for (const child of await childDirs(container)) {
+    for (const child of await childDirs(container, rootReal)) {
       if (isSkillDir(child)) {
-        add(await buildDiscovered(child, root, { requireValid: true })); // flat depth-1
+        add(await buildDiscovered(child, rootReal, { requireValid: true })); // flat depth-1
         continue;
       }
-      for (const grandchild of await childDirs(child)) {
+      // Catalog (depth-2) is scanned ONLY under the real `skills/`-family containers,
+      // never the repo root — else `examples/<x>/SKILL.md` etc. get swept into --all.
+      if (isRepoRoot) continue;
+      for (const grandchild of await childDirs(child, rootReal)) {
         if (isSkillDir(grandchild)) {
-          add(await buildDiscovered(grandchild, root, { requireValid: true })); // catalog depth-2
+          add(await buildDiscovered(grandchild, rootReal, { requireValid: true })); // catalog depth-2
         }
       }
     }
   }
 
   // 2) Recursive fallback ONLY if the conventional scan found nothing.
-  if (byDir.size === 0) await recurseDiscover(base, root, 0, add);
+  if (byReal.size === 0) await recurseDiscover(base, rootReal, 0, add, new Set<string>());
 
-  return [...byDir.values()].sort((a, b) =>
+  return [...byReal.values()].sort((a, b) =>
     a.subpath < b.subpath ? -1 : a.subpath > b.subpath ? 1 : 0,
   );
 }
 
 /**
  * Locate the SINGLE skill dir under a checkout subtree (the single-skill add/update
- * path). Reuses discoverSkills: exactly one discovered skill → its dir; zero or many
- * → null (ambiguity is the caller's error).
+ * path). Strict discovery first (exactly one → its dir; many → null/ambiguous); if
+ * strict finds NOTHING, fall back to lenient resolution so a one-skill repo / vendored
+ * registry skill whose SKILL.md omits a `description` still resolves (pre-ADR-0006
+ * behavior — the single-skill path never required a description).
  */
 async function locateSkillDir(root: string, subpath: string): Promise<string | null> {
-  const found = await discoverSkills(root, subpath);
-  return found.length === 1 ? found[0]!.dir : null;
+  const strict = await discoverSkills(root, subpath);
+  if (strict.length === 1) return strict[0]!.dir;
+  if (strict.length > 1) return null; // genuinely ambiguous — caller errors
+  return locateSingleLenient(root, subpath);
+}
+
+/**
+ * Lenient single-skill resolution (no frontmatter validity gate): exactly one dir with
+ * a SKILL.md under the containment-checked scope → its dir; else null. Cycle-safe and
+ * never follows a symlink that escapes the checkout.
+ */
+async function locateSingleLenient(root: string, subpath: string): Promise<string | null> {
+  const cleanSub = subpath.replace(/^\/+|\/+$/g, "");
+  if (subpathClimbs(cleanSub)) return null;
+  const start = cleanSub ? join(root, cleanSub) : root;
+  if (!existsSync(start)) return null;
+  const rootReal = realpathOrSelf(root);
+  if (!containedUnder(realpathOrSelf(start), rootReal)) return null;
+  if (isSkillDir(start)) return start;
+
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  async function scan(dir: string, depth: number): Promise<void> {
+    if (depth > DISCOVERY_MAX_DEPTH || candidates.length > 1) return;
+    const real = realpathOrSelf(dir);
+    if (seen.has(real)) return;
+    seen.add(real);
+    if (isSkillDir(dir)) {
+      candidates.push(dir);
+      return;
+    }
+    for (const child of await childDirs(dir, rootReal)) {
+      await scan(child, depth + 1);
+    }
+  }
+  await scan(start, 0);
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
+/**
+ * Lenient single-skill DISCOVERY for the implicit single-add path — same resolution as
+ * locateSkillDir's fallback, but returns a DiscoveredSkill (with canonical subpath) so
+ * `add.ts` (which discovers directly, not via locateSkillDir) can install a one-skill
+ * repo whose SKILL.md omits a `description` without the convention gate dropping it.
+ */
+export async function discoverSingleLenient(
+  root: string,
+  subpath = "",
+): Promise<DiscoveredSkill | null> {
+  const dir = await locateSingleLenient(root, subpath);
+  if (!dir) return null;
+  return buildDiscovered(dir, realpathOrSelf(root), { requireValid: false });
 }
 
 /** Outcome of cloning a whole repo into staging (no skill located yet). */
@@ -634,13 +736,28 @@ export function parseStoredSource(source: string): ParsedSource {
 
 /**
  * Copy a fetched skill dir into a destination dir (the new home in the library).
- * Excludes the upstream .git. Overwrites the destination contents. Returns dest.
+ * Excludes the upstream `.git`, and — for SECURITY — drops any symlink whose target
+ * escapes the source dir, so a third-party skill containing `notes.txt -> ~/.ssh/id_rsa`
+ * (or a dir symlink to outside the checkout) can never copy a live symlink-to-a-secret
+ * or external content into the library. Overwrites the destination contents. Returns dest.
  */
 export async function copySkillDir(srcDir: string, destDir: string): Promise<string> {
+  const srcReal = realpathOrSelf(srcDir);
   await cp(srcDir, destDir, {
     recursive: true,
     force: true,
-    filter: (s: string) => basename(s) !== ".git",
+    filter: (s: string): boolean => {
+      if (basename(s) === ".git") return false;
+      try {
+        if (lstatSync(s).isSymbolicLink()) {
+          const real = realpathSync(s); // throws on a broken link → dropped below
+          return real === srcReal || real.startsWith(srcReal + sep);
+        }
+      } catch {
+        return false; // unreadable / broken symlink → don't copy it
+      }
+      return true;
+    },
   });
   return destDir;
 }

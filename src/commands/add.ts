@@ -18,7 +18,7 @@
 //
 // Read-only commands take --json; add is a write, but still emits a --json summary.
 
-import { join, basename } from "node:path";
+import { join, basename, dirname, sep } from "node:path";
 import { existsSync } from "node:fs";
 import type { Ctx, Skill, LockEntry } from "../types.ts";
 import {
@@ -26,6 +26,7 @@ import {
   fetchSource,
   fetchRepo,
   discoverSkills,
+  discoverSingleLenient,
   copySkillDir,
   cleanupStaging,
   readSkillBody,
@@ -38,7 +39,7 @@ import { recordEntry } from "../core/provenance.ts";
 import { setDomainsForName } from "../core/taxonomy.ts";
 import { assertSafeName } from "../core/lifecycle.ts";
 import { loadLibrary, findByName } from "../core/library.ts";
-import { ensureDir, isSymlink } from "../lib/fs.ts";
+import { ensureDir, isSymlink, realpathOrSelf } from "../lib/fs.ts";
 
 export const meta = {
   name: "add",
@@ -112,6 +113,32 @@ function bodyOf(text: string): string {
 /** The library destination dir for a slug (under its domain folder, if any). */
 function destDirFor(libraryPath: string, domainFolder: string | null, name: string): string {
   return domainFolder ? join(libraryPath, domainFolder, name) : join(libraryPath, name);
+}
+
+/** The nearest ancestor of `p` (incl. `p`) that exists on disk; falls back to `p`. */
+function nearestExisting(p: string): string {
+  let cur = p;
+  while (!existsSync(cur) && !isSymlink(cur)) {
+    const parent = dirname(cur);
+    if (parent === cur) return cur;
+    cur = parent;
+  }
+  return cur;
+}
+
+/**
+ * True if writing to `destDir` would resolve OUTSIDE the library — i.e. the nearest
+ * existing component on the way to destDir is (or is reached through) a symlink whose
+ * realpath escapes the library. Catches a symlinked DOMAIN folder (`library/<d> ->
+ * /external`) that the leaf-only `isSymlink(destDir)` check misses, so `--force` can't
+ * clobber an external tree through a symlinked parent (ADR-0004). Both sides anchor to
+ * their nearest existing ancestor, so a fresh (not-yet-created) library is not a false
+ * positive — its anchor is the shared parent, which contains itself.
+ */
+function destEscapesLibrary(libraryPath: string, destDir: string): boolean {
+  const libReal = realpathOrSelf(nearestExisting(libraryPath));
+  const destReal = realpathOrSelf(nearestExisting(destDir));
+  return !(destReal === libReal || destReal.startsWith(libReal + sep));
 }
 
 type Verdict = "new" | "identical" | "differs";
@@ -190,7 +217,7 @@ interface InstallOptions {
 interface InstallOutcome {
   name: string;
   subpath: string;
-  verdict: Verdict;
+  verdict: Verdict | "duplicate";
   status: "installed" | "skipped" | "error";
   reason: string;
   path: string;
@@ -245,18 +272,33 @@ async function installOne(
   const verdict = await driftVerdict(skill, destDir);
   base.verdict = verdict;
 
+  // Never copy THROUGH a symlink into something the library doesn't own: a LINKED leaf
+  // entry, OR a destination reached through a symlinked ANCESTOR (e.g. a symlinked
+  // --domain folder) whose realpath escapes the library. Writing through either would
+  // clobber an external dev repo, even with --force (ADR-0004).
+  const throughSymlink = isSymlink(destDir) || destEscapesLibrary(opts.libraryPath, destDir);
+
   if (opts.multi) {
-    // Never copy THROUGH a symlinked destination: a LINKED entry points at an
-    // external dev repo and writing through it would clobber that repo (ADR-0004).
-    if (isSymlink(destDir)) {
-      return { ...base, status: "skipped", reason: "linked entry (a dev repo owns it) — not overwriting via symlink" };
+    if (throughSymlink) {
+      return {
+        ...base,
+        status: "skipped",
+        reason: "linked entry / resolves outside the library — not overwriting via symlink",
+      };
     }
     // new + identical install; differs needs --force.
     if (verdict === "differs" && !opts.force) {
       return { ...base, status: "skipped", reason: "local body differs from upstream — not overwriting (use --force)" };
     }
   } else {
-    // SINGLE path: preserve today's exact rule — refuse any existing dest w/o --force.
+    // SINGLE path: refuse to write through a symlink even with --force (never clobber a
+    // dev repo), then preserve today's exact rule — refuse any existing dest w/o --force.
+    if (throughSymlink) {
+      return {
+        ...base,
+        reason: `${rawName} resolves through a symlink outside the library (${destDir}) — refusing to write (manage a linked entry with \`skl link\`/\`skl rm\`)`,
+      };
+    }
     if (existsSync(destDir) && !opts.force) {
       return {
         ...base,
@@ -374,7 +416,7 @@ async function reportDryRun(
       continue;
     }
     const destDir = destDirFor(ctx.config.libraryPath, domainFolder, d.name);
-    if (isSymlink(destDir)) {
+    if (isSymlink(destDir) || destEscapesLibrary(ctx.config.libraryPath, destDir)) {
       rows.push({ name: d.name, subpath: d.subpath, verdict: "linked", willInstall: false, needsForce: false });
       continue;
     }
@@ -445,8 +487,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     ctx.error("add: --name applies only to a single-skill add (omit --all/--skill)");
     return 1;
   }
-  if (wantsMulti && !repoChannel) {
-    ctx.error("add: --all/--skill apply to github:/git: repo sources, not registry names");
+  if (!repoChannel && (wantsMulti || flags.list || flags.dryRun)) {
+    ctx.error("add: --all/--skill/--list/--dry-run apply to github:/git: repo sources, not registry names");
     return 1;
   }
 
@@ -475,6 +517,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     ref = repo.ref;
     channel = repo.channel;
     discovered = await discoverSkills(repo.checkout, parsed.subpath);
+    // Implicit single-skill add: if the convention gate found nothing, fall back to
+    // lenient single resolution so a one-skill repo whose SKILL.md omits a description
+    // still installs (pre-ADR-0006 behavior). NOT for --all/--skill/--list/--dry-run,
+    // where the name+description gate is the intended filter.
+    if (discovered.length === 0 && !flags.all && flags.skill === null && !flags.list && !flags.dryRun) {
+      const one = await discoverSingleLenient(repo.checkout, parsed.subpath);
+      if (one) discovered = [one];
+    }
   } else {
     const fetched = await fetchSource(parsed);
     if (!fetched.ok) {
@@ -584,9 +634,31 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       return 0;
     }
 
-    // multi: install each selected skill out of the single staging checkout.
+    // multi: install each selected skill out of the single staging checkout. Two
+    // upstream skills sharing a frontmatter `name` would target the SAME library slug
+    // (last-write-wins clobber + a single lockfile entry); install the first, skip the
+    // rest with a duplicate-slug reason so nothing is silently lost or miscounted.
     const outcomes: InstallOutcome[] = [];
+    const seenSlugs = new Set<string>();
     for (const s of selected) {
+      if (seenSlugs.has(s.name)) {
+        outcomes.push({
+          name: s.name,
+          subpath: s.subpath,
+          verdict: "duplicate",
+          status: "skipped",
+          reason: `duplicate slug "${s.name}" — another skill in this repo already installs to it; skipped to avoid clobbering`,
+          path: "",
+          source: sourceOf(s),
+          ref,
+          channel,
+          installedAt: "",
+          tagged: false,
+          domains: [],
+        });
+        continue;
+      }
+      seenSlugs.add(s.name);
       outcomes.push(
         await installOne(ctx, s, {
           libraryPath: ctx.config.libraryPath,
