@@ -102,6 +102,27 @@ export function entryMode(libraryPath: string, name: string): EntryMode {
   return real === libRoot || real.startsWith(libRoot + "/") ? "owned" : "linked";
 }
 
+/** Mode plus, for a LINKED entry, the external dev-repo path it resolves to. */
+export interface EntryModeInfo {
+  mode: EntryMode;
+  /** the realpath a LINKED entry points at (the canonical dev repo); null when owned */
+  linkTarget: string | null;
+}
+
+/**
+ * Like entryMode, but also surfaces the dev-repo target for a LINKED entry — so
+ * `ls`/`show --json` can report a skill's storage mode as a first-class field instead
+ * of forcing an agent to `ls -la` the library and eyeball symlinks (ADR-0004).
+ */
+export function entryModeInfo(libraryPath: string, name: string): EntryModeInfo {
+  const entry = join(libraryPath, name);
+  if (!isSymlink(entry)) return { mode: "owned", linkTarget: null };
+  const real = realpathOrSelf(entry);
+  const libRoot = realpathOrSelf(libraryPath);
+  const owned = real === libRoot || real.startsWith(libRoot + "/");
+  return owned ? { mode: "owned", linkTarget: null } : { mode: "linked", linkTarget: real };
+}
+
 /** All unique domains across the library (sorted). */
 export function listDomains(skills: Skill[]): string[] {
   const set = new Set<string>();
