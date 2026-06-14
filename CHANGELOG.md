@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Repo-wide `skl add` — one repo, one clone** ([ADR-0006](./docs/adr/0006-repo-wide-add.md)).
+  A single GitHub repo often ships many skills; installing all 21 of `dontbesilent2025/dbskill`
+  forced a hand-rolled `gh api trees` + per-skill loop that **re-cloned the repo 21 times** — the
+  same "agent writes ad-hoc code = missing primitive" signal behind ADR-0005. `skl add` now installs
+  a whole repo, or a chosen subset, from a **single clone**:
+  - **Discovery** (`core/fetch.ts:discoverSkills`): convention walk over a cloned repo — flat
+    `skills/<name>/SKILL.md`, catalog `skills/<cat>/<name>/SKILL.md`, and a bounded recursive
+    fallback; a valid skill = frontmatter with `name` **and** `description`. `locateSkillDir` is now
+    `discoverSkills(...).length === 1` (single-skill path unchanged).
+  - **Flags**: `--list` (discover + print, no writes) · `--all` (install every skill) · `--skill
+    <a,b,…>` (install only those, by frontmatter `name`) · `--dry-run` (drift preflight, no writes).
+    `--all`/`--skill` are mutually exclusive; a bare repo with several skills errors and lists them
+    (never silently picks one); single-skill `add <repo>/<path>` is unchanged.
+  - **Clone-once-copy-N** (`fetchRepo`): the repo is cloned **once** and the selected subset copied
+    out of the single staging checkout. Each skill becomes its own lockfile entry — shared
+    `source`+`ref`, its own `@subpath` + `installedHash` (no schema change), so `skl outdated`/
+    `update` re-pull each by its own subpath.
+  - **Drift preflight** (`--dry-run`): per skill, `new` / `identical` / `differs` against the library
+    copy (frontmatter-stripped body hash). A `differs` skill in `--all` is **skipped without
+    `--force`** (never clobbered), and `add` never writes *through* a LINKED (symlink) entry into its
+    dev repo (ADR-0004).
+  - **Boundaries kept**: `add` stays a **librarian** — writes only into the library, no agent-dir
+    writes / symlink fan-out (that is `skl use` / a future `skl deploy`, ADR-0003); uses skillshelf's
+    own `git clone`, never `npx skills add` (kept only as the registry-name fallback); taxonomy
+    untouched with `--no-infer`.
 - **Inverse + fine-grained-edit verb family** ([ADR-0005](./docs/adr/0005-inverse-and-edit-verbs.md)) —
   the write-side counterpart to a read layer that already understood states it had no commands to
   enact. Surfaced by a six-story dogfood pass where every forced ad-hoc workaround (`rm -rf`/`mv`

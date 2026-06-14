@@ -149,6 +149,29 @@ decides what to do by comparing three states, not two:
 After a successful update, the lockfile records the new `ref` and a fresh `installedHash`,
 and clears `localEdits` (the on-disk body equals upstream again).
 
+### Repo-wide install — one repo, one clone ([ADR-0006](../adr/0006-repo-wide-add.md))
+
+A single GitHub repo often ships *many* skills (e.g. `skills/<name>/SKILL.md` ×21). `skl add`
+installs a whole repo, or a chosen subset, in **one clone**:
+
+- `skl add <repo> --list` — discover every skill (convention walk: flat `skills/<name>`, catalog
+  `skills/<cat>/<name>`, recursive fallback) and print them; no writes. Replaces a hand-rolled
+  `gh api .../git/trees` + parse.
+- `skl add <repo> --all` / `--skill <a,b>` — install all / a named subset. `fetchRepo` clones the
+  repo **once**; `discoverSkills` finds every valid `SKILL.md` dir; the selected subset is copied
+  out of the single staging checkout → **N installs, one network fetch** (never clone-per-skill).
+  Each skill is its own lockfile entry — same `source`+`ref`, its own `@subpath` + `installedHash`
+  (no schema change).
+- `skl add <repo> --dry-run` — the **drift preflight**: per skill, classify the library destination
+  as `new` / `identical` / `differs` (frontmatter-stripped body hash). A `differs` skill in `--all`
+  is **skipped without `--force`** (never clobbered), and `add` never writes *through* a LINKED
+  (symlink) entry into its dev repo. Replaces a hand-rolled `gh api … | base64 -d | diff`.
+
+Single-skill `skl add <repo>/<path>` is unchanged. `add` stays a **librarian**: it writes only into
+the library — no agent-dir writes / symlink fan-out (that is `skl use` / a future `skl deploy`,
+[ADR-0003](../adr/0003-agent-agnostic-surfaces.md)) — and uses skillshelf's own `git clone`, never
+`npx skills add` (kept only as the narrow registry-name fallback).
+
 ### Don't reinvent fetching
 The download step is a commodity: `skl add` shells out to existing tooling / git. skillshelf's
 value-add is **provenance + central taxonomy + AI inference + bundles** layered on top.
@@ -170,7 +193,7 @@ hand-`rm`/`mv`/`ln -s` to undo or tweak is the signal of a missing primitive.
 | `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift). `--add-root`/`--remove-root` mutate the registry; `skl roots` lists it. |
 | `skl import <name> --from <path>` | Adopt one of your own skills into the library as an OWNED copy (move + symlink-back, or `--copy`). |
 | `skl link [<name>] --from <dev-repo>` | Shelve a dev-repo skill as a LINKED entry (library symlinks to it). `--at <path>` instead collapses a stray copy into the library ([ADR-0004](adr/0004-owned-vs-linked-entries.md)). |
-| `skl add <src>` | Install a third-party skill, record provenance, AI-tag it. |
+| `skl add <src>` | Install third-party skill(s) into the library, record provenance, AI-tag. Repo-wide via `--all`/`--skill`/`--list`/`--dry-run` — one repo, one clone ([ADR-0006](adr/0006-repo-wide-add.md)). |
 | `skl new` | Scaffold a new skill into the library. |
 | `skl init` | Initialize a library / global core. |
 
