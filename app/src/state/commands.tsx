@@ -233,6 +233,10 @@ export function useCommands() {
   // ── Hard remove — IRREVERSIBLE, no undo (type-to-confirm gated upstream) ─
   const hardRemove = useCallback(
     async (name: string) => {
+      // Close the type-to-confirm modal immediately (it renders off
+      // state.confirm); otherwise it lingers on a now-deleted skill and a
+      // second confirm would re-dispatch `rm` on an absent skill.
+      dispatch({ type: "cancelConfirm" });
       dispatch({ type: "setRemovedHard", name, value: true });
       const rollback = () =>
         dispatch({ type: "setRemovedHard", name, value: false });

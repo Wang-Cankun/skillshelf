@@ -179,6 +179,10 @@ export function InboxView() {
                           ? () => commands.retire([r.skill])
                           : undefined
                       }
+                      // deferred affordances (Review ▾ / View lock …) have no
+                      // wired verb yet — disable so they aren't inert focus traps.
+                      disabled={!isRetire}
+                      title={isRetire ? undefined : "coming soon"}
                       style={a.primary ? primaryBtn : secBtn}
                     >
                       {a.label}

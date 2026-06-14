@@ -769,7 +769,9 @@ export function DetailDrawer() {
             <div style={{ padding: "15px 16px" }}>
               <div style={{ ...CAPTION, marginBottom: 9 }}>LIFECYCLE</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                <button style={lifeBtn}>Rename</button>
+                <button style={lifeBtn} disabled title="coming soon">
+                  Rename
+                </button>
                 <button
                   onClick={() => commands.retire([name])}
                   style={lifeBtn}
