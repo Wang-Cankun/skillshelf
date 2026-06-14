@@ -124,4 +124,24 @@ describe("inventoryDeployments — aliased links (link-name ≠ library skill)",
     expect(report.problems.some((s) => s.name === "nuwa")).toBe(true);
     expect(report.problems.some((s) => s.name === "huashu-nuwa")).toBe(false);
   });
+
+  test("deploying a LINK-SHELVED library skill is `linked`, not a 2nd-source foreign-link", async () => {
+    // External dev repo holds the real skill; library/cairn link-shelves to it.
+    const ext = join(tmp, "ext");
+    const extSkill = await makeSkillDir(ext, "cairn");
+    const library = join(tmp, "library");
+    await mkdir(library, { recursive: true });
+    await symlink(extSkill, join(library, "cairn")); // library/cairn -> ext/cairn
+    const lib = [libSkill("cairn", join(library, "cairn"))];
+
+    // A deployment symlink into the library entry (which itself shelves out).
+    const surface = join(tmp, "surface");
+    await mkdir(surface, { recursive: true });
+    await symlink(join(library, "cairn"), join(surface, "cairn"));
+
+    const report = await inventoryDeployments([surface], library, lib);
+    const site = report.sites.find((s) => s.name === "cairn");
+    expect(site!.kind).toBe("linked"); // not "foreign-link"
+    expect(report.problems.some((s) => s.name === "cairn")).toBe(false);
+  });
 });

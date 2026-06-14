@@ -26,6 +26,8 @@ const GLYPH: Record<DeployState, string> = {
   absent: "·",
 };
 
+const LEGEND = "legend: ✓ clean · ⊙ source · ⚠ drift · □ copy · ✗ dead · · absent";
+
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     const rt = resolveReadTarget(argv);
@@ -42,7 +44,22 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // the agent matrix sees the same reality and can verify an ad-hoc project deploy.
     const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths(), ...rt.extraSurfaces];
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
-    const agentsReport = computeAgentsReport(report);
+    let agentsReport = computeAgentsReport(report);
+
+    // --agent <id> focuses the whole report on that agent: prune the agents list
+    // and the deployments map to just that agent (skills not deployed to it drop).
+    if (rt.agentId) {
+      const id = rt.agentId;
+      const deployments: typeof agentsReport.deployments = {};
+      for (const [skill, byAgent] of Object.entries(agentsReport.deployments)) {
+        if (byAgent[id]) deployments[skill] = { [id]: byAgent[id] };
+      }
+      agentsReport = {
+        agents: agentsReport.agents.filter((a) => a.id === id),
+        scopes: agentsReport.scopes,
+        deployments,
+      };
+    }
 
     if (json) {
       if (name !== null) {
@@ -72,6 +89,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         const installed = a.installed ? "" : " (not installed)";
         ctx.log(`  ${a.short.padEnd(10)} ${GLYPH[g]} global·${g}${installed}${projects ? `   ${projects}` : ""}`);
       }
+      ctx.log("");
+      ctx.log(LEGEND);
       return 0;
     }
 
@@ -91,6 +110,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       const tag = a.installed ? "" : "  (not installed)";
       ctx.log(`  ${a.short.padEnd(10)} ${a.global}${tag}  —  ${clean} clean, ${problems} need attention`);
     }
+    ctx.log("");
+    ctx.log(LEGEND);
     return 0;
   } catch (err) {
     ctx.error(`skl agents failed: ${err instanceof Error ? err.message : String(err)}`);

@@ -12,8 +12,37 @@ import { isCleanSite } from "../core/agents.ts";
 export const meta = {
   name: "ls",
   summary: "One-line listing of the library, or one bundle",
-  usage: "skl ls [bundle] [--all] [--json]",
+  usage: "skl ls [bundle] [--all] [--sort modified|name|domain|deploys|source] [--json]",
 } as const;
+
+const SORT_FIELDS = ["modified", "name", "domain", "deploys", "source"] as const;
+type SortField = (typeof SORT_FIELDS)[number];
+
+/** Sort a copy of skills by a report field (modified/deploys descending). */
+function sortSkills(skills: Skill[], field: SortField, deployCounts: Map<string, number>): Skill[] {
+  const primary = (s: Skill) => s.primaryDomain ?? s.domains[0] ?? "_unclassified";
+  const mtimes =
+    field === "modified" ? new Map(skills.map((s) => [s.name, fileTimes(s.bodyPath).modifiedAt])) : null;
+  return skills.slice().sort((a, b) => {
+    if (field === "name") return a.name.localeCompare(b.name);
+    if (field === "domain") return primary(a).localeCompare(primary(b)) || a.name.localeCompare(b.name);
+    if (field === "source") {
+      const sa = a.source ? "vendored" : "local";
+      const sb = b.source ? "vendored" : "local";
+      return sa.localeCompare(sb) || a.name.localeCompare(b.name);
+    }
+    if (field === "deploys") {
+      return (deployCounts.get(b.name) ?? 0) - (deployCounts.get(a.name) ?? 0) || a.name.localeCompare(b.name);
+    }
+    // modified — most-recent first; null/untracked last.
+    const am = mtimes!.get(a.name) ?? null;
+    const bm = mtimes!.get(b.name) ?? null;
+    if (!am && !bm) return a.name.localeCompare(b.name);
+    if (!am) return 1;
+    if (!bm) return -1;
+    return bm.localeCompare(am);
+  });
+}
 
 function oneLine(desc: string, max = 100): string {
   const flat = desc.replace(/\s+/g, " ").trim();
@@ -95,30 +124,49 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     const json = argv.includes("--json");
     const all = argv.includes("--all");
-    const positional = argv.filter((a) => !a.startsWith("--"));
+    // Extract `--sort <field>` and its value so the value isn't taken as a bundle.
+    const sortIdx = argv.indexOf("--sort");
+    const sortField = sortIdx >= 0 ? argv[sortIdx + 1] : undefined;
+    if (sortField !== undefined && !SORT_FIELDS.includes(sortField as SortField)) {
+      ctx.error(`ls: --sort expects one of: ${SORT_FIELDS.join(", ")}`);
+      return 1;
+    }
+    const consumed = new Set<number>();
+    if (sortIdx >= 0) {
+      consumed.add(sortIdx);
+      consumed.add(sortIdx + 1);
+    }
+    const positional = argv.filter((a, i) => !a.startsWith("--") && !consumed.has(i));
     const bundleName = positional[0];
 
     const skills = await ctx.loadLibrary();
-    const deployCounts = json ? await deployCountsFor(ctx, skills) : new Map<string, number>();
+    // deployCounts needed for --json, or to sort by deploys.
+    const deployCounts =
+      json || sortField === "deploys"
+        ? await deployCountsFor(ctx, skills)
+        : new Map<string, number>();
+    const applySort = (list: Skill[]) =>
+      sortField ? sortSkills(list, sortField as SortField, deployCounts) : list;
 
     if (bundleName) {
       const bundle = await resolveBundle(skills, bundleName, {
         includeRetired: all,
       });
+      const rows = applySort(bundle.skills);
       if (json) {
-        ctx.json({ bundle: bundle.name, skills: toJson(bundle.skills, ctx.libraryPath, deployCounts) });
+        ctx.json({ bundle: bundle.name, skills: toJson(rows, ctx.libraryPath, deployCounts) });
         return 0;
       }
-      if (bundle.skills.length === 0) {
+      if (rows.length === 0) {
         ctx.log(`Bundle "${bundle.name}" has no skills.`);
         return 0;
       }
-      ctx.log(`# ${bundle.name} (${bundle.skills.length})`);
-      emitHuman(ctx, bundle.skills);
+      ctx.log(`# ${bundle.name} (${rows.length})`);
+      emitHuman(ctx, rows);
       return 0;
     }
 
-    const listed = all ? skills : activeSkills(skills);
+    const listed = applySort(all ? skills : activeSkills(skills));
     if (json) {
       ctx.json(toJson(listed, ctx.libraryPath, deployCounts));
       return 0;
