@@ -4,10 +4,12 @@ Date: 2026-06-13
 
 ## Status
 
-Proposed (draft — not yet implemented). Captures the design in full so it can be built in a
-later session with no prior context. Implements repo-wide install for `skl add`, informed by a
-dogfood test against `github.com/dontbesilent2025/dbskill` and a source study of
-[`vercel-labs/skills`](https://github.com/vercel-labs/skills).
+Accepted (implemented). Built on skillshelf's own fetch path (`core/fetch.ts:discoverSkills` +
+`fetchRepo`; `commands/add.ts`), informed by a dogfood test against
+`github.com/dontbesilent2025/dbskill` (21 skills) and a source study of
+[`vercel-labs/skills`](https://github.com/vercel-labs/skills). A multi-agent adversarial review
+(5 independent lenses + 2-skeptic verification) over the implementation diff hardened it before
+acceptance — see **Security hardening (from adversarial review)** below.
 
 ## Context
 
@@ -182,6 +184,43 @@ in an `--all` run is **skipped with a warning**, not overwritten.
 - A `skl deploy`/global agent-surface targeting layer (the part of vercel's model skillshelf
   intentionally hasn't built; ADR-0003).
 - `skl remove`-from-repo / bulk un-track (the inverse of `--all`); for now `skl rm <name>` per skill.
+
+## Security hardening (from adversarial review)
+
+A multi-agent review (independent security / correctness / ADR-conformance / regression /
+discovery lenses, each finding adversarially verified) caught 12 confirmed defects in the first
+implementation. The boundary they share: **discovery walks an untrusted cloned repo, so a skill's
+*name* being slug-safe is not enough — the dir's provenance and the destination's resolution must
+also be contained.** All are fixed and regression-tested:
+
+- **Escaping symlinks (HIGH).** `discoverSkills` followed symlinked dirs and `copySkillDir` copied
+  through them, so a repo shipping `skills/x -> /etc` (or a skill containing `notes.txt ->
+  ~/.ssh/id_rsa`) leaked out-of-checkout content / live symlinks-to-secrets into the library.
+  Fix: realpath-containment in `childDirs`/`buildDiscovered` (never follow/surface a dir whose
+  realpath escapes the checkout) + `copySkillDir` drops any symlink whose target escapes the
+  source dir.
+- **Subpath traversal (MED).** A `..` subpath (`owner/repo/../../x`) resolved outside the checkout.
+  Fix: `discoverSkills` rejects climbing subpaths and asserts the resolved base stays contained.
+- **Clobber through a symlinked ancestor (MED).** The never-write-through-a-link guard was
+  leaf-only (`isSymlink(destDir)`), so `--force` with a symlinked `--domain` folder
+  (`library/<d> -> /external`) wrote through into an external tree. Fix: `destEscapesLibrary`
+  (nearest-existing-ancestor realpath containment), applied in install + dry-run + the single path;
+  single-skill add now refuses to write through a linked leaf even with `--force`.
+- **Name-collision clobber (HIGH).** Two upstream skills sharing a frontmatter `name` both targeted
+  one library slug — last-write-wins, one silently lost, both reported "installed". Fix: duplicate
+  slugs are detected and skipped with a `duplicate` verdict (N-on-disk == N-counted).
+- **Single-skill / registry regression (HIGH/MED).** The new `name`+`description` validity gate
+  dropped a one-skill repo (or vendored registry skill) whose `SKILL.md` omitted a description —
+  which installed before. Fix: the single-skill resolution falls back to lenient discovery
+  (`locateSkillDir` / `discoverSingleLenient`); the gate stays the filter only for the multi set.
+- **Symlink-cycle duplicate + phantom subpath (HIGH).** A `self -> .` cycle re-surfaced skills and
+  recorded a non-committed lockfile subpath. Fix: dedup by realpath + a visited-set; subpath is
+  computed from the realpath (canonical committed path).
+- **Root-catalog false positive (MED).** The depth-2 catalog scan ran on the repo root, sweeping
+  `examples/`/`templates/<x>/SKILL.md` into `--all`. Fix: catalog depth-2 is scanned only under the
+  real `skills/` family, never the repo root.
+- **Registry-flag leak (LOW).** `--list`/`--dry-run` on a bare registry name silently triggered a
+  full `skills`-CLI fetch. Fix: those flags are gated to github:/git: repo sources.
 
 ## Implementation checklist (for the build session)
 

@@ -8,12 +8,13 @@
 // Everything here is best-effort and never throws: callers get a discriminated
 // FetchResult / RefResult with `ok` and a human `error` string on failure.
 
-import { join, basename, isAbsolute, resolve } from "node:path";
+import { join, basename, isAbsolute, resolve, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { existsSync, type Dirent } from "node:fs";
+import { existsSync, lstatSync, realpathSync, type Dirent } from "node:fs";
 import { mkdtemp, rm, readdir, cp } from "node:fs/promises";
-import { isDirectory } from "../lib/fs.ts";
+import { isDirectory, realpathOrSelf } from "../lib/fs.ts";
+import { parseFrontmatter } from "../lib/frontmatter.ts";
 
 export type Channel = "github" | "vercel-registry" | "git";
 
@@ -189,32 +190,253 @@ export async function hasBinary(bin: string): Promise<boolean> {
   return r.ok && r.stdout.trim() !== "";
 }
 
-/** Locate the single skill dir (containing SKILL.md) under a checkout subtree. */
-async function locateSkillDir(root: string, subpath: string): Promise<string | null> {
-  const start = subpath ? join(root, subpath) : root;
-  if (!existsSync(start)) return null;
-  if (existsSync(join(start, "SKILL.md"))) return start;
+/** A skill dir found by discoverSkills(), with the metadata add/list/dry-run need. */
+export interface DiscoveredSkill {
+  /** frontmatter `name` (fallback: dir basename) — the install slug */
+  name: string;
+  /** absolute path to the skill dir (containing SKILL.md) inside the checkout */
+  dir: string;
+  /** repo-relative POSIX subpath from the discovery root ("" if the root itself) */
+  subpath: string;
+  /** frontmatter `description` ("" if absent) */
+  description: string;
+}
 
-  // No SKILL.md at the named path: search shallowly for exactly one skill dir.
+// Dirs that never hold installable skills — pruned during discovery so build output,
+// deps, and VCS metadata can't masquerade as a skill (or slow the walk).
+const DISCOVERY_SKIP = new Set(["node_modules", ".git", "dist", "build", "__pycache__"]);
+// Hidden child dirs are skipped EXCEPT the known agent skill-grouping dot-dirs
+// (mirrors crawl.ts ALLOW_DOT), so a repo laid out under `.claude/skills/` is seen.
+const DISCOVERY_ALLOW_DOT = new Set([".claude", ".agents", ".codex", ".opencode", ".cursor"]);
+// Conventional container dirs (relative to the repo root) scanned for flat/catalog
+// layouts before the recursive fallback (vercel-labs/skills convention; ADR-0006 §3).
+const DISCOVERY_CONTAINERS = ["", "skills", `skills/.curated`, `skills/.experimental`, `skills/.system`];
+const DISCOVERY_MAX_DEPTH = 5;
+
+function isSkillDir(dir: string): boolean {
+  return existsSync(join(dir, "SKILL.md"));
+}
+
+/** True if `childReal` is the root realpath or nested beneath it. */
+function containedUnder(childReal: string, rootReal: string): boolean {
+  return childReal === rootReal || childReal.startsWith(rootReal + sep);
+}
+
+/** True if a subpath tries to climb out of the checkout (`..` segment). */
+function subpathClimbs(cleanSub: string): boolean {
+  return cleanSub.split("/").includes("..");
+}
+
+/**
+ * Immediate sub-DIRECTORIES of `dir` (incl. symlinked dirs), minus skip/hidden — and
+ * minus any symlinked dir whose realpath ESCAPES `rootReal`. Following an escaping
+ * symlink would let a cloned repo's `skills/x -> /etc` pull the host filesystem into
+ * discovery (and copy it into the library); containment keeps the walk inside the
+ * checkout (security).
+ */
+async function childDirs(dir: string, rootReal: string): Promise<string[]> {
+  let entries: Dirent[] = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const e of entries) {
+    if (DISCOVERY_SKIP.has(e.name)) continue;
+    if (e.name.startsWith(".") && !DISCOVERY_ALLOW_DOT.has(e.name)) continue;
+    const full = join(dir, e.name);
+    if (e.isDirectory()) {
+      out.push(full);
+    } else if (e.isSymbolicLink() && (await isDirectory(full))) {
+      // Only follow a symlinked dir whose target stays inside the checkout.
+      if (containedUnder(realpathOrSelf(full), rootReal)) out.push(full);
+    }
+  }
+  return out;
+}
+
+/** Build a DiscoveredSkill from a dir, applying the name+description validity gate. */
+async function buildDiscovered(
+  dir: string,
+  rootReal: string,
+  opts: { requireValid: boolean },
+): Promise<DiscoveredSkill | null> {
+  // Containment: never surface a skill dir whose realpath escapes the checkout (an
+  // escaping symlink target), so its content can't be copied into the library and its
+  // lockfile subpath can't become a phantom path.
+  const dirReal = realpathOrSelf(dir);
+  if (!containedUnder(dirReal, rootReal)) return null;
+  const md = join(dir, "SKILL.md");
+  if (!existsSync(md)) return null;
+  let raw: string;
+  try {
+    raw = await Bun.file(md).text();
+  } catch {
+    return null;
+  }
+  const { data } = parseFrontmatter(raw);
+  const fmName = typeof data.name === "string" ? data.name.trim() : "";
+  const description = typeof data.description === "string" ? data.description.trim() : "";
+  // A DISCOVERED (walked) skill must declare BOTH name and description — the
+  // convention gate that keeps template/example SKILL.md stubs out of `--all`
+  // (ADR-0006 §3). An EXPLICIT subpath pointer is exempt (requireValid:false): the
+  // user named it, so a sparse SKILL.md still installs. (The single-skill resolution
+  // path — locateSkillDir — also tolerates a sparse SKILL.md via locateSingleLenient.)
+  if (opts.requireValid && (fmName === "" || description === "")) return null;
+  const name = fmName !== "" ? fmName : basename(dirReal);
+  // Subpath is computed from the REALPATH (relative to the checkout realpath), so an
+  // aliased / symlink-cycle path like `self/x` records the canonical committed `x`.
+  const rel = relative(rootReal, dirReal);
+  const subpath = rel === "" ? "" : rel.split(sep).join("/");
+  return { name, dir, subpath, description };
+}
+
+/** Bounded recursive fallback: collect every valid skill dir under `start`. */
+async function recurseDiscover(
+  dir: string,
+  rootReal: string,
+  depth: number,
+  add: (d: DiscoveredSkill | null) => void,
+  seen: Set<string>,
+): Promise<void> {
+  if (depth > DISCOVERY_MAX_DEPTH) return;
+  const real = realpathOrSelf(dir);
+  if (seen.has(real)) return; // break symlink cycles (self -> ., parent loops)
+  seen.add(real);
+  if (isSkillDir(dir)) {
+    add(await buildDiscovered(dir, rootReal, { requireValid: true }));
+    return; // a skill dir is a leaf — never descend into its reference subtree
+  }
+  for (const child of await childDirs(dir, rootReal)) {
+    await recurseDiscover(child, rootReal, depth + 1, add, seen);
+  }
+}
+
+/**
+ * Discover EVERY skill dir under a checkout — the multi-skill generalization of
+ * locateSkillDir, behind `skl add --all/--skill/--list/--dry-run` (ADR-0006). One
+ * clone, N skills.
+ *
+ * Strategy (vercel-labs/skills convention, ADR-0006 §3):
+ *   - an explicit `subpath` that directly names a skill dir → that one dir (lenient,
+ *     no validity gate — preserves `skl add owner/repo/path/to/skill`).
+ *   - else scan conventional CONTAINER dirs (repo root, `skills/`, and its
+ *     `.curated`/`.experimental`/`.system` subdirs): flat `<name>/SKILL.md` everywhere,
+ *     catalog `<cat>/<name>/SKILL.md` only under the `skills/` family (NOT the repo
+ *     root — else `examples/`/`templates/` get swept in).
+ *   - if the containers yield NOTHING, a bounded recursive fallback (depth ≤
+ *     DISCOVERY_MAX_DEPTH) catches oddly-nested repos.
+ * De-duplicated by REALPATH (collapses aliases / symlink cycles), sorted by subpath.
+ * Symlinks that escape the checkout are never followed or surfaced (security).
+ */
+export async function discoverSkills(root: string, subpath = ""): Promise<DiscoveredSkill[]> {
+  const cleanSub = subpath.replace(/^\/+|\/+$/g, "");
+  // A subpath must never climb out of the checkout (`..`): a crafted/stored source
+  // could otherwise read & copy foreign content with a non-round-trippable provenance.
+  if (subpathClimbs(cleanSub)) return [];
+  const base = cleanSub ? join(root, cleanSub) : root;
+  if (!existsSync(base)) return [];
+
+  const rootReal = realpathOrSelf(root);
+  // Defense-in-depth: the resolved base must still be inside the checkout.
+  if (!containedUnder(realpathOrSelf(base), rootReal)) return [];
+
+  // Explicit pointer: the named subpath IS a skill dir. Return it verbatim (lenient).
+  if (cleanSub && isSkillDir(base)) {
+    const one = await buildDiscovered(base, rootReal, { requireValid: false });
+    return one ? [one] : [];
+  }
+
+  // De-duplicate by REALPATH (not the raw string) so aliased / symlink-cycle paths
+  // collapse to a single entry (mirrors crawl.ts).
+  const byReal = new Map<string, DiscoveredSkill>();
+  const add = (d: DiscoveredSkill | null): void => {
+    if (!d) return;
+    const key = realpathOrSelf(d.dir);
+    if (!byReal.has(key)) byReal.set(key, d);
+  };
+
+  // 1) Conventional container scan (flat depth-1 +, under skills/, catalog depth-2).
+  //    When a subpath scopes discovery, the scoped base is the only container.
+  const containers = cleanSub
+    ? [base]
+    : DISCOVERY_CONTAINERS.map((c) => (c ? join(root, c) : root));
+  for (const container of containers) {
+    if (!existsSync(container)) continue;
+    const isRepoRoot = realpathOrSelf(container) === rootReal;
+    if (isSkillDir(container)) {
+      // The container itself is a skill (e.g. the repo root holds SKILL.md). The repo
+      // root is lenient so a bare single-skill repo with a sparse SKILL.md still
+      // resolves (today's behavior); deeper containers stay gated.
+      add(await buildDiscovered(container, rootReal, { requireValid: !isRepoRoot }));
+      continue; // a skill dir has no child skills to scan
+    }
+    for (const child of await childDirs(container, rootReal)) {
+      if (isSkillDir(child)) {
+        add(await buildDiscovered(child, rootReal, { requireValid: true })); // flat depth-1
+        continue;
+      }
+      // Catalog (depth-2) is scanned ONLY under the real `skills/`-family containers,
+      // never the repo root — else `examples/<x>/SKILL.md` etc. get swept into --all.
+      if (isRepoRoot) continue;
+      for (const grandchild of await childDirs(child, rootReal)) {
+        if (isSkillDir(grandchild)) {
+          add(await buildDiscovered(grandchild, rootReal, { requireValid: true })); // catalog depth-2
+        }
+      }
+    }
+  }
+
+  // 2) Recursive fallback ONLY if the conventional scan found nothing.
+  if (byReal.size === 0) await recurseDiscover(base, rootReal, 0, add, new Set<string>());
+
+  return [...byReal.values()].sort((a, b) =>
+    a.subpath < b.subpath ? -1 : a.subpath > b.subpath ? 1 : 0,
+  );
+}
+
+/**
+ * Locate the SINGLE skill dir under a checkout subtree (the single-skill add/update
+ * path). Strict discovery first (exactly one → its dir; many → null/ambiguous); if
+ * strict finds NOTHING, fall back to lenient resolution so a one-skill repo / vendored
+ * registry skill whose SKILL.md omits a `description` still resolves (pre-ADR-0006
+ * behavior — the single-skill path never required a description).
+ */
+async function locateSkillDir(root: string, subpath: string): Promise<string | null> {
+  const strict = await discoverSkills(root, subpath);
+  if (strict.length === 1) return strict[0]!.dir;
+  if (strict.length > 1) return null; // genuinely ambiguous — caller errors
+  return locateSingleLenient(root, subpath);
+}
+
+/**
+ * Lenient single-skill resolution (no frontmatter validity gate): exactly one dir with
+ * a SKILL.md under the containment-checked scope → its dir; else null. Cycle-safe and
+ * never follows a symlink that escapes the checkout.
+ */
+async function locateSingleLenient(root: string, subpath: string): Promise<string | null> {
+  const cleanSub = subpath.replace(/^\/+|\/+$/g, "");
+  if (subpathClimbs(cleanSub)) return null;
+  const start = cleanSub ? join(root, cleanSub) : root;
+  if (!existsSync(start)) return null;
+  const rootReal = realpathOrSelf(root);
+  if (!containedUnder(realpathOrSelf(start), rootReal)) return null;
+  if (isSkillDir(start)) return start;
+
   const candidates: string[] = [];
+  const seen = new Set<string>();
   async function scan(dir: string, depth: number): Promise<void> {
-    if (depth > 4 || candidates.length > 1) return;
-    let entries: Dirent[] = [];
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
+    if (depth > DISCOVERY_MAX_DEPTH || candidates.length > 1) return;
+    const real = realpathOrSelf(dir);
+    if (seen.has(real)) return;
+    seen.add(real);
+    if (isSkillDir(dir)) {
+      candidates.push(dir);
       return;
     }
-    if (entries.some((e) => e.isFile() && e.name === "SKILL.md")) {
-      candidates.push(dir);
-      return; // don't descend into a skill subtree
-    }
-    for (const e of entries) {
-      if (e.name === ".git" || e.name === "node_modules") continue;
-      const full = join(dir, e.name);
-      if (e.isDirectory() || (e.isSymbolicLink() && (await isDirectory(full)))) {
-        await scan(full, depth + 1);
-      }
+    for (const child of await childDirs(dir, rootReal)) {
+      await scan(child, depth + 1);
     }
   }
   await scan(start, 0);
@@ -222,16 +444,41 @@ async function locateSkillDir(root: string, subpath: string): Promise<string | n
 }
 
 /**
- * Clone a github repo into a fresh staging dir and locate the skill dir.
- * Shells out to `git clone --depth 1`. The caller cleans up `staging`.
+ * Lenient single-skill DISCOVERY for the implicit single-add path — same resolution as
+ * locateSkillDir's fallback, but returns a DiscoveredSkill (with canonical subpath) so
+ * `add.ts` (which discovers directly, not via locateSkillDir) can install a one-skill
+ * repo whose SKILL.md omits a `description` without the convention gate dropping it.
  */
-export async function fetchGithub(parsed: ParsedSource): Promise<FetchResult> {
-  if (parsed.channel !== "github" || !parsed.owner || !parsed.repo) {
-    return { ok: false, error: `not a github source: ${parsed.raw}` };
-  }
+export async function discoverSingleLenient(
+  root: string,
+  subpath = "",
+): Promise<DiscoveredSkill | null> {
+  const dir = await locateSingleLenient(root, subpath);
+  if (!dir) return null;
+  return buildDiscovered(dir, realpathOrSelf(root), { requireValid: false });
+}
+
+/** Outcome of cloning a whole repo into staging (no skill located yet). */
+export type RepoFetchResult =
+  | { ok: true; checkout: string; ref: string; staging: string; channel: Channel; source: string }
+  | { ok: false; error: string; staging?: string };
+
+/**
+ * Clone a github/git source ONCE into a fresh staging dir and capture HEAD. Shared
+ * by the single-skill fetch (fetchGithub/fetchGit) and the repo-wide fetchRepo so a
+ * `--all`/`--skill` install clones exactly once and copies N skills out of it.
+ */
+async function cloneToStaging(
+  parsed: ParsedSource,
+): Promise<{ ok: true; checkout: string; ref: string; staging: string } | { ok: false; error: string; staging?: string }> {
   if (!(await hasBinary("git"))) {
-    return { ok: false, error: "git is not installed (required for github channel)" };
+    return { ok: false, error: "git is not installed (required for the github/git channel)" };
   }
+  const cloneTarget =
+    parsed.channel === "github"
+      ? `https://github.com/${parsed.owner}/${parsed.repo}.git`
+      : parsed.localPath;
+  if (!cloneTarget) return { ok: false, error: `not a cloneable source: ${parsed.raw}` };
 
   let staging: string;
   try {
@@ -244,31 +491,42 @@ export async function fetchGithub(parsed: ParsedSource): Promise<FetchResult> {
   }
 
   const checkout = join(staging, "repo");
-  const url = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
-  const clone = await run(["git", "clone", "--depth", "1", url, checkout]);
+  const clone = await run(["git", "clone", "--depth", "1", cloneTarget, checkout]);
   if (!clone.ok) {
     return {
       ok: false,
-      error: `git clone failed for ${url}: ${clone.stderr.trim() || `exit ${clone.code}`}`,
+      error: `git clone failed for ${cloneTarget}: ${clone.stderr.trim() || `exit ${clone.code}`}`,
       staging,
     };
   }
 
   const headProc = await run(["git", "-C", checkout, "rev-parse", "HEAD"]);
   const ref = headProc.ok ? headProc.stdout.trim() : "";
+  return { ok: true, checkout, ref, staging };
+}
 
-  const skillDir = await locateSkillDir(checkout, parsed.subpath);
+/**
+ * Clone a github repo into a fresh staging dir and locate the single skill dir.
+ * Shells out to `git clone --depth 1`. The caller cleans up `staging`.
+ */
+export async function fetchGithub(parsed: ParsedSource): Promise<FetchResult> {
+  if (parsed.channel !== "github" || !parsed.owner || !parsed.repo) {
+    return { ok: false, error: `not a github source: ${parsed.raw}` };
+  }
+  const cloned = await cloneToStaging(parsed);
+  if (!cloned.ok) return cloned;
+
+  const skillDir = await locateSkillDir(cloned.checkout, parsed.subpath);
   if (!skillDir) {
     return {
       ok: false,
       error: parsed.subpath
         ? `no SKILL.md found at ${parsed.subpath} in ${parsed.source}`
-        : `no unambiguous SKILL.md found in ${parsed.source} (specify a subpath)`,
-      staging,
+        : `no unambiguous SKILL.md found in ${parsed.source} (specify a subpath, or use --all/--skill/--list)`,
+      staging: cloned.staging,
     };
   }
-
-  return { ok: true, skillDir, ref, staging, channel: "github", source: parsed.source };
+  return { ok: true, skillDir, ref: cloned.ref, staging: cloned.staging, channel: "github", source: parsed.source };
 }
 
 /**
@@ -280,45 +538,46 @@ export async function fetchGit(parsed: ParsedSource): Promise<FetchResult> {
   if (parsed.channel !== "git" || !parsed.localPath) {
     return { ok: false, error: `not a git source: ${parsed.raw}` };
   }
-  if (!(await hasBinary("git"))) {
-    return { ok: false, error: "git is not installed (required for git channel)" };
-  }
+  const cloned = await cloneToStaging(parsed);
+  if (!cloned.ok) return cloned;
 
-  let staging: string;
-  try {
-    staging = await mkdtemp(join(tmpdir(), "skl-fetch-"));
-  } catch (err) {
-    return {
-      ok: false,
-      error: `could not create staging dir: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-
-  const checkout = join(staging, "repo");
-  const clone = await run(["git", "clone", "--depth", "1", parsed.localPath, checkout]);
-  if (!clone.ok) {
-    return {
-      ok: false,
-      error: `git clone failed for ${parsed.localPath}: ${clone.stderr.trim() || `exit ${clone.code}`}`,
-      staging,
-    };
-  }
-
-  const headProc = await run(["git", "-C", checkout, "rev-parse", "HEAD"]);
-  const ref = headProc.ok ? headProc.stdout.trim() : "";
-
-  const skillDir = await locateSkillDir(checkout, parsed.subpath);
+  const skillDir = await locateSkillDir(cloned.checkout, parsed.subpath);
   if (!skillDir) {
     return {
       ok: false,
       error: parsed.subpath
         ? `no SKILL.md found at ${parsed.subpath} in ${parsed.source}`
-        : `no unambiguous SKILL.md found in ${parsed.source} (specify a subpath)`,
-      staging,
+        : `no unambiguous SKILL.md found in ${parsed.source} (specify a subpath, or use --all/--skill/--list)`,
+      staging: cloned.staging,
     };
   }
+  return { ok: true, skillDir, ref: cloned.ref, staging: cloned.staging, channel: "git", source: parsed.source };
+}
 
-  return { ok: true, skillDir, ref, staging, channel: "git", source: parsed.source };
+/**
+ * Clone a github/git repo ONCE and hand back the checkout root (not a single skill
+ * dir), so the caller can discoverSkills() + copy N skills out of one clone — the
+ * clone-once-copy-N path behind `skl add --all/--skill` (ADR-0006 §2). The caller
+ * cleans up `staging`.
+ */
+export async function fetchRepo(parsed: ParsedSource): Promise<RepoFetchResult> {
+  if (parsed.channel === "github") {
+    if (!parsed.owner || !parsed.repo) return { ok: false, error: `not a github source: ${parsed.raw}` };
+  } else if (parsed.channel === "git") {
+    if (!parsed.localPath) return { ok: false, error: `not a git source: ${parsed.raw}` };
+  } else {
+    return { ok: false, error: `not a cloneable repo source: ${parsed.raw}` };
+  }
+  const cloned = await cloneToStaging(parsed);
+  if (!cloned.ok) return cloned;
+  return {
+    ok: true,
+    checkout: cloned.checkout,
+    ref: cloned.ref,
+    staging: cloned.staging,
+    channel: parsed.channel,
+    source: parsed.source,
+  };
 }
 
 /**
@@ -477,13 +736,28 @@ export function parseStoredSource(source: string): ParsedSource {
 
 /**
  * Copy a fetched skill dir into a destination dir (the new home in the library).
- * Excludes the upstream .git. Overwrites the destination contents. Returns dest.
+ * Excludes the upstream `.git`, and — for SECURITY — drops any symlink whose target
+ * escapes the source dir, so a third-party skill containing `notes.txt -> ~/.ssh/id_rsa`
+ * (or a dir symlink to outside the checkout) can never copy a live symlink-to-a-secret
+ * or external content into the library. Overwrites the destination contents. Returns dest.
  */
 export async function copySkillDir(srcDir: string, destDir: string): Promise<string> {
+  const srcReal = realpathOrSelf(srcDir);
   await cp(srcDir, destDir, {
     recursive: true,
     force: true,
-    filter: (s: string) => basename(s) !== ".git",
+    filter: (s: string): boolean => {
+      if (basename(s) === ".git") return false;
+      try {
+        if (lstatSync(s).isSymbolicLink()) {
+          const real = realpathSync(s); // throws on a broken link → dropped below
+          return real === srcReal || real.startsWith(srcReal + sep);
+        }
+      } catch {
+        return false; // unreadable / broken symlink → don't copy it
+      }
+      return true;
+    },
   });
   return destDir;
 }

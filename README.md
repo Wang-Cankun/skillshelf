@@ -173,7 +173,7 @@ See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full design.
 | `skl use <bundle\|skill>` | Symlink a bundle (or a single skill) into `./.claude/skills/` (hot-loads) | — |
 | `skl drop <bundle\|skill>` | Remove a bundle's (or single skill's) symlinks from `./.claude/skills/` | — |
 | `skl refresh` | Re-sync this project's `./.claude/skills` symlinks to current library reality (repoint stale, prune vanished) | `--dry-run` |
-| `skl add <src>` | Install a third-party skill (`github:`/registry), record provenance, auto-tag | `--domain <d>`, `--name <slug>`, `--no-infer`, `--force` |
+| `skl add <src>` | Install third-party skill(s) into the library (librarian only — no agent-dir writes). One repo = **one clone**: a bare repo with several skills needs `--all`/`--skill`/`--list`; single-skill `add <repo>/<path>` is unchanged. `--list` discovers + prints; `--dry-run` previews drift (new/identical/differs); a `differs` skill is skipped without `--force` | `--all`, `--skill <a,b>`, `--list`, `--dry-run`, `--domain <d>`, `--name <slug>`, `--no-infer`, `--force` |
 | `skl outdated [name]` | Check upstream ref per tracked skill and mark stale ones (LINKED dev-repo entries are reported, never probed); `--check-local` diffs the local body against its baseline offline | `--check-local` |
 | `skl update [name]` | Re-pull upstream body, preserve domain tags, diff if local body diverged (LINKED entries are skipped — their own git owns versioning) | `--force`, `--dry-run` |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain) | — |
