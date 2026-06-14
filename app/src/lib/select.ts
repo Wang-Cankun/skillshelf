@@ -155,6 +155,17 @@ export function libraryView(
   return { count, buckets };
 }
 
+/** Every domain currently in use across the live library, sorted. The real
+ *  selectable tag set — drives the tag/filter pickers (no fabricated domains). */
+export function allDomains(skills: Skill[]): string[] {
+  const set = new Set<string>();
+  for (const s of skills) {
+    if (s.retired) continue;
+    for (const d of s.domains) set.add(d);
+  }
+  return [...set].sort();
+}
+
 export function filterLabel(filter: Filter): string {
   if (!filter) return "";
   if (filter.kind === "domain") return filter.value;

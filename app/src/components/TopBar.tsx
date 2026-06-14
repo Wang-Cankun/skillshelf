@@ -1,16 +1,11 @@
-// Top bar (46px) — ADR-0008 §3, mockup lines 46-69. Logo + brand, a centered
-// search-pill placeholder (cmdk deferred → rendered as a div, not an input),
-// and a live/dev status indicator keyed off IS_TAURI.
+// Top bar (46px) — ADR-0008 §3. Logo + brand on the left, a live/dev status
+// indicator (keyed off IS_TAURI) on the right. The centered search/command pill
+// was removed — the real search lives in the Library toolbar (cmdk deferred).
 
-import { useLibrary } from "../state/queries";
-import { aggregates } from "../lib/select";
 import { MONO } from "../lib/tokens";
 import { IS_TAURI } from "../lib/skl";
 
 export function TopBar() {
-  const skills = useLibrary().data ?? [];
-  const total = aggregates(skills).total;
-
   return (
     <div
       style={{
@@ -62,64 +57,8 @@ export function TopBar() {
         </span>
       </div>
 
-      {/* centered search pill (visual placeholder — cmdk deferred) */}
-      <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            width: 420,
-            maxWidth: "100%",
-            height: 30,
-            padding: "0 11px",
-            border: "1px solid #E7E7E9",
-            borderRadius: 8,
-            background: "#FAFAFA",
-            color: "#9A9AA2",
-            fontSize: 12.5,
-          }}
-        >
-          <div
-            style={{
-              width: 11,
-              height: 11,
-              border: "1.5px solid #B6B6BC",
-              borderRadius: "50%",
-              position: "relative",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                width: 5,
-                height: 1.5,
-                background: "#B6B6BC",
-                transform: "rotate(45deg)",
-                right: -4,
-                bottom: 0,
-                borderRadius: 1,
-              }}
-            />
-          </div>
-          <span style={{ flex: 1 }}>
-            Search {total} skills, run a command…
-          </span>
-          <span
-            style={{
-              fontFamily: MONO,
-              fontSize: 11,
-              background: "#FFFFFF",
-              border: "1px solid #E7E7E9",
-              borderRadius: 5,
-              padding: "1px 6px",
-              color: "#71717A",
-            }}
-          >
-            ⌘K
-          </span>
-        </div>
-      </div>
+      {/* spacer (search pill removed) keeps the status indicator right-aligned */}
+      <div style={{ flex: 1 }} />
 
       {/* live / dev status */}
       <div

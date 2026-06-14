@@ -7,6 +7,8 @@ import { useStore } from "../state/store";
 import { useLibrary, useWhere } from "../state/queries";
 import { useCommands } from "../state/commands";
 import { deriveInbox } from "../lib/derive";
+import { allDomains } from "../lib/select";
+import { DomainMenu } from "./DomainMenu";
 import { SEV_MAP } from "../lib/tokens";
 import { MONO } from "../lib/tokens";
 
@@ -169,26 +171,38 @@ export function InboxView() {
                 </span>
               ) : null}
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                {r.actions.map((a, ai) => {
-                  const isRetire = a.args && a.args[0] === "retire";
-                  return (
-                    <button
-                      key={`${a.label}-${ai}`}
-                      onClick={
-                        isRetire
-                          ? () => commands.retire([r.skill])
-                          : undefined
-                      }
-                      // deferred affordances (Review ▾ / View lock …) have no
-                      // wired verb yet — disable so they aren't inert focus traps.
-                      disabled={!isRetire}
-                      title={isRetire ? undefined : "coming soon"}
-                      style={a.primary ? primaryBtn : secBtn}
-                    >
-                      {a.label}
-                    </button>
-                  );
-                })}
+                {r.severity === "untagged" ? (
+                  // The headline triage action: pick (or accept the prefix-
+                  // inferred suggestion) → undoable `skl tag` (commands.tag).
+                  <DomainMenu
+                    domains={allDomains(skills)}
+                    suggested={r.suggestedDomain}
+                    onPick={(d) => commands.tag([r.skill], d)}
+                    variant="menu"
+                    align="right"
+                  />
+                ) : (
+                  r.actions.map((a, ai) => {
+                    const isRetire = a.args && a.args[0] === "retire";
+                    return (
+                      <button
+                        key={`${a.label}-${ai}`}
+                        onClick={
+                          isRetire
+                            ? () => commands.retire([r.skill])
+                            : undefined
+                        }
+                        // deferred affordances (Review ▾ / View lock …) have no
+                        // wired verb yet — disable so they aren't inert focus traps.
+                        disabled={!isRetire}
+                        title={isRetire ? undefined : "coming soon"}
+                        style={a.primary ? primaryBtn : secBtn}
+                      >
+                        {a.label}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
           );

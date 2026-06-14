@@ -326,6 +326,35 @@ export interface InboxRow {
   /** valid `skl` arg vectors for the row's action buttons */
   actions: { label: string; primary: boolean; args?: string[] }[];
   openable: boolean;
+  /** UNTAGGED rows only: a deterministic prefix-family majority domain to
+   *  pre-offer as the safe one-click tag (null = no confident sibling signal). */
+  suggestedDomain?: string | null;
+}
+
+/**
+ * Deterministic tag suggestion for an untagged skill: the most common primary
+ * domain among its string-prefix family siblings (ADR-0007 fact layer — a
+ * reproducible majority over a string-prefix match, no model). Null when the
+ * family gives no signal.
+ */
+export function suggestDomain(s: Skill, live: Skill[]): string | null {
+  const prefix = s.name.split("-")[0];
+  const counts = new Map<string, number>();
+  for (const o of live) {
+    if (o.name === s.name) continue;
+    if (o.name.split("-")[0] !== prefix) continue;
+    const d = o.primaryDomain ?? o.domains[0];
+    if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [d, n] of counts) {
+    if (n > bestN || (n === bestN && best !== null && d < best)) {
+      best = d;
+      bestN = n;
+    }
+  }
+  return best;
 }
 
 const STUB_DEFAULTS = [
@@ -363,6 +392,7 @@ export function deriveInbox(
         cmd: `skl tag ${s.name} <domain>`,
         actions: [{ label: "Tag ▾", primary: true }],
         openable: true,
+        suggestedDomain: suggestDomain(s, live),
       });
     }
   }
