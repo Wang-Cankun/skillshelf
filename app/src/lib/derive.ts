@@ -113,7 +113,7 @@ export function stripFrontmatter(text: string): string {
 }
 
 /** Minimal frontmatter parser: name / description / triggers / license. */
-function parseFrontmatter(text: string, fallback: Frontmatter): Frontmatter {
+export function parseFrontmatter(text: string, fallback: Frontmatter): Frontmatter {
   if (text.slice(0, 3) !== "---") return fallback;
   const end = text.indexOf("\n---", 3);
   if (end < 0) return fallback;
@@ -217,6 +217,99 @@ export function deriveShow(
     : null;
 
   return { name, body, frontmatter, refFiles, prov };
+}
+
+// ── Normalize the LIVE `skl show --json` payload (Tauri) ───────────────────
+// The real CLI emits { name, description, path, body, refFiles, source, … }
+// where refFiles are ABSOLUTE path strings and there is no `frontmatter`
+// object. Reshape it into the ShowReport the drawer binds to: parse the
+// frontmatter out of the body, and turn each absolute path into a
+// {path, kind, depth} relative entry. Nothing is fabricated — every field is
+// taken from the CLI payload or parsed from the real body.
+
+function kindForPath(p: string): RefFile["kind"] {
+  if (p.endsWith("/")) return "dir";
+  const base = p.split("/").pop() ?? p;
+  if (!base.includes(".")) return "dir"; // extensionless → directory (assets/evals)
+  if (base.endsWith(".md")) return "md";
+  if (base.endsWith(".json")) return "json";
+  return "other";
+}
+
+function normalizeRefFiles(rf: unknown, skillPath: string): RefFile[] {
+  if (!Array.isArray(rf)) return [];
+  const out: RefFile[] = [];
+  for (const item of rf) {
+    if (item && typeof item === "object" && "path" in item) {
+      const o = item as Record<string, unknown>;
+      const kind = String(o.kind);
+      out.push({
+        path: String(o.path),
+        kind: (["md", "json", "dir", "other"].includes(kind)
+          ? kind
+          : "other") as RefFile["kind"],
+        depth: typeof o.depth === "number" ? o.depth : 0,
+      });
+      continue;
+    }
+    if (typeof item === "string") {
+      let rel = item;
+      if (skillPath && item.startsWith(skillPath))
+        rel = item.slice(skillPath.length).replace(/^\/+/, "");
+      else rel = item.split("/").pop() ?? item;
+      if (!rel) continue;
+      const depth = rel.includes("/") ? rel.split("/").length - 1 : 0;
+      out.push({ path: rel, kind: kindForPath(rel), depth });
+    }
+  }
+  return out;
+}
+
+export function normalizeShow(raw: unknown, name: string): ShowReport {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const body = typeof r.body === "string" ? r.body : "";
+  const description =
+    typeof r.description === "string" ? r.description : name;
+  const skillPath = typeof r.path === "string" ? r.path : "";
+
+  const fallbackFm: Frontmatter = {
+    name,
+    description,
+    triggers: [],
+    license: "—",
+  };
+  let frontmatter: Frontmatter;
+  const rawFm = r.frontmatter;
+  if (rawFm && typeof rawFm === "object") {
+    const f = rawFm as Record<string, unknown>;
+    frontmatter = {
+      name: typeof f.name === "string" ? f.name : name,
+      description:
+        typeof f.description === "string" ? f.description : description,
+      triggers: Array.isArray(f.triggers)
+        ? (f.triggers.filter((x) => typeof x === "string") as string[])
+        : [],
+      license: typeof f.license === "string" ? f.license : "—",
+    };
+  } else {
+    frontmatter = parseFrontmatter(body, fallbackFm);
+  }
+
+  const refFiles = normalizeRefFiles(r.refFiles, skillPath);
+  const prov =
+    r.prov && typeof r.prov === "object"
+      ? (r.prov as ShowReport["prov"])
+      : null;
+
+  return {
+    name,
+    body,
+    frontmatter,
+    refFiles: refFiles.length
+      ? refFiles
+      : [{ path: "SKILL.md", kind: "md", depth: 0 }],
+    prov,
+  };
 }
 
 // ── Inbox triage (deterministic, from real signals — ADR-0008 §4) ──────────

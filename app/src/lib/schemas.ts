@@ -123,6 +123,23 @@ export const RefFileSchema = z
   })
   .passthrough();
 
+// Loose schema for the LIVE `skl show --json` payload, whose shape differs from
+// the drawer's ShowReport (no `frontmatter`; refFiles are absolute strings).
+// We only require a string `body` at the boundary; derive.ts `normalizeShow`
+// reshapes the rest — honest validation (right command's output) without
+// rejecting the real, richer payload.
+export const RawShowSchema = z
+  .object({
+    name: z.string().optional(),
+    description: z.string().optional(),
+    path: z.string().optional(),
+    body: z.string(),
+    refFiles: z.array(z.unknown()).optional(),
+    frontmatter: z.unknown().optional(),
+    prov: z.unknown().optional(),
+  })
+  .passthrough();
+
 export const ShowReportSchema = z
   .object({
     name: z.string(),

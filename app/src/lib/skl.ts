@@ -24,10 +24,10 @@ import {
   ScanReportSchema,
   StatusReportSchema,
   AgentsReportSchema,
-  ShowReportSchema,
+  RawShowSchema,
 } from "./schemas";
 import { realLibrary, realWhere, realScan, realStatus } from "./fixtures";
-import { augmentLibrary, deriveShow } from "./derive";
+import { augmentLibrary, deriveShow, normalizeShow } from "./derive";
 import { deriveAgentsReport } from "./agents";
 import type { ZodType } from "zod";
 
@@ -111,7 +111,11 @@ export async function loadShow(
     const args = file
       ? ["show", name, "--file", file, "--json"]
       : ["show", name, "--json"];
-    return invokeJson(args, ShowReportSchema);
+    // The live `skl show --json` payload is richer/differently-shaped than the
+    // drawer's ShowReport (absolute-string refFiles, no frontmatter object), so
+    // validate loosely then normalize into the drawer shape.
+    const raw = await invokeJson(args, RawShowSchema);
+    return normalizeShow(raw, name);
   }
   return deriveShow(name, file, augmentLibrary(realLibrary, realWhere));
 }
