@@ -33,6 +33,10 @@ export function knownAgentSurfaces(home: string = homedir()): AgentSurface[] {
     { agent: "codex", path: join(home, ".codex", "vendor_imports", "skills", "skills") },
     { agent: "opencode", path: join(home, ".opencode", "skills") },
     { agent: "cursor", path: join(home, ".cursor", "skills") },
+    // Keep in sync with the agent registry in core/agents.ts: every agent the
+    // matrix advertises must have its global surface scanned, or `installed`
+    // can disagree with the (empty) matrix. See agents.test.ts coverage check.
+    { agent: "gemini", path: join(home, ".gemini", "skills") },
   ];
 }
 

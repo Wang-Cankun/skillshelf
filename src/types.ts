@@ -125,8 +125,12 @@ export interface DuplicateGroup {
  *                      symlinks AT (linked-bookshelf mode); not a redundant copy
  *   - `copy`         — a real skill dir (untracked, or drifted vs a library skill)
  *   - `dead`         — a symlink whose target no longer exists
+ *   - `aliased`      — a symlink resolving INTO the library, but whose link-name
+ *                      differs from the library skill it points at (e.g. a deployed
+ *                      `nuwa` → `<lib>/huashu-nuwa`). Clean by realpath, but the
+ *                      name mismatch hides the real skill from name-keyed views.
  */
-export type DeploymentKind = "linked" | "foreign-link" | "source" | "copy" | "dead";
+export type DeploymentKind = "linked" | "foreign-link" | "source" | "copy" | "dead" | "aliased";
 
 /** One skill entry found in a deployment surface (a dir tools read skills from). */
 export interface DeploymentSite {

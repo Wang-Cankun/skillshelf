@@ -26,7 +26,7 @@ export interface DeploymentSite {
   name: string;
   surface: string;
   path: string;
-  kind: "linked" | "foreign-link" | "source" | "copy" | "dead";
+  kind: "linked" | "foreign-link" | "source" | "copy" | "dead" | "aliased";
   target: string | null;
   inLibrary: boolean;
   drift: boolean;

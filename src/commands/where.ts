@@ -21,12 +21,16 @@ import {
   type RemediationAction,
 } from "../core/deployments.ts";
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
+import { resolveReadTarget } from "../core/agents.ts";
 import { safeSymlink, removeSymlink } from "../lib/fs.ts";
 
 export const meta = {
   name: "where",
   summary: "Show where each library skill is deployed across all surfaces (copies, symlinks, drift)",
-  usage: "skl where [name] [--problems] [--prune | --fix] [--dry-run] [--json]",
+  // NB: --project is read-only on its own, but `--project <dir> --fix/--prune`
+  // WILL remediate problems found in that injected surface (intended: verify-and-fix
+  // a deploy you just made).
+  usage: "skl where [name] [--agent <id>] [--project <dir>] [--problems] [--prune | --fix] [--dry-run] [--json]",
 } as const;
 
 const HOME = homedir();
@@ -46,6 +50,8 @@ function labelFor(s: DeploymentSite): string {
       return "✗ dead link";
     case "foreign-link":
       return "⚠ 2nd-source";
+    case "aliased":
+      return "⚠ aliased link";
     case "copy":
       if (!s.inLibrary) return "⚠ untracked copy";
       return s.drift ? "⚠ drifted copy" : "⚠ redundant copy";
@@ -117,7 +123,15 @@ export async function remediate(
 }
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
-  const parsed = parseArgs(argv);
+  // Extract --agent/--project first (read-side targeting), then parse where's own
+  // flags from what remains.
+  const rt = resolveReadTarget(argv);
+  if ("error" in rt) {
+    ctx.error(`skl where: ${rt.error}`);
+    ctx.error(`usage: ${meta.usage}`);
+    return 1;
+  }
+  const parsed = parseArgs(rt.rest);
   if ("error" in parsed) {
     ctx.error(`skl where: ${parsed.error}`);
     ctx.error(`usage: ${meta.usage}`);
@@ -129,9 +143,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const lib = await ctx.loadLibrary();
     // Surfaces = configured roots + the global-core target + the well-known
     // cross-agent global skill dirs (claude, codex, …) so sprawl across agents
-    // shows up without manual `skl scan --add-root`. inventoryDeployments
-    // realpath-de-duplicates and skips missing dirs.
-    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths()];
+    // shows up without manual `skl scan --add-root`. Plus any --project surfaces
+    // injected for THIS invocation only (verify a deploy you just made).
+    // inventoryDeployments realpath-de-duplicates and skips missing dirs.
+    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths(), ...rt.extraSurfaces];
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
 
     // --- remediation (--prune / --fix) -----------------------------------

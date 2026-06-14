@@ -32,7 +32,7 @@ export const DeploymentSiteSchema = z
     name: z.string(),
     surface: z.string(),
     path: z.string(),
-    kind: z.enum(["linked", "foreign-link", "source", "copy", "dead"]),
+    kind: z.enum(["linked", "foreign-link", "source", "copy", "dead", "aliased"]),
     target: z.string().nullable(),
     inLibrary: z.boolean(),
     drift: z.boolean(),
