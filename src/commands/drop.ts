@@ -6,12 +6,13 @@ import { join } from "node:path";
 import type { Ctx } from "../types.ts";
 import { resolveBundle } from "../core/bundle.ts";
 import { findByName } from "../core/library.ts";
+import { parseDeployTarget } from "../core/agents.ts";
 import { isSymlink, realpathOrSelf, realpathOrSelfAsync, removeSymlink } from "../lib/fs.ts";
 
 export const meta = {
   name: "drop",
-  summary: "Remove a bundle's (or single skill's) symlinks from ./.claude/skills/",
-  usage: "skl drop <bundle|skill> [--json]",
+  summary: "Remove a bundle's (or skill's) symlinks from an agent's skills dir (default: ./.claude/skills/)",
+  usage: "skl drop <bundle|skill> [--agent <id>] [--global | --project <name>] [--json]",
 } as const;
 
 interface DropResult {
@@ -20,14 +21,17 @@ interface DropResult {
   status: "removed" | "absent" | "skipped";
 }
 
-function projectSkillsDir(): string {
-  return join(process.cwd(), ".claude", "skills");
-}
-
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     const json = argv.includes("--json");
-    const bundleName = argv.find((a) => !a.startsWith("-"));
+    const parsed = parseDeployTarget(argv);
+    if ("error" in parsed) {
+      ctx.error(`skl drop: ${parsed.error}`);
+      ctx.error("usage: " + meta.usage);
+      return 1;
+    }
+    const { positionals, target } = parsed;
+    const bundleName = positionals[0];
 
     if (!bundleName) {
       ctx.error("usage: " + meta.usage);
@@ -45,7 +49,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       ? { name: single.name, skills: [single] }
       : await resolveBundle(active, bundleName);
 
-    const skillsDir = projectSkillsDir();
+    const skillsDir = target.dir;
     const results: DropResult[] = [];
 
     for (const s of bundle.skills) {
@@ -72,7 +76,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const removedCount = results.filter((r) => r.status === "removed").length;
 
     if (json) {
-      ctx.json({ bundle: bundle.name, skillsDir, results, removed: removedCount });
+      ctx.json({ bundle: bundle.name, skillsDir, agent: target.agentId, scope: target.scope, results, removed: removedCount });
     } else {
       if (bundle.skills.length === 0) {
         ctx.log(`Bundle '${bundleName}' has no skills; nothing to drop.`);

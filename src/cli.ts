@@ -32,6 +32,7 @@ import * as roots from "./commands/roots.ts";
 import * as importCmd from "./commands/import.ts";
 import * as link from "./commands/link.ts";
 import * as where from "./commands/where.ts";
+import * as agents from "./commands/agents.ts";
 import * as tag from "./commands/tag.ts";
 import * as untag from "./commands/untag.ts";
 import * as retag from "./commands/retag.ts";
@@ -47,6 +48,7 @@ const MODULES: CommandModule[] = [
   ls,
   status,
   where,
+  agents,
   show,
   use,
   drop,
