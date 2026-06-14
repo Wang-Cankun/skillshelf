@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{background:#FAFAFA;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+::-webkit-scrollbar{width:11px;height:11px;}
+::-webkit-scrollbar-thumb{background:#E0E0E4;border-radius:8px;border:3px solid #FAFAFA;}
+::-webkit-scrollbar-thumb:hover{background:#CFCFD4;}
+@keyframes livepulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+@keyframes drawerIn{from{transform:translateX(28px);opacity:.4;}to{transform:translateX(0);opacity:1;}}
+@keyframes scrimIn{from{opacity:0;}to{opacity:1;}}
+@keyframes toastIn{from{transform:translate(-50%,12px);opacity:0;}to{transform:translate(-50%,0);opacity:1;}}
+.md-body{font-size:13.5px;line-height:1.66;color:#27272A;}
+.md-body h1{font-size:21px;font-weight:680;margin:0 0 12px;letter-spacing:-0.01em;}
+.md-body h2{font-size:16.5px;font-weight:650;margin:24px 0 10px;padding-bottom:5px;border-bottom:1px solid #EFEFF1;}
+.md-body h3{font-size:14px;font-weight:650;margin:18px 0 7px;}
+.md-body h4{font-size:12.5px;font-weight:650;margin:14px 0 6px;color:#3F3F46;}
+.md-body p{margin:0 0 12px;}
+.md-body ul,.md-body ol{margin:0 0 12px;padding-left:22px;}
+.md-body li{margin:3px 0;}
+.md-body code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;background:#F4F4F5;padding:1.5px 5px;border-radius:5px;color:#B4334E;}
+.md-body pre{background:#FAFAFA;border:1px solid #EFEFF1;border-radius:9px;padding:12px 14px;overflow:auto;margin:0 0 14px;}
+.md-body pre code{background:none;padding:0;color:#3F3F46;font-size:11.5px;line-height:1.55;}
+.md-body blockquote{margin:0 0 12px;padding:6px 14px;border-left:3px solid #E4E4E7;color:#71717A;background:#FBFBFC;border-radius:0 8px 8px 0;}
+.md-body table{border-collapse:collapse;width:100%;margin:0 0 14px;font-size:12.5px;}
+.md-body th,.md-body td{border:1px solid #EAEAEC;padding:6px 10px;text-align:left;}
+.md-body th{background:#FAFAFA;font-weight:600;}
+.md-body hr{border:none;border-top:1px solid #EAEAEC;margin:18px 0;}
+.md-body a{color:#2563EB;text-decoration:none;}
+.md-body strong{font-weight:650;color:#18181B;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+</helmet>
+
+<div style="height:100vh;display:flex;flex-direction:column;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#18181B;background:#FAFAFA;overflow:hidden;">
+
+  <!-- TOP BAR -->
+  <div style="flex:0 0 46px;display:flex;align-items:center;gap:16px;padding:0 16px;background:#FFFFFF;border-bottom:1px solid #E7E7E9;">
+    <div style="display:flex;align-items:center;gap:9px;">
+      <div style="width:18px;height:18px;border-radius:5px;background:#18181B;display:flex;align-items:center;justify-content:center;">
+        <div style="width:8px;height:8px;border-radius:2px;background:#FAFAFA;"></div>
+      </div>
+      <span style="font-weight:680;font-size:14px;letter-spacing:-0.01em;">skillshelf</span>
+      <span style="font-size:12px;color:#A1A1AA;border-left:1px solid #E7E7E9;padding-left:9px;">workbench</span>
+    </div>
+    <div style="flex:1;display:flex;justify-content:center;">
+      <div style="display:flex;align-items:center;gap:9px;width:420px;max-width:100%;height:30px;padding:0 11px;border:1px solid #E7E7E9;border-radius:8px;background:#FAFAFA;color:#9A9AA2;font-size:12.5px;cursor:text;">
+        <div style="width:11px;height:11px;border:1.5px solid #B6B6BC;border-radius:50%;position:relative;">
+          <div style="position:absolute;width:5px;height:1.5px;background:#B6B6BC;transform:rotate(45deg);right:-4px;bottom:0px;border-radius:1px;"></div>
+        </div>
+        <span style="flex:1;">Search 113 skills, run a command…</span>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;background:#FFFFFF;border:1px solid #E7E7E9;border-radius:5px;padding:1px 6px;color:#71717A;">⌘K</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#71717A;">
+      <span style="width:7px;height:7px;border-radius:50%;background:#15A34A;animation:livepulse 2.2s ease-in-out infinite;"></span>
+      <span>Live</span>
+      <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;color:#A1A1AA;">FSEvents</span>
+    </div>
+  </div>
+
+  <!-- THREE PANES -->
+  <div style="flex:1;min-height:0;display:flex;">
+
+    <!-- SIDEBAR -->
+    <aside style="flex:0 0 234px;width:234px;background:#FFFFFF;border-right:1px solid #E7E7E9;overflow:auto;padding:14px 10px;display:flex;flex-direction:column;gap:20px;">
+      <div>
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:0.09em;color:#A1A1AA;padding:0 8px 7px;">SMART VIEWS</div>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+          <sc-for list="{{ smartViews }}" as="v" hint-placeholder-count="5">
+            <div onClick="{{ v.onClick }}" style="{{ v.style }}">
+              <span style="{{ v.glyphStyle }}">{{ v.glyph }}</span>
+              <span style="flex:1;">{{ v.label }}</span>
+              <span style="{{ v.countStyle }}">{{ v.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:0.09em;color:#A1A1AA;padding:0 8px 7px;">BY DOMAIN · 12</div>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+          <sc-for list="{{ domains }}" as="d" hint-placeholder-count="12">
+            <div onClick="{{ d.onClick }}" style="{{ d.style }}">
+              <span style="{{ d.dotStyle }}"></span>
+              <span style="flex:1;">{{ d.label }}</span>
+              <span style="{{ d.barWrap }}"><span style="{{ d.bar }}"></span></span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;color:#A1A1AA;width:20px;text-align:right;">{{ d.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10.5px;font-weight:600;letter-spacing:0.09em;color:#A1A1AA;padding:0 8px 7px;">PROVENANCE</div>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+          <sc-for list="{{ provenance }}" as="p" hint-placeholder-count="3">
+            <div onClick="{{ p.onClick }}" style="{{ p.style }}">
+              <span style="{{ p.glyphStyle }}">{{ p.glyph }}</span>
+              <span style="flex:1;">{{ p.label }}</span>
+              <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11px;color:#A1A1AA;">{{ p.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:7px;padding:7px 9px;background:#FAFAFA;border:1px solid #EFEFF1;border-radius:8px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#9A9AA2;line-height:1.5;">
+          <span style="color:#2563EB;">◆</span> dbskill<br/>@a58f647 · pinned
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;background:#FAFAFA;">
+
+      <!-- TABS -->
+      <div style="display:flex;align-items:center;gap:2px;padding:0 14px;height:42px;border-bottom:1px solid #E7E7E9;background:#FFFFFF;">
+        <button onClick="{{ goInbox }}" style="{{ tabStyles.inbox }}">Inbox <span style="{{ badgeStyles.inbox }}">6</span></button>
+        <button onClick="{{ goMatrix }}" style="{{ tabStyles.matrix }}">Matrix <span style="{{ badgeStyles.matrix }}">113</span></button>
+        <button onClick="{{ goLibrary }}" style="{{ tabStyles.library }}">Library <span style="{{ badgeStyles.library }}">113</span></button>
+      </div>
+
+      <!-- INBOX TOOLBAR -->
+      <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid #EFEFF1;background:#FFFFFF;">
+          <div style="display:flex;align-items:baseline;gap:9px;">
+            <span style="font-size:14px;font-weight:600;">Needs attention</span>
+            <span style="font-size:12px;color:#9A9AA2;">1 untagged · 1 stub · 1 near-dup · 3 to review</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button onClick="{{ toggleDry }}" style="{{ dryStyle }}">⚙ Dry-run · {{ dryLabel }}</button>
+            <button style="background:#18181B;color:#FFFFFF;border:1px solid #18181B;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:550;cursor:pointer;">Auto-fix safe (1)</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- MATRIX TOOLBAR -->
+      <sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 16px;border-bottom:1px solid #EFEFF1;background:#FFFFFF;font-size:11.5px;color:#71717A;">
+          <span style="color:#A1A1AA;font-weight:600;letter-spacing:0.03em;">GRID</span>
+          <div style="display:flex;gap:5px;">
+            <sc-for list="{{ matrixModePills }}" as="p" hint-placeholder-count="2"><button onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button></sc-for>
+          </div>
+          <sc-if value="{{ isAgentMode }}" hint-placeholder-val="{{ false }}">
+            <span style="width:1px;height:16px;background:#E7E7E9;margin:0 2px;"></span>
+            <span style="color:#A1A1AA;font-weight:600;letter-spacing:0.03em;">SCOPE</span>
+            <div style="display:flex;gap:5px;">
+              <sc-for list="{{ scopePills }}" as="p" hint-placeholder-count="3"><button onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button></sc-for>
+            </div>
+            <span style="color:#B6B6BC;">project copy shadows global</span>
+          </sc-if>
+          <sc-if value="{{ isMatrixDomain }}" hint-placeholder-val="{{ true }}">
+            <span style="color:#C7C7CC;">·</span><span>● primary &nbsp; ◦ also-tagged</span>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- LIBRARY TOOLBAR -->
+      <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid #F3F3F4;background:#FFFFFF;">
+            <div style="display:flex;align-items:center;gap:8px;width:260px;height:28px;padding:0 10px;border:1px solid #E7E7E9;border-radius:7px;background:#FAFAFA;color:#9A9AA2;font-size:12.5px;">
+              <span>⌕</span><span style="flex:1;">Fuzzy search name, description, tags…</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <sc-if value="{{ hasFilter }}" hint-placeholder-val="{{ false }}">
+                <span onClick="{{ clearFilter }}" style="background:#EAF1FD;color:#2563EB;border-radius:20px;padding:3px 10px;font-size:11.5px;cursor:pointer;">{{ filterLabel }} ✕</span>
+              </sc-if>
+              <span style="background:#F4F4F5;color:#52525B;border-radius:20px;padding:3px 10px;font-size:11.5px;cursor:pointer;">+ tag filter</span>
+            </div>
+            <span style="flex:1;"></span>
+            <span style="font-size:12px;color:#9A9AA2;">{{ libCount }} skills</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid #EFEFF1;background:#FFFFFF;font-size:11.5px;">
+            <span style="color:#A1A1AA;font-weight:600;letter-spacing:0.03em;">SORT</span>
+            <div style="display:flex;gap:5px;">
+              <sc-for list="{{ sortPills }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button>
+              </sc-for>
+              <button onClick="{{ toggleDir }}" style="background:#FFFFFF;border:1px solid #E7E7E9;border-radius:6px;padding:3px 9px;font-size:11.5px;cursor:pointer;font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#3F3F46;">{{ dirGlyph }}</button>
+            </div>
+            <span style="width:1px;height:16px;background:#E7E7E9;margin:0 2px;"></span>
+            <span style="color:#A1A1AA;font-weight:600;letter-spacing:0.03em;">VIEW</span>
+            <div style="display:flex;gap:5px;">
+              <sc-for list="{{ groupPills }}" as="p" hint-placeholder-count="3">
+                <button onClick="{{ p.onClick }}" style="{{ p.style }}">{{ p.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CONTENT SCROLL -->
+      <div style="flex:1;min-height:0;overflow:auto;">
+
+        <!-- INBOX -->
+        <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:14px 16px;">
+            <div style="background:#FFFFFF;border:1px solid #E7E7E9;border-radius:11px;overflow:hidden;">
+              <sc-for list="{{ inboxRows }}" as="r" hint-placeholder-count="6">
+                <div title="{{ r.cmd }}" style="display:flex;align-items:center;gap:11px;padding:10px 14px;border-bottom:1px solid #F3F3F4;font-size:13px;">
+                  <span style="{{ r.sevStyle }}">{{ r.sevGlyph }}</span>
+                  <span style="{{ r.typeStyle }}">{{ r.type }}</span>
+                  <span onClick="{{ r.open }}" style="{{ r.skillStyle }}">{{ r.skill }}</span>
+                  <span style="flex:1;min-width:0;color:#71717A;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.detail }}</span>
+                  <sc-if value="{{ r.hasCounts }}" hint-placeholder-val="{{ false }}">
+                    <span style="{{ r.countStyle }}">{{ r.counts }}</span>
+                  </sc-if>
+                  <sc-if value="{{ r.auto }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size:10.5px;color:#15A34A;background:#ECF6EF;border-radius:5px;padding:2px 7px;font-weight:600;flex-shrink:0;">✓ auto</span>
+                  </sc-if>
+                  <div style="display:flex;gap:6px;flex-shrink:0;">
+                    <sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2">
+                      <button style="{{ a.style }}">{{ a.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:11px;padding:0 4px;font-size:11.5px;color:#9A9AA2;font-family:ui-monospace,'SF Mono',Menlo,monospace;">
+              <span style="color:#15A34A;">✓ auto</span><span style="color:#52525B;">= safe one-click (prefix-infer tag).</span>
+              <span>Click a skill name to open its detail drawer.</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- MATRIX -->
+        <sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:14px 16px;">
+            <div style="background:#FFFFFF;border:1px solid #E7E7E9;border-radius:11px;overflow:auto;">
+              <table style="border-collapse:collapse;width:100%;font-size:13px;">
+                <thead>
+                  <tr style="background:#FBFBFC;">
+                    <th style="position:sticky;left:0;background:#FBFBFC;z-index:2;text-align:left;padding:9px 12px;font-size:10.5px;font-weight:600;letter-spacing:0.05em;color:#9A9AA2;border-bottom:1px solid #E7E7E9;border-right:1px solid #EFEFF1;">SKILL</th>
+                    <th style="text-align:left;padding:9px 10px;font-size:10.5px;font-weight:600;letter-spacing:0.05em;color:#9A9AA2;border-bottom:1px solid #E7E7E9;">SOURCE</th>
+                    <sc-for list="{{ matrixCols }}" as="c" hint-placeholder-count="11">
+                      <th style="{{ c.style }}">{{ c.label }}</th>
+                    </sc-for>
+                  </tr>
+                </thead>
+                <tbody>
+                  <sc-for list="{{ matrixRows }}" as="row" hint-placeholder-count="17">
+                    <tr style="{{ row.rowStyle }}">
+                      <td onClick="{{ row.onClick }}" style="{{ row.nameStyle }}">{{ row.name }}</td>
+                      <td style="padding:7px 10px;border-bottom:1px solid #F3F3F4;white-space:nowrap;"><span style="{{ row.srcStyle }}">{{ row.srcLabel }}</span></td>
+                      <sc-for list="{{ row.cells }}" as="cell" hint-placeholder-count="11">
+                        <td style="{{ cell.tdStyle }}"><span style="{{ cell.style }}">{{ cell.glyph }}</span></td>
+                      </sc-for>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:13px;padding:11px 14px;background:#FFFFFF;border:1px solid #E7E7E9;border-radius:10px;font-size:11.5px;color:#52525B;">
+              <span style="font-weight:600;color:#9A9AA2;letter-spacing:0.04em;margin-right:4px;">LEGEND</span>
+              <sc-for list="{{ legend }}" as="g" hint-placeholder-count="5">
+                <span style="display:inline-flex;align-items:center;gap:5px;"><span style="{{ g.style }}">{{ g.glyph }}</span>{{ g.label }}</span>
+              </sc-for>
+              <span style="color:#C7C7CC;">·</span>
+              <span style="color:#9A9AA2;">empty row = untagged (see horizon-build)</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- LIBRARY -->
+        <sc-if value="{{ isLibrary }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:14px 16px;">
+            <div style="background:#FFFFFF;border:1px solid #E7E7E9;border-radius:11px;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:0;padding:8px 14px;border-bottom:1px solid #E7E7E9;background:#FBFBFC;font-size:10.5px;font-weight:600;letter-spacing:0.05em;color:#9A9AA2;">
+                <span style="width:22px;"></span>
+                <span style="width:158px;">SKILL</span>
+                <span style="width:128px;">DOMAINS</span>
+                <span style="width:150px;">SOURCE</span>
+                <span style="width:96px;">MODIFIED</span>
+                <span style="width:64px;text-align:center;">DEPLOYS</span>
+                <span style="flex:1;">DESCRIPTION</span>
+              </div>
+              <sc-for list="{{ libraryGroups }}" as="grp" hint-placeholder-count="1">
+                <div>
+                  <sc-if value="{{ grp.hasLabel }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 14px;background:#FBFBFC;border-bottom:1px solid #F0F0F1;font-size:10.5px;font-weight:600;letter-spacing:0.05em;color:#9A9AA2;">
+                      <span>{{ grp.label }}</span>
+                      <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#C7C7CC;">{{ grp.count }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-for list="{{ grp.rows }}" as="r" hint-placeholder-count="10">
+                    <div style="{{ r.rowStyle }}">
+                      <span onClick="{{ r.toggle }}" style="{{ r.checkStyle }}">{{ r.checkGlyph }}</span>
+                      <span onClick="{{ r.open }}" style="{{ r.nameStyle }}">{{ r.name }}</span>
+                      <span style="width:128px;color:#52525B;font-size:12px;">{{ r.domains }}</span>
+                      <span style="width:150px;"><span style="{{ r.sourceStyle }}">{{ r.source }}</span></span>
+                      <span style="width:96px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11.5px;color:#71717A;">{{ r.modified }}</span>
+                      <span style="width:64px;text-align:center;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;color:#3F3F46;">{{ r.deploys }}</span>
+                      <span style="flex:1;min-width:0;color:#71717A;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.description }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ showBulk }}" hint-placeholder-val="{{ false }}">
+              <div style="position:sticky;bottom:0;display:flex;align-items:center;gap:11px;margin-top:12px;padding:10px 14px;background:#18181B;border-radius:11px;color:#FFFFFF;font-size:12.5px;box-shadow:0 8px 26px rgba(0,0,0,0.20);">
+                <span style="font-weight:600;">▸ {{ selLabel }}</span>
+                <div style="display:flex;gap:7px;margin-left:4px;">
+                  <button style="background:#2C2C30;color:#FFFFFF;border:1px solid #3C3C40;border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;">Tag ▾</button>
+                  <button style="background:#2C2C30;color:#FFFFFF;border:1px solid #3C3C40;border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;">Update from upstream</button>
+                  <button onClick="{{ bulkRetire }}" style="background:#2C2C30;color:#FFFFFF;border:1px solid #3C3C40;border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;">Retire</button>
+                  <button style="background:#2C2C30;color:#FFFFFF;border:1px solid #3C3C40;border-radius:7px;padding:5px 11px;font-size:12px;cursor:pointer;">Export</button>
+                </div>
+                <span style="flex:1;"></span>
+                <span onClick="{{ clearSel }}" style="cursor:pointer;color:#9A9AA2;font-size:12px;">⌫ clear</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+
+    <!-- INSPECTOR (slim, quick select/edit) -->
+    <aside style="flex:0 0 312px;width:312px;background:#FFFFFF;border-left:1px solid #E7E7E9;overflow:auto;display:flex;flex-direction:column;">
+      <div style="padding:16px 18px 14px;border-bottom:1px solid #EFEFF1;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span style="font-size:14px;font-weight:650;letter-spacing:-0.01em;font-family:ui-monospace,'SF Mono',Menlo,monospace;">dbs-chatroom-austrian</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#2563EB;background:#EAF1FD;border-radius:20px;padding:3px 9px;flex-shrink:0;"><span style="font-size:9px;">◆</span> vendored</span>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="background:#F4F4F5;color:#52525B;border-radius:6px;padding:2px 9px;font-size:11.5px;">philosophy</span>
+          <span style="border:1px dashed #D4D4D8;color:#9A9AA2;border-radius:6px;padding:2px 8px;font-size:11.5px;cursor:pointer;">+ add</span>
+        </div>
+        <button onClick="{{ openSelected }}" style="margin-top:12px;width:100%;background:#18181B;color:#FFFFFF;border:none;border-radius:8px;padding:8px;font-size:12.5px;font-weight:550;cursor:pointer;">Open detail ↗</button>
+      </div>
+
+      <div style="padding:15px 18px;border-bottom:1px solid #EFEFF1;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;color:#9A9AA2;margin-bottom:11px;">PROVENANCE · shelf.lock.json</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:11.5px;">
+          <div style="display:flex;gap:8px;"><span style="color:#A1A1AA;width:56px;flex-shrink:0;">source</span><span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10.5px;color:#52525B;word-break:break-all;">github:dontbesilent2025/dbskill</span></div>
+          <div style="display:flex;gap:8px;"><span style="color:#A1A1AA;width:56px;flex-shrink:0;">ref</span><span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10.5px;color:#52525B;">a58f647 · 2026-06-14</span></div>
+        </div>
+        <div style="margin-top:11px;display:flex;align-items:center;gap:8px;background:#ECF6EF;border:1px solid #CDE9D6;border-radius:8px;padding:8px 10px;">
+          <span style="color:#15A34A;font-size:13px;">✓</span>
+          <span style="font-size:11.5px;color:#15803D;">clean — matches <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;">installedHash</span></span>
+        </div>
+      </div>
+
+      <div style="padding:15px 18px;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;color:#9A9AA2;margin-bottom:10px;">⚠ NEAR-DUPLICATE</div>
+        <div style="font-size:12.5px;color:#3F3F46;line-height:1.5;">
+          ≈ <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#18181B;">chatroom-austrian</span> — differ only by agent (Claude vs Codex).
+        </div>
+        <div style="margin-top:11px;display:flex;align-items:center;gap:9px;">
+          <button style="background:#18181B;color:#FFFFFF;border:none;border-radius:7px;padding:6px 13px;font-size:12.5px;font-weight:550;cursor:pointer;">Keep both</button>
+          <button style="background:#FFFFFF;border:1px solid #E2E2E5;color:#52525B;border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer;">Diff</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- HEALTH STRIP -->
+  <div style="flex:0 0 30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#FFFFFF;border-top:1px solid #E7E7E9;font-size:11.5px;color:#71717A;font-family:ui-monospace,'SF Mono',Menlo,monospace;">
+    <span>113 skills · 12 domains · 1 source repo</span>
+    <div style="display:flex;gap:16px;">
+      <span style="color:#2563EB;">◆ 21 vendored</span>
+      <span style="color:#15A34A;">✓ 0 local edits</span>
+      <span style="color:#D97706;">🏷 1 untagged</span>
+      <span style="color:#8A8A92;">◆ 1 stub</span>
+    </div>
+  </div>
+
+  <!-- UNDO TOAST -->
+  <sc-if value="{{ toastOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:46px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:14px;background:#18181B;color:#FFFFFF;border-radius:11px;padding:10px 12px 10px 16px;box-shadow:0 12px 34px rgba(0,0,0,.28);animation:toastIn .18s cubic-bezier(.2,.7,.3,1);">
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-size:13px;font-weight:550;">{{ toastMsg }}</span>
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10.5px;color:#9A9AA2;">{{ toastCmd }}</span>
+      </div>
+      <sc-if value="{{ toastHasUndo }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ toastUndo }}" style="background:#2C2C30;border:1px solid #3C3C40;color:#FFFFFF;border-radius:7px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Undo</button>
+      </sc-if>
+      <button onClick="{{ dismissToast }}" style="background:none;border:none;color:#71717A;font-size:14px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+  </sc-if>
+
+  <!-- REMOVE CONFIRM (type-to-confirm) -->
+  <sc-if value="{{ confirmOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ cancelConfirm }}" style="position:fixed;inset:0;background:rgba(24,24,27,0.42);z-index:65;animation:scrimIn .15s ease;"></div>
+    <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:66;width:440px;max-width:92vw;background:#FFFFFF;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.3);padding:22px 22px 18px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="width:30px;height:30px;border-radius:8px;background:#FBEBEB;color:#DC2626;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">⚠</span>
+        <span style="font-size:15px;font-weight:650;">Remove {{ confirmName }}?</span>
+      </div>
+      <p style="font-size:12.5px;color:#52525B;line-height:1.55;margin:0 0 12px;">This deletes the skill folder from disk and drops its tags + provenance. <b style="color:#3F3F46;">This cannot be undone.</b> To retire instead (reversible), close this and use Retire.</p>
+      <div style="background:#F6F6F7;border:1px solid #ECECEE;border-radius:8px;padding:8px 10px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10.5px;color:#52525B;margin-bottom:13px;"><span style="color:#A1A1AA;">$</span> skl rm {{ confirmName }}</div>
+      <div style="font-size:11.5px;color:#71717A;margin-bottom:6px;">Type <b style="color:#18181B;font-family:ui-monospace,'SF Mono',Menlo,monospace;">{{ confirmName }}</b> to confirm</div>
+      <input value="{{ confirmText }}" onChange="{{ onConfirmInput }}" placeholder="skill name" style="width:100%;height:34px;padding:0 11px;border:1px solid #E2E2E5;border-radius:8px;font-size:13px;font-family:ui-monospace,'SF Mono',Menlo,monospace;outline:none;margin-bottom:14px;"/>
+      <div style="display:flex;justify-content:flex-end;gap:9px;">
+        <button onClick="{{ cancelConfirm }}" style="background:#FFFFFF;border:1px solid #E2E2E5;color:#3F3F46;border-radius:8px;padding:7px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;">Cancel</button>
+        <button onClick="{{ doRemove }}" style="{{ confirmBtnStyle }}">Remove</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- DETAIL DRAWER -->
+  <sc-if value="{{ drawerOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeDrawer }}" style="position:fixed;inset:0;background:rgba(24,24,27,0.30);z-index:50;animation:scrimIn .15s ease;"></div>
+    <div style="position:fixed;top:0;right:0;bottom:0;width:min(1080px,94vw);background:#FFFFFF;z-index:51;display:flex;flex-direction:column;box-shadow:-22px 0 64px rgba(0,0,0,0.20);animation:drawerIn .18s cubic-bezier(.2,.7,.3,1);">
+      <!-- drawer header -->
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:11px;padding:14px 18px;border-bottom:1px solid #EFEFF1;">
+        <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:15.5px;font-weight:650;letter-spacing:-0.01em;">{{ drawerName }}</span>
+        <span style="{{ drawerSrcStyle }}">{{ drawerSrcLabel }}</span>
+        <div style="display:flex;gap:5px;">
+          <sc-for list="{{ drawerDomains }}" as="d" hint-placeholder-count="2">
+            <span style="{{ d.style }}">{{ d.label }}</span>
+          </sc-for>
+        </div>
+        <span style="flex:1;"></span>
+        <button style="background:#FFFFFF;border:1px solid #E2E2E5;color:#3F3F46;border-radius:7px;padding:6px 12px;font-size:12px;cursor:pointer;">Edit SKILL.md</button>
+        <button style="background:#FFFFFF;border:1px solid #E2E2E5;color:#3F3F46;border-radius:7px;padding:6px 12px;font-size:12px;cursor:pointer;">Open folder</button>
+        <button onClick="{{ closeDrawer }}" style="background:#F4F4F5;border:none;color:#52525B;border-radius:7px;width:30px;height:30px;font-size:15px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+
+      <!-- drawer body -->
+      <div style="flex:1;min-height:0;display:flex;">
+
+        <!-- file tree -->
+        <div style="flex:0 0 212px;border-right:1px solid #EFEFF1;overflow:auto;padding:12px 9px;background:#FCFCFD;">
+          <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;color:#A1A1AA;padding:0 7px 8px;">FILES</div>
+          <div style="display:flex;flex-direction:column;gap:1px;">
+            <sc-for list="{{ drawerFiles }}" as="f" hint-placeholder-count="6">
+              <div onClick="{{ f.onClick }}" style="{{ f.style }}">
+                <span style="{{ f.iconStyle }}">{{ f.icon }}</span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- center: tabs + content -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 14px;border-bottom:1px solid #EFEFF1;background:#FFFFFF;">
+            <button onClick="{{ dtabRendered.onClick }}" style="{{ dtabRendered.style }}">Rendered</button>
+            <button onClick="{{ dtabRaw.onClick }}" style="{{ dtabRaw.style }}">Raw</button>
+            <button onClick="{{ dtabExpl.onClick }}" style="{{ dtabExpl.style }}">Explanation</button>
+            <span style="flex:1;"></span>
+            <button onClick="{{ copyRaw }}" style="background:#FFFFFF;border:1px solid #E2E2E5;color:#52525B;border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;margin-right:2px;">Copy raw</button>
+          </div>
+          <div style="flex:1;min-height:0;overflow:auto;padding:22px 28px;">
+            <sc-if value="{{ drawerTabRendered }}" hint-placeholder-val="{{ true }}">
+              <div style="max-width:760px;">{{ renderedEl }}</div>
+            </sc-if>
+            <sc-if value="{{ drawerTabRaw }}" hint-placeholder-val="{{ false }}">
+              <pre style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11.5px;white-space:pre-wrap;word-break:break-word;color:#3F3F46;line-height:1.6;margin:0;">{{ rawText }}</pre>
+            </sc-if>
+            <sc-if value="{{ drawerTabExpl }}" hint-placeholder-val="{{ false }}">
+              <div style="max-width:520px;margin:30px auto;text-align:center;color:#9A9AA2;">
+                <div style="font-size:30px;margin-bottom:10px;">⌁</div>
+                <div style="font-size:14px;font-weight:600;color:#52525B;margin-bottom:6px;">AI explanation — coming soon</div>
+                <div style="font-size:12.5px;line-height:1.6;">An opt-in suggestion channel (ADR-0007), clearly labelled and never rendered as fact. Will be backed by <span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;">skl suggest --json</span> in P3.</div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- right rail: meta -->
+        <div style="flex:0 0 296px;border-left:1px solid #EFEFF1;overflow:auto;">
+          <div style="padding:15px 16px;border-bottom:1px solid #EFEFF1;">
+            <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;color:#A1A1AA;margin-bottom:9px;">FRONTMATTER</div>
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#A1A1AA;">name</div>
+            <div style="font-size:12.5px;color:#18181B;margin-bottom:9px;font-family:ui-monospace,'SF Mono',Menlo,monospace;">{{ drawerName }}</div>
+            <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#A1A1AA;">description</div>
+            <div style="font-size:11.5px;color:#52525B;line-height:1.55;max-height:130px;overflow:auto;margin-bottom:9px;">{{ drawerFmDesc }}</div>
+            <sc-if value="{{ drawerHasTriggers }}" hint-placeholder-val="{{ false }}">
+              <div style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#A1A1AA;margin-bottom:5px;">triggers</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px;">
+                <sc-for list="{{ drawerTriggers }}" as="t" hint-placeholder-count="3">
+                  <span style="background:#F4F4F5;color:#52525B;border-radius:5px;padding:2px 7px;font-size:11px;font-family:ui-monospace,'SF Mono',Menlo,monospace;">{{ t.label }}</span>
+                </sc-for>
+              </div>
+            </sc-if>
+            <div style="display:flex;gap:8px;font-size:11.5px;"><span style="color:#A1A1AA;width:56px;">license</span><span style="color:#52525B;">{{ drawerLicense }}</span></div>
+          </div>
+
+          <sc-if value="{{ drawerHasProv }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:15px 16px;border-bottom:1px solid #EFEFF1;">
+              <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;color:#A1A1AA;margin-bottom:9px;">PROVENANCE</div>
+              <div style="display:flex;flex-direction:column;gap:7px;font-size:11px;">
+                <div style="display:flex;gap:8px;"><span style="color:#A1A1AA;width:48px;flex-shrink:0;">source</span><span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#52525B;word-break:break-all;">{{ provSource }}</span></div>
+                <div style="display:flex;gap:8px;"><span style="color:#A1A1AA;width:48px;flex-shrink:0;">ref</span><span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#52525B;">{{ provRef }}</span></div>
+                <div style="display:flex;gap:8px;"><span style="color:#A1A1AA;width:48px;flex-shrink:0;">hash</span><span style="font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#52525B;">{{ provHash }}</span></div>
+              </div>
+              <div style="margin-top:9px;display:flex;align-items:center;gap:7px;background:#ECF6EF;border:1px solid #CDE9D6;border-radius:7px;padding:6px 9px;font-size:11px;color:#15803D;"><span>✓</span> clean — no local edits</div>
+            </div>
+          </sc-if>
+
+          <div style="padding:15px 16px;border-bottom:1px solid #EFEFF1;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+              <span style="font-size:10px;font-weight:600;letter-spacing:0.07em;color:#A1A1AA;">AGENTS</span>
+              <span style="font-size:10px;color:#B6B6BC;font-family:ui-monospace,'SF Mono',Menlo,monospace;">global + projects</span>
+            </div>
+            <sc-for list="{{ drawerAgents }}" as="a" hint-placeholder-count="5">
+              <div style="{{ a.rowStyle }}">
+                <div style="display:flex;align-items:center;gap:7px;">
+                  <span style="{{ a.nameStyle }}">{{ a.short }}</span>
+                  <sc-if value="{{ a.notInstalled }}" hint-placeholder-val="{{ false }}"><span style="font-size:9px;color:#C7C7CC;border:1px solid #ECECEE;border-radius:4px;padding:0 5px;">not installed</span></sc-if>
+                  <span style="flex:1;"></span>
+                  <button onClick="{{ a.onToggleGlobal }}" style="{{ a.toggleStyle }}">{{ a.toggleLabel }}</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;margin-top:5px;flex-wrap:wrap;">
+                  <span style="{{ a.globalStyle }}">{{ a.globalGlyph }} {{ a.globalLabel }}</span>
+                  <sc-if value="{{ a.hasProj }}" hint-placeholder-val="{{ false }}">
+                    <sc-for list="{{ a.projChips }}" as="p" hint-placeholder-count="1"><span style="{{ p.style }}">{{ p.label }}</span></sc-for>
+                  </sc-if>
+                </div>
+                <div style="margin-top:4px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:9px;color:#C7C7CC;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.path }}/{{ drawerName }}</div>
+              </div>
+            </sc-for>
+            <div style="margin-top:9px;font-size:10px;color:#B6B6BC;font-family:ui-monospace,'SF Mono',Menlo,monospace;">project copy shadows global · live from skl where</div>
+          </div>
+
+          <div style="padding:15px 16px;border-bottom:1px solid #EFEFF1;">
+            <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;color:#A1A1AA;margin-bottom:9px;">TAGS</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+              <sc-for list="{{ drawerDomains }}" as="d" hint-placeholder-count="2">
+                <span onClick="{{ d.onRemove }}" style="background:#EAF1FD;color:#2563EB;border-radius:6px;padding:2px 9px;font-size:11.5px;cursor:pointer;">{{ d.label }} ✕</span>
+              </sc-for>
+              <span style="border:1px dashed #D4D4D8;color:#9A9AA2;border-radius:6px;padding:2px 8px;font-size:11.5px;cursor:pointer;">+ add</span>
+            </div>
+          </div>
+
+          <div style="padding:15px 16px;">
+            <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;color:#A1A1AA;margin-bottom:9px;">LIFECYCLE</div>
+            <div style="display:flex;flex-wrap:wrap;gap:7px;">
+              <button style="background:#FFFFFF;border:1px solid #E2E2E5;color:#3F3F46;border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;">Rename</button>
+              <button onClick="{{ drawerRetire }}" style="background:#FFFFFF;border:1px solid #E2E2E5;color:#3F3F46;border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;">Retire</button>
+              <button onClick="{{ drawerRemove }}" style="background:#FFFFFF;border:1px solid #F1D4D4;color:#DC2626;border-radius:7px;padding:5px 11px;font-size:11.5px;cursor:pointer;">Remove</button>
+            </div>
+            <div style="margin-top:10px;background:#F6F6F7;border:1px solid #ECECEE;border-radius:8px;padding:8px 10px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:10px;color:#52525B;overflow:auto;white-space:nowrap;">
+              <span style="color:#A1A1AA;">$</span> {{ drawerRetireCmd }}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    view: 'inbox', dryRun: false, sel: 'dbs-chatroom-austrian',
+    selected: { 'dbs-decision': true, 'dbs-chatroom-austrian': true },
+    sort: 'modified', sortDir: 'desc', group: 'list', filter: null,
+    retired: {}, removedTags: {}, removedHard: {}, toast: null, confirm: null, confirmText: '',
+    matrixMode: 'domain', scope: 'Global', deploy: {},
+    drawer: null, drawerTab: 'rendered', drawerFile: 'SKILL.md',
+    fileCache: {}, mdReady: false
+  };
+
+  SKILLS = {
+    'nature-figure':{source:'local',domains:['sci-writing'],desc:'Submission-grade Nature/high-impact journal figure workflow for Python or R. Use whenever the user asks to create, revise, audit, or polish manuscript figures, multi-panel scientific plots, or journal-ready SVG/PDF/TIFF outputs.',triggers:[],license:'—',files:[['SKILL.md','md',0],['README.md','md',0],['references/','dir',0],['references/api.md','md',1],['references/design-theory.md','md',1],['references/chart-types.md','md',1],['references/r-workflow.md','md',1],['assets/','dir',0],['evals/','dir',0],['evals/evals.json','json',1]]},
+    'dbs-chatroom-austrian':{source:'vendor',domains:['philosophy'],desc:'Hayek × Mises × Claude debate. Austrian-economics chatroom. 哈耶克 × 米塞斯 × Claude 三人对话，奥派经济学视角的多角色讨论。',triggers:['/dbs-chatroom-austrian','/chatroom-austrian','/奥派','Austrian chat'],license:'—',files:[['SKILL.md','md',0]],prov:{source:'github:dontbesilent2025/dbskill',ref:'a58f647 · 2026-06-14',hash:'4a5f6bb1…fd09'}},
+    'dbs-decision':{source:'vendor',domains:['business'],desc:'Personal decision system — four-layer local knowledge engineering with source tags, write-once snapshots, and a concept library.',files:[['SKILL.md','md',0]],prov:{source:'github:dontbesilent2025/dbskill',ref:'a58f647 · 2026-06-14',hash:'b3f1834e…fb45'}},
+    'dbs':{source:'vendor',domains:['business'],desc:'dontbesilent business toolkit main entry. Routes to the right diagnostic skill.',files:[['SKILL.md','md',0]],prov:{source:'github:dontbesilent2025/dbskill',ref:'a58f647 · 2026-06-14',hash:'df1a5bfa…aba8'}},
+    'dbs-action':{source:'vendor',domains:['business','philosophy'],desc:'Execution-block diagnosis using an Adlerian-psychology framework.',files:[['SKILL.md','md',0]],prov:{source:'github:dontbesilent2025/dbskill',ref:'a58f647 · 2026-06-14',hash:'66cc3600…1f38'}},
+    'dbs-content':{source:'vendor',domains:['content','business'],desc:'Content-creation diagnosis. After a topic passes, diagnose how to turn it into good content.',files:[['SKILL.md','md',0]],prov:{source:'github:dontbesilent2025/dbskill',ref:'a58f647 · 2026-06-14',hash:'7bbf1f62…972f'}},
+    'horizon':{source:'local',domains:['green-card'],desc:'Top-level router for all Horizon green-card petition skills (NIW + EB1A + tools).',files:[['SKILL.md','md',0]]},
+    'horizon-niw':{source:'local',domains:['green-card'],desc:'NIW petition writing toolkit entry point. Routes to the right skill based on user intent.',files:[['SKILL.md','md',0]]},
+    'horizon-eb1a-awards':{source:'local',domains:['green-card'],desc:'EB1A Awards criterion guide. Use when writing the awards section or proving award recognition level.',files:[['SKILL.md','md',0]]},
+    'horizon-figure':{source:'local',domains:['green-card','content'],desc:'Create infographic JSON prompts for NIW/EB1A petition sections.',files:[['SKILL.md','md',0]]},
+    'horizon-intel':{source:'local',domains:['green-card','sci-writing'],desc:'Run any green-intel pipeline for EB1A/NIW petitions — citation analysis, translation, AAO analysis.',files:[['SKILL.md','md',0]]},
+    'horizon-build':{source:'local',domains:[],desc:'Build petition DOCX from markdown, generate exhibit PDFs, assemble print packages.',files:[['SKILL.md','md',0]]},
+    'agent-reach':{source:'local',domains:['browser','media'],desc:'MUST USE when the user wants to research / search / look up / find anything on the internet.',files:[['SKILL.md','md',0]]},
+    'cairn':{source:'local',domains:['bioinfo','meta'],desc:'Record analysis conclusions as grounded claims while you work — continuously during any data-analysis session.',files:[['SKILL.md','md',0]]},
+    'nature-data':{source:'local',domains:['sci-writing','bioinfo'],desc:'Prepare, audit, or revise Nature-ready Data Availability statements and FAIR metadata checklists.',files:[['SKILL.md','md',0]]},
+    'nature-reader':{source:'local',domains:['sci-writing'],desc:'Build full-paper Chinese-English side-by-side, figure-aware, source-grounded markdown readers.',files:[['SKILL.md','md',0]]},
+    'chatroom-austrian':{source:'local',domains:['philosophy'],desc:'Hayek × Mises × Codex debate. Austrian-economics chatroom.',triggers:['/chatroom-austrian','/奥派'],files:[['SKILL.md','md',0]]},
+    'template-skill':{source:'local',domains:['meta'],desc:'Replace with description of the skill and when Claude should use it.',files:[['SKILL.md','md',0]]},
+    'pptx':{source:'local',domains:['docs'],desc:'Use any time a .pptx file is involved — create, read, or edit slide decks and presentations.',files:[['SKILL.md','md',0]]},
+    'rednote-title':{source:'local',domains:['content'],desc:'Generate Xiaohongshu titles from the logical root of content, not surface description.',files:[['SKILL.md','md',0]]},
+    'transcribe':{source:'local',domains:['media'],desc:'Upload audio/video to Meeting AI for transcription and summarization.',files:[['SKILL.md','md',0]]}
+  };
+
+  getMeta(name){ return this.SKILLS[name] || {source:'local',domains:[],desc:name,files:[['SKILL.md','md',0]]}; }
+
+  AGENTS = [
+    {id:'claude',name:'Claude Code',short:'Claude',global:'~/.claude/skills',proj:'.claude/skills',installed:true},
+    {id:'codex',name:'Codex',short:'Codex',global:'~/.codex/skills',proj:'.codex/skills',installed:true},
+    {id:'cursor',name:'Cursor',short:'Cursor',global:'~/.cursor/skills',proj:'.cursor/skills',installed:true},
+    {id:'opencode',name:'OpenCode',short:'OpenCode',global:'~/.opencode/skills',proj:'.opencode/skills',installed:true},
+    {id:'gemini',name:'Gemini',short:'Gemini',global:'~/.gemini/skills',proj:'.gemini/skills',installed:false}
+  ];
+  SCOPES = ['Global','my-analysis','lab'];
+  // deployment truth: skill → agent → { g: globalState, p: { project: state } }
+  DEP = {
+    'nature-figure':{claude:{g:'clean',p:{'my-analysis':'clean'}}, cursor:{g:'clean'}},
+    'dbs-decision':{claude:{g:'clean'}, codex:{g:'drift'}},
+    'dbs':{claude:{g:'clean'}, codex:{g:'clean'}},
+    'agent-reach':{claude:{g:'clean'}, cursor:{g:'clean'}, codex:{g:'copy'}},
+    'cairn':{claude:{p:{'my-analysis':'clean'}}},
+    'dbs-chatroom-austrian':{claude:{g:'clean'}, opencode:{g:'copy'}},
+    'dbs-action':{claude:{g:'clean'}, codex:{g:'clean'}},
+    'dbs-content':{claude:{g:'clean'}, codex:{g:'clean'}},
+    'horizon':{claude:{g:'clean'}, gemini:{g:'clean'}},
+    'horizon-niw':{claude:{g:'clean'}},
+    'horizon-figure':{claude:{g:'clean'}},
+    'horizon-intel':{claude:{g:'clean'}},
+    'horizon-eb1a-awards':{claude:{g:'clean'}},
+    'nature-data':{claude:{g:'clean'}},
+    'chatroom-austrian':{codex:{g:'clean'}},
+    'horizon-build':{claude:{g:'clean'}}
+  };
+  setDeploy(skill,agentId,scope,on){ const k=skill+'|'+agentId+'|'+scope; this.setState(prev=>({deploy:Object.assign({},prev.deploy,{[k]:on?'on':'off'})})); const undo=()=>{ this.setState(prev=>{ const d=Object.assign({},prev.deploy); delete d[k]; return {deploy:d}; }); this.hideToast(); }; this.showToast({ msg:(on?'Linked ':'Unlinked ')+skill+' · '+agentId+' ('+scope+')', cmd:(on?'skl use ':'skl drop ')+skill+' --agent '+agentId+(scope==='Global'?' --global':' --project '+scope), undo }); }
+
+  componentDidMount(){
+    this._mk = setInterval(()=>{ if(window.marked){ this.setState({mdReady:true}); clearInterval(this._mk); } }, 80);
+    this._esc = (e)=>{ if(e.key==='Escape' && this.state.drawer) this.setState({drawer:null}); };
+    window.addEventListener('keydown', this._esc);
+  }
+  componentWillUnmount(){ clearInterval(this._mk); window.removeEventListener('keydown', this._esc); if(this._toastT) clearTimeout(this._toastT); }
+  showToast(t){ if(this._toastT) clearTimeout(this._toastT); this.setState({toast:t}); this._toastT=setTimeout(()=>this.setState({toast:null}), 6000); }
+  hideToast(){ if(this._toastT) clearTimeout(this._toastT); this.setState({toast:null}); }
+  retireSkills(names){ if(!names||!names.length) return; this.setState(prev=>{ const r=Object.assign({},prev.retired); names.forEach(n=>r[n]=true); return {retired:r}; }); const undo=()=>{ this.setState(prev=>{ const r=Object.assign({},prev.retired); names.forEach(n=>delete r[n]); return {retired:r}; }); this.hideToast(); }; this.showToast({ msg: names.length>1?(names.length+' skills retired'):('Retired '+names[0]), cmd:'skl retire '+names.join(' '), undo }); }
+  removeTag(name,dom){ this.setState(prev=>{ const m=Object.assign({},prev.removedTags); m[name]=(m[name]||[]).concat([dom]); return {removedTags:m}; }); const undo=()=>{ this.setState(prev=>{ const m=Object.assign({},prev.removedTags); m[name]=(m[name]||[]).filter(x=>x!==dom); return {removedTags:m}; }); this.hideToast(); }; this.showToast({ msg:'Removed tag “'+dom+'”', cmd:'skl untag '+name+' '+dom, undo }); }
+  askRemove(name){ this.setState({confirm:{name}, confirmText:''}); }
+  cancelConfirm(){ this.setState({confirm:null, confirmText:''}); }
+  doRemove(){ const name=this.state.confirm&&this.state.confirm.name; if(!name) return; this.setState(prev=>({ confirm:null, confirmText:'', removedHard:Object.assign({},prev.removedHard,{[name]:true}), drawer: prev.drawer===name?null:prev.drawer })); this.showToast({ msg:'Removed '+name+' — deleted from disk', cmd:'skl rm '+name, undo:null }); }
+
+  loadFile(name, file){
+    const key = name + '/' + file;
+    if(this.state.fileCache[key] !== undefined) return;
+    this.setState(prev=>{ const fc=Object.assign({},prev.fileCache); fc[key]='__loading__'; return {fileCache:fc}; });
+    fetch('skills/'+name+'/'+file)
+      .then(r=> r.ok ? r.text() : null)
+      .then(t=>{ this.setState(prev=>{ const fc=Object.assign({},prev.fileCache); fc[key]=(t===null?null:t); return {fileCache:fc}; }); })
+      .catch(()=>{ this.setState(prev=>{ const fc=Object.assign({},prev.fileCache); fc[key]=null; return {fileCache:fc}; }); });
+  }
+  openDrawer(name){ this.setState({drawer:name, drawerFile:'SKILL.md', drawerTab:'rendered'}); this.loadFile(name,'SKILL.md'); }
+  selectFile(file){ const name=this.state.drawer; this.setState({drawerFile:file}); this.loadFile(name,file); }
+
+  renderVals() {
+    const s = this.state;
+    const mono = "ui-monospace,'SF Mono',Menlo,monospace";
+    const ink='#18181B', sub='#71717A', faint='#9A9AA2', absent='#C7C7CC',
+          green='#15A34A', amber='#D97706', blue='#2563EB', red='#DC2626', gray='#8A8A92';
+
+    const tab = (v) => ({ display:'inline-flex', alignItems:'center', gap:'7px', height:'42px', padding:'0 13px', background:'none', border:'none', borderBottom:'2px solid ' + (s.view===v ? ink : 'transparent'), color: s.view===v ? ink : sub, fontSize:'13px', fontWeight: s.view===v ? 600 : 500, cursor:'pointer', fontFamily:'inherit' });
+    const badge = (v) => ({ fontFamily: mono, fontSize:'10.5px', padding:'1px 6px', borderRadius:'20px', background: s.view===v ? '#18181B' : '#F0F0F1', color: s.view===v ? '#FFFFFF' : '#9A9AA2' });
+
+    // sidebar
+    const sameF = (a,b)=> JSON.stringify(a||null)===JSON.stringify(b||null);
+    const setF = (view,filter)=> this.setState({view, filter});
+    const svItems = [
+      {glyph:'⚠',label:'Needs attention',count:6,color:amber, on:()=>this.setState({view:'inbox'}), active: s.view==='inbox'},
+      {glyph:'◆',label:'Vendored · tracked',count:21,color:blue, f:{kind:'source',value:'vendor'}},
+      {glyph:'●',label:'Local · authored',count:92,color:ink, f:{kind:'source',value:'local'}},
+      {glyph:'🏷',label:'Untagged',count:1,color:amber, f:{kind:'untagged'}},
+      {glyph:'◇',label:'All skills',count:113,color:sub, f:null}
+    ];
+    const smartViews = svItems.map(it => {
+      const active = it.active !== undefined ? it.active : (s.view==='library' && sameF(s.filter, it.f));
+      return { glyph:it.glyph, label:it.label, count:it.count,
+        onClick: it.on ? it.on : ()=>setF('library', it.f),
+        style:{ display:'flex', alignItems:'center', gap:'9px', padding:'5px 8px', borderRadius:'7px', fontSize:'12.5px', cursor:'pointer', background: active?'#F4F4F5':'transparent', color: active?ink:'#3F3F46', fontWeight: active?550:450 },
+        glyphStyle:{ color:it.color, fontSize:'11px', width:'14px', textAlign:'center' }, countStyle:{ fontFamily:mono, fontSize:'11px', color:faint } };
+    });
+    const domData = [['green-card',26,'#2563EB'],['content',16,'#0891B2'],['business',13,amber],['sci-writing',13,red],['docs',12,'#7C3AED'],['meta',10,green],['philosophy',6,'#DB2777'],['ops',5,sub],['bioinfo',4,'#0D9488'],['browser',4,'#65A30D'],['media',3,'#9333EA'],['_unclassified',1,absent]];
+    const domActive = (label)=> s.view==='library' && s.filter && s.filter.kind==='domain' && s.filter.value===label;
+    const domains = domData.map(([label,count,c]) => ({ label, count,
+      onClick:()=>setF('library',{kind:'domain',value:label}),
+      style:{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 8px', borderRadius:'6px', fontSize:'12.5px', cursor:'pointer', background: domActive(label)?'#F4F4F5':'transparent', color: domActive(label)?ink:'#52525B', fontWeight: domActive(label)?550:450 },
+      dotStyle:{ width:'7px', height:'7px', borderRadius:'2px', background:c, flexShrink:0 }, barWrap:{ width:'42px', height:'4px', borderRadius:'3px', background:'#F0F0F1', overflow:'hidden', flexShrink:0 }, bar:{ display:'block', height:'100%', width: Math.round(count/26*100)+'%', background:c, opacity:0.55, borderRadius:'3px' } }));
+    const provSpecs = [['◆','Vendored (dbskill)',21,blue,{kind:'source',value:'vendor'}],['●','Local / authored',92,ink,{kind:'source',value:'local'}],['🏷','Untagged',1,amber,{kind:'untagged'}]];
+    const provenance = provSpecs.map(([glyph,label,count,c,f]) => { const active = s.view==='library' && sameF(s.filter,f); return { glyph, label, count,
+      onClick:()=>setF('library',f),
+      style:{ display:'flex', alignItems:'center', gap:'8px', padding:'4px 8px', borderRadius:'6px', fontSize:'12px', cursor:'pointer', background: active?'#F4F4F5':'transparent', color: active?ink:'#52525B', fontWeight: active?550:450 },
+      glyphStyle:{ color:c, fontSize:'11px', width:'14px', textAlign:'center' } }; });
+
+    // inbox
+    const sevMap = { untagged:['🏷',amber,'UNTAGGED','#FAF1E2'], stub:['◆',blue,'STUB','#EAF1FD'], neardup:['□',amber,'NEAR-DUP','#FAF1E2'], tracked:['✓',green,'TRACKED','#ECF6EF'], family:['◇',gray,'FAMILY','#F1F1F2'], thintag:['🏷',gray,'THIN TAGS','#F1F1F2'] };
+    const primaryBtn = { background:ink, color:'#FFFFFF', border:'1px solid '+ink, borderRadius:'6px', padding:'4px 11px', fontSize:'12px', fontWeight:500, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'inherit' };
+    const secBtn = { background:'#FFFFFF', color:'#3F3F46', border:'1px solid #E2E2E5', borderRadius:'6px', padding:'4px 11px', fontSize:'12px', fontWeight:500, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'inherit' };
+    const ibData = [
+      ['untagged','horizon-build','In INDEX under _unclassified · missing from taxonomy.json','',blue,[['Tag → green-card',1]],true,'$ skl infer horizon-build'],
+      ['stub','template-skill','Description still the scaffold default: “Replace with description of the skill…”','',gray,[['Edit',1],['Retire',0]],false,'$ skl edit template-skill'],
+      ['neardup','dbs-chatroom-austrian','≈ chatroom-austrian — same Hayek × Mises room, differ only by agent (Claude vs Codex)','',amber,[['Diff',0],['Merge ▾',1]],false,'$ skl diff dbs-chatroom-austrian chatroom-austrian'],
+      ['tracked','dbs · +20','Vendored from dbskill@a58f647 · localEdits:false on all 21 — clean','21 ✓',green,[['View lock',0]],false,'$ skl status --channel github'],
+      ['family','horizon-*','26 skills under one prefix = your largest domain — candidate for a bundle','26',gray,[['Review ▾',0]],false,'$ skl ls --prefix horizon'],
+      ['thintag','dbs-*','One prefix spans business · content · philosophy · meta — tag drift worth a pass','',gray,[['Review ▾',0]],false,'$ skl ls --prefix dbs --by-domain']
+    ];
+    const inboxRows = ibData.map(([sev,skill,detail,counts,ccol,acts,auto,cmd]) => {
+      const m=sevMap[sev]; const openable=/^[a-z0-9-]+$/.test(skill);
+      return { skill, detail, counts, auto, cmd, type:m[2], hasCounts:counts.length>0, sevGlyph:m[0],
+        open: openable ? ()=>this.openDrawer(skill) : ()=>{},
+        skillStyle:{ width:'172px', fontWeight:570, color:'#18181B', flexShrink:0, fontFamily:mono, fontSize:'12px', cursor: openable?'pointer':'default' },
+        sevStyle:{ color:m[1], fontSize:'13px', width:'14px', textAlign:'center', flexShrink:0 },
+        typeStyle:{ color:m[1], background:m[3], padding:'2px 8px', borderRadius:'5px', fontSize:'10px', fontWeight:700, letterSpacing:'0.04em', whiteSpace:'nowrap', flexShrink:0, width:'84px', textAlign:'center' },
+        countStyle:{ fontFamily:mono, fontSize:'11.5px', color:ccol, flexShrink:0 },
+        actions: acts.map(([label,prim]) => ({ label, style: prim?primaryBtn:secBtn })) };
+    });
+
+    // matrix — domain × skill  OR  agent × skill (scope-aware)
+    const domCols = ['green-card','content','business','sci-writing','docs','meta','philosophy','ops','bioinfo','browser','media'];
+    const mData = [
+      ['horizon','local','green-card',[]],['horizon-niw','local','green-card',[]],['horizon-eb1a-awards','local','green-card',[]],
+      ['horizon-figure','local','green-card',['content']],['horizon-intel','local','green-card',['sci-writing']],
+      ['dbs','vendor','business',[]],['dbs-decision','vendor','business',[]],['dbs-action','vendor','business',['philosophy']],
+      ['dbs-content','vendor','content',['business']],['cairn','local','bioinfo',['meta']],['agent-reach','local','browser',['media']],
+      ['nature-figure','local','sci-writing',[]],['nature-data','local','sci-writing',['bioinfo']],
+      ['chatroom-austrian','local','philosophy',[]],['dbs-chatroom-austrian','vendor','philosophy',[]],
+      ['template-skill','local','meta',[]],['horizon-build','local',null,[]]
+    ];
+    const isAgent = s.matrixMode==='agent';
+    const G2 = { clean:['✓',green], source:['⊙',sub], drift:['⚠',amber], copy:['□',amber], dead:['✗',red], absent:['·','#D4D4D8'] };
+    const baseState = (skill,aid,scope)=>{ const d=this.DEP[skill]&&this.DEP[skill][aid]; if(!d) return 'absent'; if(scope==='Global') return d.g||'absent'; return (d.p&&d.p[scope])||'absent'; };
+    const effState = (skill,aid,scope)=>{ const o=s.deploy[skill+'|'+aid+'|'+scope]; const b=baseState(skill,aid,scope); if(o==='on') return b==='absent'?'clean':b; if(o==='off') return 'absent'; return b; };
+    const thBase = { textAlign:'center', padding:'9px 7px', fontSize:'10px', fontWeight:600, letterSpacing:'0.02em', borderBottom:'1px solid #E7E7E9', whiteSpace:'nowrap', minWidth:'60px' };
+    let matrixCols, legend;
+    if(isAgent){
+      matrixCols = this.AGENTS.map(a=>({ label:a.short, style:Object.assign({},thBase,{ color:a.installed?'#9A9AA2':'#CFCFD4' }) }));
+      legend = [['✓','linked',green,700],['⊙','source',sub,500],['⚠','drift',amber,500],['□','copy',amber,500],['·','absent','#D4D4D8',500]].map(([glyph,label,c,w])=>({glyph,label,style:{color:c,fontWeight:w}}));
+    } else {
+      matrixCols = domCols.map(key=>({ label:key, style:Object.assign({},thBase,{ color:'#9A9AA2' }) }));
+      legend = [['●','primary domain',ink,700],['◦','also-tagged','#B6B6BC',400]].map(([glyph,label,c,w])=>({glyph,label,style:{color:c,fontWeight:w}}));
+    }
+    const matrixRows = mData.map(([name,src,prim,also]) => {
+      const hl=name===s.sel, isVendor=src==='vendor', tint=(!isAgent&&prim===null);
+      const td={ textAlign:'center', padding:'7px 7px', borderBottom:'1px solid #F3F3F4' };
+      let cells;
+      if(isAgent){
+        cells = this.AGENTS.map(a=>{ const st=effState(name,a.id,s.scope); const g=G2[st]; return { glyph:g[0], style:{ color:g[1], fontSize:'13px', fontWeight: st==='clean'?700:500, lineHeight:1 }, tdStyle:td }; });
+      } else {
+        cells = domCols.map(col => { if(col===prim) return { glyph:'●', style:{ color:ink, fontSize:'13px', fontWeight:700, lineHeight:1 }, tdStyle:td }; if(also.indexOf(col)>=0) return { glyph:'◦', style:{ color:'#B6B6BC', fontSize:'13px', lineHeight:1 }, tdStyle:td }; return { glyph:'', style:{}, tdStyle:td }; });
+      }
+      return { name, onClick:()=>this.openDrawer(name),
+        rowStyle:{ background: hl?'#F6F8FE':(tint?'#FCFBF4':'transparent') },
+        nameStyle:{ position:'sticky', left:0, zIndex:1, background: hl?'#F6F8FE':(tint?'#FCFBF4':'#FFFFFF'), padding:'7px 12px', fontSize:'12px', fontWeight:550, color:ink, whiteSpace:'nowrap', cursor:'pointer', borderBottom:'1px solid #F3F3F4', borderRight:'1px solid #EFEFF1', fontFamily:mono },
+        srcLabel: isVendor?'dbskill':'local', srcStyle: isVendor?{ color:blue, fontFamily:mono, fontSize:'10.5px' }:{ color:faint, fontSize:'11px' }, cells };
+    });
+    const mPill = (active,accent)=> ({ background: active?(accent||'#18181B'):'#F4F4F5', color: active?'#FFFFFF':'#52525B', border:'1px solid '+(active?(accent||'#18181B'):'#E7E7E9'), borderRadius:'6px', padding:'3px 11px', fontSize:'11.5px', cursor:'pointer', fontFamily:'inherit' });
+    const matrixModePills = [['domain','Domain'],['agent','Agent']].map(([k,l])=>({ label:l, onClick:()=>this.setState({matrixMode:k}), style:mPill(s.matrixMode===k) }));
+    const scopePills = this.SCOPES.map(sc=>({ label:sc, onClick:()=>this.setState({scope:sc}), style:Object.assign(mPill(s.scope===sc,'#2563EB'),{fontFamily:mono}) }));
+
+    // ---- LIBRARY: sort + group ----
+    const libData = [
+      ['dbs-decision','business','vendor','2026-06-14',3,'Personal decision system — four-layer local knowledge engineering'],
+      ['horizon-niw','green-card','local','2026-06-12',2,'NIW petition writing toolkit entry point. Routes by intent'],
+      ['agent-reach','browser · media','local','2026-06-10',4,'MUST USE when the user wants to research / search the web'],
+      ['cairn','bioinfo · meta','local','2026-06-13',1,'Record analysis conclusions as grounded claims while you work'],
+      ['chatroom-austrian','philosophy','local','2026-05-28',1,'Hayek × Mises × Codex debate. Austrian-economics chatroom'],
+      ['dbs-chatroom-austrian','philosophy','vendor','2026-06-14',1,'Hayek × Mises × Claude debate. Austrian-economics chatroom'],
+      ['nature-figure','sci-writing','local','2026-06-11',2,'Submission-grade Nature figure workflow for Python or R'],
+      ['nature-reader','sci-writing','local','2026-06-08',2,'Full-paper Chinese-English side-by-side paper readers'],
+      ['pptx','docs','local','2026-04-20',5,'Use any time a .pptx file is involved — create, read, edit decks'],
+      ['rednote-title','content','local','2026-06-05',2,'Generate Xiaohongshu titles from the logical root of content'],
+      ['dbs','business','vendor','2026-06-14',6,'dontbesilent business toolkit main entry. Routes to diagnostics'],
+      ['transcribe','media','local','2026-05-30',1,'Upload audio/video to Meeting AI for transcription'],
+      ['template-skill','meta','local','2026-03-02',0,'Replace with description of the skill and when to use it'],
+      ['horizon-build','(untagged)','local','2026-06-09',1,'Build petition DOCX from markdown, generate exhibit PDFs']
+    ];
+    const rawLib = libData.map(([name,doms,src,modified,deploys,description]) => ({name,doms,src,modified,deploys,description}));
+    const prim = r => (r.doms.split(' · ')[0]||'').replace('(','').replace(')','');
+    const key=s.sort;
+    const cmp = (a,b)=>{ let x,y; if(key==='name'){x=a.name;y=b.name;} else if(key==='domain'){x=prim(a);y=prim(b);} else if(key==='deploys'){x=a.deploys;y=b.deploys;} else {x=a.modified;y=b.modified;} if(x<y)return -1; if(x>y)return 1; return a.name<b.name?-1:1; };
+    const f = s.filter; let fLib = rawLib;
+    if(f){
+      if(f.kind==='domain') fLib = rawLib.filter(r=> r.doms.split(' · ').map(x=>x.replace(/[()]/g,'').trim()).indexOf(f.value)>=0);
+      else if(f.kind==='source') fLib = rawLib.filter(r=> r.src===f.value);
+      else if(f.kind==='untagged') fLib = rawLib.filter(r=> r.doms.indexOf('untagged')>=0);
+    }
+    const filterLabel = f ? (f.kind==='domain'?f.value : f.kind==='source'?(f.value==='vendor'?'vendored':'local') : 'untagged') : '';
+    fLib = fLib.filter(r=> !s.retired[r.name] && !s.removedHard[r.name]);
+    let sorted = fLib.slice().sort(cmp); if(s.sortDir==='desc') sorted.reverse();
+    let buckets;
+    if(s.group==='domain'){ const m={}; sorted.forEach(r=>{const g=prim(r)||'_unclassified'; (m[g]=m[g]||[]).push(r);}); buckets=Object.keys(m).sort((a,b)=>m[b].length-m[a].length).map(g=>({label:g,rows:m[g]})); }
+    else if(s.group==='family'){ const m={}; sorted.forEach(r=>{const g=r.name.split('-')[0]; (m[g]=m[g]||[]).push(r);}); buckets=Object.keys(m).sort((a,b)=>m[b].length-m[a].length).map(g=>({label:g+'-*',rows:m[g]})); }
+    else buckets=[{label:'',rows:sorted}];
+    const mkRow = (r) => { const checked=!!s.selected[r.name], isVendor=r.src==='vendor'; return {
+      name:r.name, domains:r.doms, modified:r.modified, deploys:r.deploys, description:r.description,
+      source: isVendor?'dbskill@a58f647':'local',
+      sourceStyle: isVendor?{ color:blue, fontFamily:mono, fontSize:'11px', background:'#EFF4FE', borderRadius:'5px', padding:'2px 7px' }:{ color:faint, fontSize:'11.5px' },
+      checkGlyph: checked?'☑':'☐', checkStyle:{ width:'22px', fontSize:'14px', color: checked?blue:'#C7C7CC', flexShrink:0, cursor:'pointer' },
+      toggle:()=>this.setState(prev=>{ const nx=Object.assign({},prev.selected); nx[r.name]=!nx[r.name]; return {selected:nx}; }),
+      open:()=>this.openDrawer(r.name),
+      nameStyle:{ width:'158px', fontWeight:560, color:'#18181B', fontFamily:mono, fontSize:'12px', cursor:'pointer' },
+      rowStyle:{ display:'flex', alignItems:'center', padding:'8px 14px', borderBottom:'1px solid #F3F3F4', fontSize:'13px', borderLeft:'2px solid ' + (checked?blue:'transparent'), background: checked?'#F5F8FE':'transparent' }
+    }; };
+    const libraryGroups = buckets.map(b => ({ label:b.label, hasLabel: b.label!=='', count:b.rows.length, rows:b.rows.map(mkRow) }));
+    const selCount = Object.keys(s.selected).filter(k=>s.selected[k]).length;
+
+    const pill = (active)=>({ background: active?'#18181B':'#F4F4F5', color: active?'#FFFFFF':'#52525B', border:'1px solid '+(active?'#18181B':'#E7E7E9'), borderRadius:'6px', padding:'3px 10px', fontSize:'11.5px', cursor:'pointer', fontFamily:'inherit' });
+    const sortPills = [['modified','Modified'],['name','Name'],['domain','Domain'],['deploys','Deploys']].map(([k,l]) => ({ label:l, onClick:()=>this.setState({sort:k}), style:pill(s.sort===k) }));
+    const groupPills = [['list','List'],['domain','By domain'],['family','By family']].map(([k,l]) => ({ label:l, onClick:()=>this.setState({group:k}), style:pill(s.group===k) }));
+
+    // ---- DRAWER ----
+    let dv = { drawerOpen:false }, closeDrawer=()=>this.setState({drawer:null});
+    if(s.drawer){
+      const name=s.drawer, meta=this.getMeta(name), isVendor=meta.source==='vendor';
+      const _rmTags = s.removedTags[name] || [];
+      const effDomains = meta.domains.filter(d=> _rmTags.indexOf(d) < 0);
+      const ckey=name+'/'+s.drawerFile, raw=s.fileCache[ckey];
+      let md;
+      if(raw===undefined || raw==='__loading__') md=null;
+      else if(raw===null) md = s.drawerFile==='SKILL.md' ? ('# '+name+'\n\n'+meta.desc+'\n\n_Full body loads on demand via_ `skl show '+name+'`.') : ('# '+s.drawerFile+'\n\n_Loaded on demand_ — `skl show '+name+' --file '+s.drawerFile+'`');
+      else md=raw;
+      const stripFM=(t)=>{ if(t && t.slice(0,3)==='---'){ const e=t.indexOf('\n---',3); if(e>=0){ const nl=t.indexOf('\n',e+1); return t.slice(nl+1); } } return t; };
+      const rawText = md===null ? ('Loading '+s.drawerFile+'…') : md;
+      let renderedEl;
+      if(md===null) renderedEl=React.createElement('div',{style:{color:faint,fontSize:'13px'}},'Loading '+s.drawerFile+'…');
+      else if(window.marked){ let html=''; try{ html=window.marked.parse(stripFM(md)); }catch(e){ html=''; } renderedEl=React.createElement('div',{className:'md-body',dangerouslySetInnerHTML:{__html:html}}); }
+      else renderedEl=React.createElement('div',{style:{color:faint,fontSize:'13px'}},'Loading renderer…');
+
+      const drawerFiles = meta.files.map(([path,kind,depth]) => { const label= depth>0? path.split('/').pop() : path; const sel= path===s.drawerFile; const isDir= kind==='dir';
+        return { label, icon: kind==='dir'?'▸':(kind==='json'?'{}':'·'),
+          iconStyle:{ width:'14px', color: kind==='json'?'#0891B2':(kind==='dir'?'#B6B6BC':'#2563EB'), fontSize:'11px', fontFamily:mono, flexShrink:0, textAlign:'center' },
+          onClick: isDir?()=>{}:()=>this.selectFile(path),
+          style:{ display:'flex', alignItems:'center', gap:'7px', padding:'4px 8px', paddingLeft:(8+depth*14)+'px', borderRadius:'6px', fontSize:'12px', cursor:isDir?'default':'pointer', color: isDir?'#9A9AA2':(sel?ink:'#52525B'), background: sel?'#EFF4FE':'transparent', fontWeight: sel?600:450, fontFamily:mono } };
+      });
+      const dtab=(t,label)=>({ label, onClick:()=>this.setState({drawerTab:t}), style:{ padding:'9px 13px', background:'none', border:'none', borderBottom:'2px solid '+(s.drawerTab===t?ink:'transparent'), color: s.drawerTab===t?ink:sub, fontSize:'12.5px', fontWeight: s.drawerTab===t?600:500, cursor:'pointer', fontFamily:'inherit' } });
+      const deployed = (function(){ const arr=[['✓','linked','~/.claude/skills/'+name,green]]; if(isVendor) arr.push(['◧','vendored','dbskill@a58f647',blue]); return arr; })();
+      dv = { drawerOpen:true, drawerName:name,
+        drawerSrcLabel: isVendor?'◆ vendored':'● local',
+        drawerSrcStyle: isVendor?{ color:blue, background:'#EAF1FD', borderRadius:'20px', padding:'3px 9px', fontSize:'11px', fontWeight:500 }:{ color:ink, background:'#F4F4F5', borderRadius:'20px', padding:'3px 9px', fontSize:'11px', fontWeight:500 },
+        drawerDomains: (effDomains.length?effDomains:['untagged']).map(d=>({ label:d, onRemove: d==='untagged'?()=>{}:()=>this.removeTag(name,d), style:{ background:'#F4F4F5', color:'#52525B', borderRadius:'6px', padding:'2px 9px', fontSize:'11.5px' } })),
+        drawerFiles,
+        drawerTabRendered: s.drawerTab==='rendered', drawerTabRaw: s.drawerTab==='raw', drawerTabExpl: s.drawerTab==='expl',
+        dtabRendered: dtab('rendered','Rendered'), dtabRaw: dtab('raw','Raw'), dtabExpl: dtab('expl','Explanation'),
+        renderedEl, rawText,
+        drawerFmDesc: meta.desc, drawerHasTriggers: !!(meta.triggers&&meta.triggers.length),
+        drawerTriggers: (meta.triggers||[]).map(t=>({label:t})), drawerLicense: meta.license||'—',
+        drawerHasProv: !!meta.prov, provSource: meta.prov?meta.prov.source:'', provRef: meta.prov?meta.prov.ref:'', provHash: meta.prov?meta.prov.hash:'',
+        drawerDeployed: deployed.map(([g,k,p,c])=>({ glyph:g, kind:k, path:p, glyphStyle:{ color:c, width:'14px', textAlign:'center', fontSize:'12px', flexShrink:0 }, kindStyle:{ width:'56px', fontSize:'11px', color:c, flexShrink:0 }, pathStyle:{ flex:1, fontFamily:mono, fontSize:'10.5px', color:'#52525B', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } })),
+        drawerRetireCmd: 'skl retire '+name,
+        drawerRetire: ()=>this.retireSkills([name]),
+        drawerRemove: ()=>this.askRemove(name),
+        drawerAgents: this.AGENTS.map(a=>{
+          const gst = effState(name,a.id,'Global');
+          const projs = this.SCOPES.filter(x=>x!=='Global').map(pn=>({name:pn, st:effState(name,a.id,pn)})).filter(p=>p.st!=='absent');
+          const dg = gst!=='absent', anywhere = dg || projs.length>0, gl = G2[gst];
+          return { short:a.name, notInstalled:!a.installed,
+            nameStyle:{ fontSize:'12.5px', fontWeight:600, color: anywhere?ink:'#71717A', fontFamily:mono },
+            globalGlyph: dg?gl[0]:'+', globalLabel: dg?('global · '+gst):'not in global',
+            globalStyle:{ display:'inline-flex', alignItems:'center', gap:'5px', fontSize:'11px', color: dg?gl[1]:'#9A9AA2' },
+            onToggleGlobal: ()=>this.setDeploy(name,a.id,'Global',!dg),
+            toggleLabel: dg?'Unlink':'Link',
+            toggleStyle:{ background: dg?'#FFFFFF':'#18181B', color: dg?'#52525B':'#FFFFFF', border:'1px solid '+(dg?'#E2E2E5':'#18181B'), borderRadius:'6px', padding:'3px 11px', fontSize:'11px', cursor:'pointer', fontFamily:'inherit' },
+            hasProj: projs.length>0,
+            projChips: projs.map(p=>{ const pg=G2[p.st]; return { label:p.name+' '+pg[0], style:{ background:'#F4F4F5', color:pg[1], borderRadius:'5px', padding:'1px 7px', fontSize:'10.5px', fontFamily:mono } }; }),
+            path:a.global,
+            rowStyle:{ padding:'10px 0', borderBottom:'1px solid #F5F5F6', opacity: a.installed?1:0.6 } };
+        }),
+        copyRaw: ()=>{ try{ navigator.clipboard.writeText(rawText); }catch(e){} } };
+    }
+
+    const dryStyle = { background: s.dryRun?'#18181B':'#FFFFFF', color: s.dryRun?'#FFFFFF':'#52525B', border:'1px solid '+(s.dryRun?'#18181B':'#E2E2E5'), borderRadius:'7px', padding:'5px 12px', fontSize:'12.5px', cursor:'pointer', fontFamily:'inherit' };
+
+    return Object.assign({
+      smartViews, domains, provenance, inboxRows, matrixRows, matrixCols, legend,
+      matrixModePills, scopePills, isAgentMode: isAgent, isMatrixDomain: !isAgent,
+      libraryGroups, libCount: fLib.length, hasFilter: !!f, filterLabel, clearFilter:()=>this.setState({filter:null}), sortPills, groupPills, dirGlyph: s.sortDir==='desc'?'↓':'↑', toggleDir:()=>this.setState(p=>({sortDir:p.sortDir==='desc'?'asc':'desc'})),
+      isInbox: s.view==='inbox', isMatrix: s.view==='matrix', isLibrary: s.view==='library',
+      tabStyles:{ inbox:tab('inbox'), matrix:tab('matrix'), library:tab('library') },
+      badgeStyles:{ inbox:badge('inbox'), matrix:badge('matrix'), library:badge('library') },
+      goInbox:()=>this.setState({view:'inbox'}), goMatrix:()=>this.setState({view:'matrix'}), goLibrary:()=>this.setState({view:'library'}),
+      toggleDry:()=>this.setState(p=>({dryRun:!p.dryRun})), dryStyle, dryLabel: s.dryRun?'on':'off',
+      showBulk: selCount>0, selLabel: selCount+' selected · both vendored', clearSel:()=>this.setState({selected:{}}),
+      openSelected:()=>this.openDrawer('dbs-chatroom-austrian'), closeDrawer,
+      bulkRetire:()=>this.retireSkills(Object.keys(s.selected).filter(k=>s.selected[k])),
+      toastOpen:!!s.toast, toastMsg:s.toast?s.toast.msg:'', toastCmd:s.toast?s.toast.cmd:'', toastHasUndo:!!(s.toast&&s.toast.undo), toastUndo:(s.toast&&s.toast.undo)?s.toast.undo:()=>{}, dismissToast:()=>this.hideToast(),
+      confirmOpen:!!s.confirm, confirmName:s.confirm?s.confirm.name:'', confirmText:s.confirmText, onConfirmInput:(e)=>this.setState({confirmText:e.target.value}),
+      confirmBtnStyle: (s.confirmText===(s.confirm?s.confirm.name:'') ? {background:'#DC2626',color:'#FFFFFF',border:'none',borderRadius:'8px',padding:'7px 16px',fontSize:'12.5px',fontWeight:550,cursor:'pointer',fontFamily:'inherit'} : {background:'#F4F4F5',color:'#C7C7CC',border:'none',borderRadius:'8px',padding:'7px 16px',fontSize:'12.5px',fontWeight:550,cursor:'not-allowed',fontFamily:'inherit'}),
+      doRemove:()=>this.doRemove(), cancelConfirm:()=>this.cancelConfirm()
+    }, dv);
+  }
+}
+</script>
+</body>
+</html>

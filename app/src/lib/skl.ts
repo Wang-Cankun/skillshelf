@@ -1,14 +1,35 @@
-// The bridge between the Svelte UI and the deterministic `skl` CLI.
+// The bridge between the React UI and the deterministic `skl` CLI.
 //
 // In Tauri (desktop) we invoke the Rust `run_skl` command, which shells out to
 // the real `skl` binary and returns a structured { ok, stdout, stderr }. In a
 // plain browser (Vite dev, no Tauri) we fall back to the REAL data captured in
-// fixtures.ts so the UI renders meaningfully without Rust. Mutating actions
-// become dry-run echoes in the browser (ADR-0007: the UI is a graphical front
-// for deterministic verbs).
+// fixtures.ts (plus derive.ts reconstructions of the §7 feeds) so the UI renders
+// meaningfully without Rust. Mutating actions become dry-run echoes in the
+// browser (ADR-0007: the UI is a graphical front for deterministic verbs).
+//
+// Every Tauri payload is validated through a Zod schema (schemas.ts) at the
+// boundary — a malformed/structurally-changed payload throws here, not later.
 
-import type { Skill, DeploymentReport, ScanReport, StatusReport } from "./types";
+import type {
+  Skill,
+  DeploymentReport,
+  ScanReport,
+  StatusReport,
+  AgentsReport,
+  ShowReport,
+} from "./types";
+import {
+  LibrarySchema,
+  DeploymentReportSchema,
+  ScanReportSchema,
+  StatusReportSchema,
+  AgentsReportSchema,
+  ShowReportSchema,
+} from "./schemas";
 import { realLibrary, realWhere, realScan, realStatus } from "./fixtures";
+import { augmentLibrary, deriveShow } from "./derive";
+import { deriveAgentsReport } from "./agents";
+import type { ZodType } from "zod";
 
 export const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -29,45 +50,70 @@ export function cmdEcho(args: string[]): string {
 }
 
 /**
- * Invoke the Tauri `run_skl` command and parse its JSON stdout into `T`.
- * Dynamically imports @tauri-apps/api so the browser bundle never needs it.
- * Throws if `run_skl` reports a non-zero exit, or if stdout is not valid JSON.
+ * Invoke the Tauri `run_skl` command, validate its JSON stdout through `schema`,
+ * and return the parsed `T`. Dynamically imports @tauri-apps/api so the browser
+ * bundle never needs it. Throws if `run_skl` reports a non-zero exit, if stdout
+ * is not valid JSON, or if the payload fails schema validation.
  */
-async function invokeJson<T>(args: string[]): Promise<T> {
+async function invokeJson<T>(args: string[], schema: ZodType<T>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
   const result = await invoke<SklResult>("run_skl", { args });
   if (!result.ok) {
-    throw new Error(
-      result.stderr.trim() || `${cmdEcho(args)} exited non-zero`,
-    );
+    throw new Error(result.stderr.trim() || `${cmdEcho(args)} exited non-zero`);
   }
+  let raw: unknown;
   try {
-    return JSON.parse(result.stdout) as T;
+    raw = JSON.parse(result.stdout);
   } catch (err) {
+    throw new Error(`failed to parse JSON from ${cmdEcho(args)}: ${String(err)}`);
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
     throw new Error(
-      `failed to parse JSON from ${cmdEcho(args)}: ${String(err)}`,
+      `unexpected shape from ${cmdEcho(args)}: ${parsed.error.message}`,
     );
   }
+  return parsed.data;
 }
 
 export async function loadLibrary(): Promise<Skill[]> {
-  if (IS_TAURI) return invokeJson<Skill[]>(["ls", "--json"]);
-  return realLibrary;
+  if (IS_TAURI) return invokeJson(["ls", "--json"], LibrarySchema);
+  // browser: augment captured rows with §7.1 fields from where + lockfile.
+  return augmentLibrary(realLibrary, realWhere);
 }
 
 export async function loadWhere(): Promise<DeploymentReport> {
-  if (IS_TAURI) return invokeJson<DeploymentReport>(["where", "--json"]);
+  if (IS_TAURI) return invokeJson(["where", "--json"], DeploymentReportSchema);
   return realWhere;
 }
 
 export async function loadScan(): Promise<ScanReport> {
-  if (IS_TAURI) return invokeJson<ScanReport>(["scan", "--json"]);
+  if (IS_TAURI) return invokeJson(["scan", "--json"], ScanReportSchema);
   return realScan;
 }
 
 export async function loadStatus(): Promise<StatusReport> {
-  if (IS_TAURI) return invokeJson<StatusReport>(["status", "--json"]);
+  if (IS_TAURI) return invokeJson(["status", "--json"], StatusReportSchema);
   return realStatus;
+}
+
+export async function loadAgents(): Promise<AgentsReport> {
+  if (IS_TAURI) return invokeJson(["agents", "--json"], AgentsReportSchema);
+  // browser: reconstruct the agents report from the real `where` feed.
+  return deriveAgentsReport(realWhere);
+}
+
+export async function loadShow(
+  name: string,
+  file?: string,
+): Promise<ShowReport> {
+  if (IS_TAURI) {
+    const args = file
+      ? ["show", name, "--file", file, "--json"]
+      : ["show", name, "--json"];
+    return invokeJson(args, ShowReportSchema);
+  }
+  return deriveShow(name, file, augmentLibrary(realLibrary, realWhere));
 }
 
 /**

@@ -1,0 +1,398 @@
+// Pure derivations that turn the preserved real feeds (ls / where / lockfile /
+// taxonomy) into the ADR-0008 §7 additive shapes, for the dev/browser fallback
+// path. In Tauri these come straight from the real `skl --json`; here we
+// reconstruct them from captured real data so nothing is fabricated.
+
+import type {
+  Skill,
+  DeploymentReport,
+  ShowReport,
+  RefFile,
+  Frontmatter,
+  SkillSource,
+} from "./types";
+import { SEV_MAP, type InboxSeverity } from "./tokens";
+import lockJson from "./data/shelf.lock.json";
+
+// real sample SKILL bodies (the two skills with on-disk files) — ?raw imports.
+import dbsChatroomRaw from "./data/skills/dbs-chatroom-austrian/SKILL.md?raw";
+import natureFigureRaw from "./data/skills/nature-figure/SKILL.md?raw";
+import natureReadmeRaw from "./data/skills/nature-figure/README.md?raw";
+import natureApiRaw from "./data/skills/nature-figure/references/api.md?raw";
+import natureDesignRaw from "./data/skills/nature-figure/references/design-theory.md?raw";
+
+interface LockEntry {
+  name: string;
+  source: string;
+  ref: string;
+  channel: string;
+  installedAt: string;
+  localEdits: boolean;
+  installedHash: string;
+}
+const LOCK = lockJson as {
+  version: number;
+  entries: Record<string, LockEntry>;
+};
+
+const lockEntry = (name: string): LockEntry | undefined => LOCK.entries[name];
+
+const shortHash = (h: string) =>
+  h ? `${h.slice(0, 8)}…${h.slice(-4)}` : "";
+const shortRef = (r: string, installedAt: string) =>
+  `${(r || "").slice(0, 7)} · ${(installedAt || "").slice(0, 10)}`;
+
+/** Count of clean (linked, no-drift) deployment sites for a skill. */
+export function deployCount(where: DeploymentReport, name: string): number {
+  return where.sites.filter(
+    (s) => s.name === name && s.kind === "linked" && !s.drift,
+  ).length;
+}
+
+/**
+ * Augment `ls --json` rows with the ADR-0008 §7.1 fields (source / modifiedAt /
+ * deployCount). `source` = vendored iff the skill has a lockfile entry; a
+ * vendored skill's modifiedAt falls back to its lock installedAt (best signal
+ * available without a real `stat`); local rows leave modifiedAt null → "—".
+ */
+export function augmentLibrary(
+  skills: Skill[],
+  where: DeploymentReport,
+): Skill[] {
+  return skills.map((s) => {
+    const le = lockEntry(s.name);
+    const source: SkillSource = le ? "vendored" : "local";
+    return {
+      ...s,
+      source: s.source ?? source,
+      modifiedAt: s.modifiedAt ?? (le ? le.installedAt : null),
+      deployCount: s.deployCount ?? deployCount(where, s.name),
+    };
+  });
+}
+
+// ── show --json (browser fallback) ─────────────────────────────────────────
+
+interface ShowSample {
+  files: RefFile[];
+  raw: Record<string, string>;
+}
+
+const SHOW_SAMPLES: Record<string, ShowSample> = {
+  "dbs-chatroom-austrian": {
+    files: [{ path: "SKILL.md", kind: "md", depth: 0 }],
+    raw: { "SKILL.md": dbsChatroomRaw },
+  },
+  "nature-figure": {
+    files: [
+      { path: "SKILL.md", kind: "md", depth: 0 },
+      { path: "README.md", kind: "md", depth: 0 },
+      { path: "references/", kind: "dir", depth: 0 },
+      { path: "references/api.md", kind: "md", depth: 1 },
+      { path: "references/design-theory.md", kind: "md", depth: 1 },
+    ],
+    raw: {
+      "SKILL.md": natureFigureRaw,
+      "README.md": natureReadmeRaw,
+      "references/api.md": natureApiRaw,
+      "references/design-theory.md": natureDesignRaw,
+    },
+  },
+};
+
+/** Strip a leading YAML frontmatter block from a markdown body. */
+export function stripFrontmatter(text: string): string {
+  if (text.slice(0, 3) === "---") {
+    const end = text.indexOf("\n---", 3);
+    if (end >= 0) {
+      const nl = text.indexOf("\n", end + 1);
+      return nl >= 0 ? text.slice(nl + 1) : "";
+    }
+  }
+  return text;
+}
+
+/** Minimal frontmatter parser: name / description / triggers / license. */
+function parseFrontmatter(text: string, fallback: Frontmatter): Frontmatter {
+  if (text.slice(0, 3) !== "---") return fallback;
+  const end = text.indexOf("\n---", 3);
+  if (end < 0) return fallback;
+  const block = text.slice(3, end);
+  const lines = block.split("\n");
+  const fm: Frontmatter = { ...fallback };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const m = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
+    if (!m) {
+      i++;
+      continue;
+    }
+    const key = m[1];
+    let val = m[2];
+    // block scalar (| or >): gather indented following lines.
+    if (val === "|" || val === ">" || val === "|-" || val === ">-") {
+      const buf: string[] = [];
+      i++;
+      while (i < lines.length && /^\s+/.test(lines[i])) {
+        buf.push(lines[i].replace(/^\s{1,2}/, ""));
+        i++;
+      }
+      val = buf.join(" ").trim();
+    } else {
+      i++;
+    }
+    if (key === "name") fm.name = val || fm.name;
+    else if (key === "description") fm.description = val || fm.description;
+    else if (key === "license") fm.license = val || fm.license;
+    else if (key === "triggers") {
+      const arr = val
+        .replace(/^\[|\]$/g, "")
+        .split(",")
+        .map((x) => x.trim().replace(/^["']|["']$/g, ""))
+        .filter(Boolean);
+      if (arr.length) fm.triggers = arr;
+    }
+  }
+  // triggers often live as slash-commands inside the description text.
+  if (!fm.triggers.length) {
+    const slash = (fm.description.match(/\/[\w一-龥-]+/g) || []).slice(
+      0,
+      4,
+    );
+    if (slash.length) fm.triggers = [...new Set(slash)];
+  }
+  return fm;
+}
+
+/**
+ * Browser fallback for `skl show <name> [--file <path>] --json`. Uses the real
+ * embedded sample bodies where present, else synthesizes an honest placeholder
+ * body from the library row (labelled as loading-on-demand, never faked).
+ */
+export function deriveShow(
+  name: string,
+  file: string | undefined,
+  skills: Skill[],
+): ShowReport {
+  const skill = skills.find((s) => s.name === name);
+  const target = file ?? "SKILL.md";
+  const sample = SHOW_SAMPLES[name];
+  const refFiles: RefFile[] = sample?.files ?? [
+    { path: "SKILL.md", kind: "md", depth: 0 },
+  ];
+
+  let body: string;
+  if (sample && sample.raw[target] !== undefined) {
+    body = sample.raw[target];
+  } else if (target === "SKILL.md") {
+    body =
+      `# ${name}\n\n${skill?.description ?? name}\n\n` +
+      `_Full body loads on demand via_ \`skl show ${name}\`.`;
+  } else {
+    body =
+      `# ${target}\n\n_Loaded on demand_ — ` +
+      `\`skl show ${name} --file ${target}\``;
+  }
+
+  const fallbackFm: Frontmatter = {
+    name,
+    description: skill?.description ?? name,
+    triggers: [],
+    license: "—",
+  };
+  const frontmatter =
+    target === "SKILL.md" && sample
+      ? parseFrontmatter(body, fallbackFm)
+      : fallbackFm;
+
+  const le = lockEntry(name);
+  const prov = le
+    ? {
+        source: le.source.replace(/@.*$/, ""),
+        ref: shortRef(le.ref, le.installedAt),
+        hash: shortHash(le.installedHash),
+        localEdits: le.localEdits,
+      }
+    : null;
+
+  return { name, body, frontmatter, refFiles, prov };
+}
+
+// ── Inbox triage (deterministic, from real signals — ADR-0008 §4) ──────────
+
+export interface InboxRow {
+  severity: InboxSeverity;
+  type: string;
+  skill: string;
+  detail: string;
+  counts: string;
+  countColor: string;
+  auto: boolean;
+  cmd: string;
+  /** valid `skl` arg vectors for the row's action buttons */
+  actions: { label: string; primary: boolean; args?: string[] }[];
+  openable: boolean;
+}
+
+const STUB_DEFAULTS = [
+  "replace with description of the skill",
+  "replace with a description",
+];
+
+/**
+ * Deterministic triage from the real library + deployment feeds.
+ * - UNTAGGED: no domains.
+ * - STUB: description is the scaffold default.
+ * - THIN TAGS: a prefix-family spans multiple domains (tag drift).
+ * - FAMILY: a string-prefix family (informational; the largest bundles).
+ * - TRACKED: vendored + clean (lockfile, no local edits).
+ * DRIFT/DEAD/UNTRACKED/2ND-SOURCE come from the real `where.problems` feed.
+ */
+export function deriveInbox(
+  skills: Skill[],
+  where: DeploymentReport,
+): InboxRow[] {
+  const live = skills.filter((s) => !s.retired);
+  const rows: InboxRow[] = [];
+
+  // UNTAGGED
+  for (const s of live) {
+    if (s.domains.length === 0) {
+      rows.push({
+        severity: "untagged",
+        type: SEV_MAP.untagged.label,
+        skill: s.name,
+        detail: "No domains in taxonomy.json — needs a tag",
+        counts: "",
+        countColor: "",
+        auto: true,
+        cmd: `skl tag ${s.name} <domain>`,
+        actions: [{ label: "Tag ▾", primary: true }],
+        openable: true,
+      });
+    }
+  }
+
+  // STUB
+  for (const s of live) {
+    const d = s.description.trim().toLowerCase();
+    if (STUB_DEFAULTS.some((def) => d.startsWith(def))) {
+      rows.push({
+        severity: "stub",
+        type: SEV_MAP.stub.label,
+        skill: s.name,
+        detail: "Description still the scaffold default",
+        counts: "",
+        countColor: "",
+        auto: false,
+        cmd: `skl show ${s.name}`,
+        actions: [{ label: "Retire", primary: false, args: ["retire", s.name] }],
+        openable: true,
+      });
+    }
+  }
+
+  // families by prefix (first '-' segment)
+  const families = new Map<string, Skill[]>();
+  for (const s of live) {
+    const prefix = s.name.split("-")[0];
+    if (!families.has(prefix)) families.set(prefix, []);
+    families.get(prefix)!.push(s);
+  }
+
+  // THIN TAGS: a family whose members span >1 distinct primary domain.
+  for (const [prefix, members] of families) {
+    if (members.length < 3) continue;
+    const domains = new Set(
+      members.map((m) => m.primaryDomain).filter(Boolean) as string[],
+    );
+    if (domains.size > 1) {
+      rows.push({
+        severity: "thintag",
+        type: SEV_MAP.thintag.label,
+        skill: `${prefix}-*`,
+        detail: `Spans ${[...domains].join(" · ")} — tag drift worth a pass`,
+        counts: String(members.length),
+        countColor: SEV_MAP.thintag.color,
+        auto: false,
+        cmd: `skl ls`,
+        actions: [{ label: "Review ▾", primary: false }],
+        openable: false,
+      });
+    }
+  }
+
+  // FAMILY: the largest prefix family (a bundle candidate).
+  let biggest: { prefix: string; n: number } | null = null;
+  for (const [prefix, members] of families) {
+    if (members.length >= 4 && (!biggest || members.length > biggest.n))
+      biggest = { prefix, n: members.length };
+  }
+  if (biggest) {
+    rows.push({
+      severity: "family",
+      type: SEV_MAP.family.label,
+      skill: `${biggest.prefix}-*`,
+      detail: `${biggest.n} skills under one prefix — candidate for a bundle`,
+      counts: String(biggest.n),
+      countColor: SEV_MAP.family.color,
+      auto: false,
+      cmd: `skl ls`,
+      actions: [{ label: "Review ▾", primary: false }],
+      openable: false,
+    });
+  }
+
+  // TRACKED: vendored + clean.
+  const vendored = live.filter((s) => lockEntry(s.name));
+  if (vendored.length) {
+    rows.push({
+      severity: "tracked",
+      type: SEV_MAP.tracked.label,
+      skill: `${vendored[0].name} · +${vendored.length - 1}`,
+      detail: "Vendored + clean (lockfile, no local edits)",
+      counts: `${vendored.length} ✓`,
+      countColor: SEV_MAP.tracked.color,
+      auto: false,
+      cmd: `skl status`,
+      actions: [{ label: "View lock", primary: false }],
+      openable: false,
+    });
+  }
+
+  // DRIFT / DEAD / UNTRACKED / 2ND-SOURCE from real where.problems.
+  for (const p of where.problems) {
+    let severity: InboxSeverity | null = null;
+    let detail = "";
+    if (p.drift) {
+      severity = "drift";
+      detail = `Deployed copy diverged from library — ${p.surface}`;
+    } else if (p.kind === "dead") {
+      severity = "dead";
+      detail = `Broken symlink — ${p.path}`;
+    } else if (p.kind === "copy" && !p.inLibrary) {
+      severity = "untracked";
+      detail = `Copy not in library — ${p.surface}`;
+    } else if (p.kind === "foreign-link") {
+      severity = "second-source";
+      detail = `Links outside the library — ${p.target ?? p.surface}`;
+    }
+    if (!severity) continue;
+    const m = SEV_MAP[severity];
+    rows.push({
+      severity,
+      type: m.label,
+      skill: p.name,
+      detail,
+      counts: "",
+      countColor: "",
+      auto: false,
+      cmd: `skl where`,
+      actions: [{ label: "Review ▾", primary: false }],
+      openable: true,
+    });
+  }
+
+  return rows;
+}
