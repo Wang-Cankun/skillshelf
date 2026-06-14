@@ -153,24 +153,37 @@ See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full design.
 | Command | Summary | Key flags |
 |---|---|---|
 | `skl init` | Set up `~/.skillshelf` config + library and link the global-core skills | `--force` |
-| `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift) | `--add-root <path>` |
+| `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift) | `--add-root <path>`, `--remove-root <path>` |
+| `skl roots` | List the persisted scan roots (read-only; no crawl) | — |
 | `skl import <name> --from <path>` | Adopt your own skill into the library as an OWNED copy (move + symlink-back, or `--copy`) | `--copy`, `--as <slug>`, `--force` |
 | `skl link [<name>] --from <dev-repo>` | Shelve a dev-repo skill as a LINKED entry (library symlinks to it; the repo stays canonical). `--at <path>` instead collapses a stray copy into the library | `--from`, `--at`, `--force` |
 | `skl new <name>` | Scaffold a new skill dir + SKILL.md into the library | `--domain <d>`, `--desc "..."`, `--force` |
-| `skl ls [bundle]` | One-line listing of the library, or one bundle | `--all` |
+| `skl ls [bundle]` | One-line listing of the library, or one bundle (`--json` carries `mode`/`linkTarget`) | `--all` |
 | `skl search <kw...>` | Fuzzy match over name + description + domains across the library | — |
 | `skl show <name>` | Print a skill's SKILL.md body; list reference-file paths (not contents) | — |
-| `skl status` | Show which library skills are linked into `./.claude/skills` | — |
-| `skl where [name]` | Map where each skill is deployed across all agents (Claude, Codex, Cursor…); flags copies, drift, 2nd-sources, dead links — a dev repo a library entry links to shows as a clean `✓ source` | `--problems` |
-| `skl use <bundle>` | Symlink a bundle's skills into `./.claude/skills/` (hot-loads) | — |
-| `skl drop <bundle>` | Remove a bundle's symlinks from `./.claude/skills/` | — |
+| `skl tag <name> <domain>…` | Add domain tag(s) to a skill in the central taxonomy (deterministic, no LLM) | — |
+| `skl untag <name> <domain>` | Remove a domain tag from a skill | — |
+| `skl retag <old> <new>` | Rename a domain across the whole library taxonomy (deterministic) | — |
+| `skl rename <old> <new>` | Rename a skill slug atomically (dir + frontmatter + taxonomy + lock). Alias `skl mv` | — |
+| `skl retire <name>` | Soft-delete a skill into `_retired/` (reversible; excluded from deploys) | — |
+| `skl unretire <name>` | Restore a retired skill back to the active library | — |
+| `skl rm <name>` | Delete a skill (dir/symlink + taxonomy + lock), re-index. Refuses a live OWNED skill without `--force`; a LINKED entry `rm`s freely (safe unlink) | `--force`, `--dry-run` |
+| `skl status` | Show which library skills are linked into `./.claude/skills`; flags unmanaged real copies (drift-prone) | — |
+| `skl where [name]` | Map where each skill is deployed across all agents (Claude, Codex, Cursor…); flags copies, drift, 2nd-sources, dead links — a dev repo a library entry links to shows as a clean `✓ source` | `--problems`, `--prune`, `--fix`, `--dry-run` |
+| `skl use <bundle\|skill>` | Symlink a bundle (or a single skill) into `./.claude/skills/` (hot-loads) | — |
+| `skl drop <bundle\|skill>` | Remove a bundle's (or single skill's) symlinks from `./.claude/skills/` | — |
+| `skl refresh` | Re-sync this project's `./.claude/skills` symlinks to current library reality (repoint stale, prune vanished) | `--dry-run` |
 | `skl add <src>` | Install a third-party skill (`github:`/registry), record provenance, auto-tag | `--domain <d>`, `--name <slug>`, `--no-infer`, `--force` |
-| `skl outdated [name]` | Check upstream ref per tracked skill and mark stale ones (LINKED dev-repo entries are reported, never probed) | — |
+| `skl outdated [name]` | Check upstream ref per tracked skill and mark stale ones (LINKED dev-repo entries are reported, never probed); `--check-local` diffs the local body against its baseline offline | `--check-local` |
 | `skl update [name]` | Re-pull upstream body, preserve domain tags, diff if local body diverged (LINKED entries are skipped — their own git owns versioning) | `--force`, `--dry-run` |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain) | — |
 | `skl infer` | Re-run AI domain taxonomy over the library (emit/apply/provider modes) | see below |
 
-Every command also accepts `--json`.
+Every command also accepts `--json`. Destructive/edit verbs (`rm`, `retire`/`unretire`,
+`rename`, `tag`/`untag`/`retag`, `scan --remove-root`, `where --prune`/`--fix`,
+`refresh`) are the inverse + fine-grained-edit family from
+[ADR-0005](./docs/adr/0005-inverse-and-edit-verbs.md): reversible by default, transactional
+across the skill dir + `taxonomy.json` + `shelf.lock.json` + `INDEX.md`.
 
 ## AI taxonomy & inference
 
