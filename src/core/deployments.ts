@@ -131,6 +131,24 @@ export function sitesByName(report: DeploymentReport): Map<string, DeploymentSit
   return m;
 }
 
+/**
+ * What `skl where --fix` may do automatically for a flagged site. Only DETERMINISTIC,
+ * non-destructive remediations are auto-applied (skillshelf never guesses which copy
+ * wins). Everything that needs a human decision is "manual".
+ *   - remove-dead : the symlink's target is gone — removing it loses nothing.
+ *   - dedupe-copy : a real copy whose body MATCHES the library (inLibrary && !drift) —
+ *                   safe to replace with a symlink into the library.
+ *   - manual      : drifted copy / foreign-link / untracked copy — a real decision
+ *                   (which wins, or import) that --fix must not make silently.
+ */
+export type RemediationAction = "remove-dead" | "dedupe-copy" | "manual";
+
+export function remediationFor(site: DeploymentSite): RemediationAction {
+  if (site.kind === "dead") return "remove-dead";
+  if (site.kind === "copy" && site.inLibrary && !site.drift) return "dedupe-copy";
+  return "manual";
+}
+
 /** One-line suggested fix for a flagged site (empty string for clean `linked`). */
 export function suggestionFor(site: DeploymentSite): string {
   switch (site.kind) {

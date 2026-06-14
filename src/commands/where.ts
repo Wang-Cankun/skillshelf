@@ -12,14 +12,21 @@
 //   skl where --json        structured DeploymentReport
 
 import { homedir } from "node:os";
+import { join } from "node:path";
 import type { Ctx, DeploymentSite } from "../types.ts";
-import { inventoryDeployments, suggestionFor } from "../core/deployments.ts";
+import {
+  inventoryDeployments,
+  suggestionFor,
+  remediationFor,
+  type RemediationAction,
+} from "../core/deployments.ts";
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
+import { safeSymlink, removeSymlink } from "../lib/fs.ts";
 
 export const meta = {
   name: "where",
   summary: "Show where each library skill is deployed across all surfaces (copies, symlinks, drift)",
-  usage: "skl where [name] [--problems] [--json]",
+  usage: "skl where [name] [--problems] [--prune | --fix] [--dry-run] [--json]",
 } as const;
 
 const HOME = homedir();
@@ -48,19 +55,65 @@ function labelFor(s: DeploymentSite): string {
 interface Args {
   name: string | null;
   problems: boolean;
+  prune: boolean;
+  fix: boolean;
+  dryRun: boolean;
   json: boolean;
 }
 
 function parseArgs(argv: string[]): { args: Args } | { error: string } {
-  const args: Args = { name: null, problems: false, json: false };
+  const args: Args = { name: null, problems: false, prune: false, fix: false, dryRun: false, json: false };
   for (const a of argv) {
     if (a === "--problems") args.problems = true;
+    else if (a === "--prune") args.prune = true;
+    else if (a === "--fix") args.fix = true;
+    else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--json") args.json = true;
     else if (a.startsWith("--")) return { error: `unknown argument: ${a}` };
     else if (args.name === null) args.name = a;
     else return { error: `unexpected extra argument: ${a}` };
   }
+  if (args.prune && args.fix) {
+    return { error: "--prune and --fix are mutually exclusive (--fix includes --prune's dead-link cleanup)" };
+  }
   return { args };
+}
+
+export interface FixOutcome {
+  name: string;
+  path: string;
+  action: RemediationAction;
+  applied: boolean;
+  note: string;
+}
+
+/**
+ * Apply where's own remediation to the flagged sites and return per-site outcomes.
+ * --prune handles only dead links; --fix also dedupes content-identical copies to a
+ * symlink into the library. `manual` problems (drift / 2nd-source / untracked) are
+ * NEVER auto-resolved — they carry a real decision; we report them with the existing
+ * suggestion so the loop is closed but judgment stays with the human/agent.
+ */
+export async function remediate(
+  sites: DeploymentSite[],
+  libraryPath: string,
+  opts: { fix: boolean; dryRun: boolean },
+): Promise<FixOutcome[]> {
+  const out: FixOutcome[] = [];
+  for (const s of sites) {
+    const action = remediationFor(s);
+    if (action === "remove-dead") {
+      if (!opts.dryRun) await removeSymlink(s.path, { force: true });
+      out.push({ name: s.name, path: s.path, action, applied: !opts.dryRun, note: opts.dryRun ? "would remove dead link" : "removed dead link" });
+    } else if (action === "dedupe-copy" && opts.fix) {
+      if (!opts.dryRun) await safeSymlink(join(libraryPath, s.name), s.path, { force: true });
+      out.push({ name: s.name, path: s.path, action, applied: !opts.dryRun, note: opts.dryRun ? "would replace identical copy with a symlink into the library" : "deduped copy -> symlink into library" });
+    } else {
+      // manual (or dedupe-copy under --prune): not auto-applied.
+      out.push({ name: s.name, path: s.path, action: "manual", applied: false, note: suggestionFor(s) });
+    }
+  }
+  return out;
 }
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
@@ -80,6 +133,31 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // realpath-de-duplicates and skips missing dirs.
     const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths()];
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
+
+    // --- remediation (--prune / --fix) -----------------------------------
+    if (parsed.args.prune || parsed.args.fix) {
+      const targets = name !== null ? report.problems.filter((s) => s.name === name) : report.problems;
+      const outcomes = await remediate(targets, ctx.libraryPath, {
+        fix: parsed.args.fix,
+        dryRun: parsed.args.dryRun,
+      });
+      const applied = outcomes.filter((o) => o.applied).length;
+      const manual = outcomes.filter((o) => o.action === "manual");
+      if (json) {
+        ctx.json({ dryRun: parsed.args.dryRun, mode: parsed.args.fix ? "fix" : "prune", applied, outcomes });
+        return 0;
+      }
+      const verb = parsed.args.dryRun ? "Would apply" : "Applied";
+      ctx.log(`${verb} ${parsed.args.fix ? "fix" : "prune"} to ${outcomes.length} problem site(s):`);
+      for (const o of outcomes) {
+        const flag = o.action === "manual" ? "•" : parsed.args.dryRun ? "?" : "✓";
+        ctx.log(`  ${flag} ${o.name}  ${tilde(o.path)}`);
+        ctx.log(`      ${o.note}`);
+      }
+      ctx.log("");
+      ctx.log(`${applied} ${parsed.args.dryRun ? "would be " : ""}auto-fixed, ${manual.length} need a manual decision.`);
+      return 0;
+    }
 
     // --- single skill ----------------------------------------------------
     if (name !== null) {

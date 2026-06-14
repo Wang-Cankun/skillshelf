@@ -39,6 +39,7 @@ import * as rm from "./commands/rm.ts";
 import * as retire from "./commands/retire.ts";
 import * as unretire from "./commands/unretire.ts";
 import * as rename from "./commands/rename.ts";
+import * as refresh from "./commands/refresh.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -49,6 +50,7 @@ const MODULES: CommandModule[] = [
   show,
   use,
   drop,
+  refresh,
   add,
   scan,
   roots,
