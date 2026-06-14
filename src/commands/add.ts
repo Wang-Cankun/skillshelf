@@ -1,17 +1,22 @@
-// skl add <src> — install a third-party skill into the library.
+// skl add <src> — install third-party skill(s) into the library.
 //
-// Flow:
-//   1. parse <src> (github:owner/repo[/path] or a bare registry name)
-//   2. shell out (git / `skills`) to DOWNLOAD only — never reinvent fetching
-//   3. copy the skill dir into the library under its primary-domain folder
-//   4. write a provenance lockfile entry (source + ref + channel + installedAt)
-//   5. if a domain is known at add time (--domain or an inference hook), record it
-//      centrally in <library>/taxonomy.json (survives upstream updates); otherwise
-//      leave it untagged — `skl infer` tags it later
-//   6. call the inference tagging hook if one is available, else leave untagged
+// Two shapes, ONE clone:
+//   skl add github:owner/repo/path/to/skill   → install that one skill (unchanged)
+//   skl add github:owner/repo                  → if exactly one skill, install it;
+//                                                if several, error and point at the
+//                                                flags below (never silently pick one)
+//   skl add github:owner/repo --list           → discover + print, no writes
+//   skl add github:owner/repo --all            → install every discovered skill
+//   skl add github:owner/repo --skill a,b      → install only those (by frontmatter name)
+//   skl add github:owner/repo --all --dry-run  → drift preflight (new/identical/differs)
 //
-// Read-only commands take --json; add is a write, but still emits a --json
-// summary on success for agent consumption.
+// `add` is a LIBRARIAN, not an installer: it writes ONLY into ~/.skillshelf/library
+// (provenance + central taxonomy). It never touches agent dirs / symlink fan-out —
+// that stays with `skl use` (project) / a future `skl deploy` (ADR-0003). A repo-wide
+// add clones the repo ONCE (fetchRepo), discovers all skills, and copies the selected
+// subset out of the single staging checkout — N installs, one network fetch.
+//
+// Read-only commands take --json; add is a write, but still emits a --json summary.
 
 import { join, basename } from "node:path";
 import { existsSync } from "node:fs";
@@ -19,20 +24,27 @@ import type { Ctx, Skill, LockEntry } from "../types.ts";
 import {
   parseSource,
   fetchSource,
+  fetchRepo,
+  discoverSkills,
   copySkillDir,
   cleanupStaging,
   readSkillBody,
+  type DiscoveredSkill,
+  type ParsedSource,
 } from "../core/fetch.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { hashContent } from "../core/crawl.ts";
 import { recordEntry } from "../core/provenance.ts";
 import { setDomainsForName } from "../core/taxonomy.ts";
-import { ensureDir } from "../lib/fs.ts";
+import { assertSafeName } from "../core/lifecycle.ts";
+import { loadLibrary, findByName } from "../core/library.ts";
+import { ensureDir, isSymlink } from "../lib/fs.ts";
 
 export const meta = {
   name: "add",
-  summary: "Install a third-party skill (github:/registry), record provenance, tag",
-  usage: "skl add <src> [--domain <d>] [--name <slug>] [--no-infer] [--force] [--json]",
+  summary: "Install third-party skill(s) (github:/git:/registry); repo-wide via --all/--skill",
+  usage:
+    "skl add <src> [--all|--skill <a,b,…>] [--list] [--dry-run] [--domain <d>] [--name <slug>] [--no-infer] [--force] [--json]",
 } as const;
 
 interface Flags {
@@ -41,55 +53,96 @@ interface Flags {
   name: string | null;
   infer: boolean;
   force: boolean;
+  all: boolean;
+  list: boolean;
+  dryRun: boolean;
+  /** null = flag not given; otherwise the (possibly empty) list of requested names */
+  skill: string[] | null;
   src: string | null;
 }
 
-// A skill slug is lowercase letters/digits/hyphens. This is also a SECURITY
-// guard: `name` may be derived from an untrusted third-party SKILL.md frontmatter
-// and `domain` from a flag, and both are joined into a library path. Rejecting
-// anything outside this charset stops `..`/`/` path traversal out of the library.
+// A skill slug is lowercase letters/digits/hyphens. This is also a SECURITY guard:
+// `name` may be derived from an untrusted third-party SKILL.md frontmatter and
+// `domain` from a flag, and both are joined into a library path. Rejecting anything
+// outside this charset stops `..`/`/` path traversal out of the library.
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
+function addSkillFilter(cur: string[] | null, raw: string): string[] {
+  const names = raw.split(",").map((s) => s.trim()).filter((s) => s !== "");
+  return [...(cur ?? []), ...names];
+}
+
 function parseFlags(argv: string[]): Flags {
-  const f: Flags = { json: false, domain: null, name: null, infer: true, force: false, src: null };
+  const f: Flags = {
+    json: false,
+    domain: null,
+    name: null,
+    infer: true,
+    force: false,
+    all: false,
+    list: false,
+    dryRun: false,
+    skill: null,
+    src: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--json") f.json = true;
     else if (a === "--no-infer") f.infer = false;
     else if (a === "--force") f.force = true;
+    else if (a === "--all") f.all = true;
+    else if (a === "--list") f.list = true;
+    else if (a === "--dry-run") f.dryRun = true;
     else if (a === "--domain") f.domain = argv[++i] ?? null;
     else if (a === "--name") f.name = argv[++i] ?? null;
-    else if (a === "--domain=" || a.startsWith("--domain=")) f.domain = a.slice("--domain=".length);
+    else if (a === "--skill") f.skill = addSkillFilter(f.skill, argv[++i] ?? "");
+    else if (a.startsWith("--domain=")) f.domain = a.slice("--domain=".length);
     else if (a.startsWith("--name=")) f.name = a.slice("--name=".length);
+    else if (a.startsWith("--skill=")) f.skill = addSkillFilter(f.skill, a.slice("--skill=".length));
     else if (!a.startsWith("-") && f.src === null) f.src = a;
   }
   return f;
 }
 
-/** Slug from frontmatter `name`, else the source dir name. */
-async function deriveName(skillDir: string, override: string | null): Promise<string> {
-  if (override && override.trim() !== "") return override.trim();
-  const body = await readSkillBody(skillDir);
-  const { data } = parseFrontmatter(body);
-  if (typeof data.name === "string" && data.name.trim() !== "") return data.name.trim();
-  return basename(skillDir);
+/** Body text after frontmatter — the unit drift/install hashes operate on. */
+function bodyOf(text: string): string {
+  return parseFrontmatter(text).body;
+}
+
+/** The library destination dir for a slug (under its domain folder, if any). */
+function destDirFor(libraryPath: string, domainFolder: string | null, name: string): string {
+  return domainFolder ? join(libraryPath, domainFolder, name) : join(libraryPath, name);
+}
+
+type Verdict = "new" | "identical" | "differs";
+
+/**
+ * Drift preflight for one skill against the library destination it would install to:
+ *   - new       — nothing at the destination → would install
+ *   - identical — destination body hash matches upstream → lossless overwrite
+ *   - differs   — destination body differs → would clobber local content (needs --force)
+ * Compares the frontmatter-stripped BODY (matches installedHash / `skl update`).
+ */
+async function driftVerdict(skill: DiscoveredSkill, destDir: string): Promise<Verdict> {
+  const localPath = join(destDir, "SKILL.md");
+  if (!existsSync(localPath)) return "new";
+  const upstream = hashContent(bodyOf(await readSkillBody(skill.dir)));
+  let localText = "";
+  try {
+    localText = await Bun.file(localPath).text();
+  } catch {
+    localText = "";
+  }
+  const local = hashContent(bodyOf(localText));
+  return upstream === local ? "identical" : "differs";
 }
 
 /**
- * Optionally run an AI inference tagging pass over the freshly-installed skill.
+ * Optionally run an AI inference tagging pass over a freshly-installed skill.
  *
- * The taxonomy pass (`skl infer`) is corpus-based and lives in the inference
- * adapters; there is no committed single-skill tagging hook in the public API.
- * To stay decoupled (and to leave the skill *untagged* rather than fail when no
- * hook is present), we look for an OPTIONAL convention module that may export a
- * `tagSkill(skill) => string[]`. The specifier is built at runtime so a missing
- * module degrades gracefully instead of becoming a static import error.
- *
- * A MISSING hook module is expected and stays silent (untagged is valid). But a
- * hook that IS present and THROWS is a real failure — we surface it via `warn`
- * rather than swallowing it, so a bug in an installed tagging hook isn't
- * indistinguishable from "no hook installed". Either way the skill stays
- * untagged (no taxonomy entry). Returns the domains written, if any.
+ * A MISSING hook module is expected and stays silent (untagged is valid). But a hook
+ * that IS present and THROWS is a real failure — we surface it via `warn` rather than
+ * swallowing it. Either way the skill stays untagged. Returns the domains written.
  */
 async function maybeInferTags(
   skill: Skill,
@@ -97,14 +150,11 @@ async function maybeInferTags(
 ): Promise<string[] | null> {
   const candidates = ["../core/infer.ts", "../adapters/inference/tag.ts"];
   for (const rel of candidates) {
-    // Non-literal specifier + .catch: a missing optional module degrades to
-    // "untagged" at runtime instead of becoming a static resolution error.
     const spec: string = rel;
     const mod: unknown = await import(spec).catch(() => null);
     if (!mod || typeof mod !== "object") continue;
     const hook = (mod as Record<string, unknown>).tagSkill;
     if (typeof hook !== "function") continue;
-    // The hook EXISTS: from here, errors are real and must be surfaced.
     try {
       const result = await (hook as (s: Skill) => Promise<string[] | null>)(skill);
       if (Array.isArray(result)) {
@@ -121,134 +171,476 @@ async function maybeInferTags(
   return null;
 }
 
+interface InstallOptions {
+  libraryPath: string;
+  domainFolder: string | null;
+  /** single-skill --name override; ignored in multi mode */
+  nameOverride: string | null;
+  /** per-skill lockfile `source` string (already carries the @subpath / #subpath) */
+  sourceStr: string;
+  ref: string;
+  channel: string;
+  infer: boolean;
+  force: boolean;
+  /** multi mode applies skip-differs-without-force + the never-write-through-symlink
+   *  guard; single mode preserves the legacy "exists without --force → error" rule. */
+  multi: boolean;
+}
+
+interface InstallOutcome {
+  name: string;
+  subpath: string;
+  verdict: Verdict;
+  status: "installed" | "skipped" | "error";
+  reason: string;
+  path: string;
+  source: string;
+  ref: string;
+  channel: string;
+  installedAt: string;
+  tagged: boolean;
+  domains: string[];
+}
+
+/** Install (copy + record provenance + tag) a single discovered skill. */
+async function installOne(
+  ctx: Ctx,
+  skill: DiscoveredSkill,
+  opts: InstallOptions,
+): Promise<InstallOutcome> {
+  const rawName =
+    opts.nameOverride && opts.nameOverride.trim() !== "" ? opts.nameOverride.trim() : skill.name;
+  const base: InstallOutcome = {
+    name: rawName,
+    subpath: skill.subpath,
+    verdict: "new",
+    status: "error",
+    reason: "",
+    path: "",
+    source: opts.sourceStr,
+    ref: opts.ref,
+    channel: opts.channel,
+    installedAt: "",
+    tagged: false,
+    domains: [],
+  };
+
+  // SECURITY: `name` derives from untrusted upstream frontmatter (or --name) and is
+  // joined into a library path. Reject anything that isn't a clean slug, then a
+  // belt-and-suspenders single-segment check, so a crafted name (e.g. "../../etc")
+  // can't escape the library before it reaches join()/copy.
+  if (!SLUG_RE.test(rawName)) {
+    return {
+      ...base,
+      reason: `invalid skill name "${rawName}" — use lowercase letters, digits, and hyphens${opts.multi ? "" : " (override with --name <slug>)"}`,
+    };
+  }
+  try {
+    assertSafeName(rawName);
+  } catch (err) {
+    return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
+
+  const destDir = destDirFor(opts.libraryPath, opts.domainFolder, rawName);
+  const verdict = await driftVerdict(skill, destDir);
+  base.verdict = verdict;
+
+  if (opts.multi) {
+    // Never copy THROUGH a symlinked destination: a LINKED entry points at an
+    // external dev repo and writing through it would clobber that repo (ADR-0004).
+    if (isSymlink(destDir)) {
+      return { ...base, status: "skipped", reason: "linked entry (a dev repo owns it) — not overwriting via symlink" };
+    }
+    // new + identical install; differs needs --force.
+    if (verdict === "differs" && !opts.force) {
+      return { ...base, status: "skipped", reason: "local body differs from upstream — not overwriting (use --force)" };
+    }
+  } else {
+    // SINGLE path: preserve today's exact rule — refuse any existing dest w/o --force.
+    if (existsSync(destDir) && !opts.force) {
+      return {
+        ...base,
+        reason: `${rawName} already exists at ${destDir} (use --force to overwrite, or skl update ${rawName} to re-pull)`,
+      };
+    }
+  }
+
+  // ---- write into the library ----
+  await ensureDir(opts.domainFolder ? join(opts.libraryPath, opts.domainFolder) : opts.libraryPath);
+  await copySkillDir(skill.dir, destDir);
+
+  const installedBody = bodyOf(await readSkillBody(skill.dir));
+  const installedAt = new Date().toISOString();
+  const entry: LockEntry = {
+    name: rawName,
+    source: opts.sourceStr,
+    ref: opts.ref,
+    channel: opts.channel,
+    installedAt,
+    localEdits: false,
+    installedHash: hashContent(installedBody),
+  };
+  await recordEntry(opts.libraryPath, entry);
+
+  const installed: Skill = {
+    name: rawName,
+    description: skill.description,
+    primaryDomain: opts.domainFolder,
+    domains: opts.domainFolder ? [opts.domainFolder] : [],
+    path: destDir,
+    bodyPath: join(destDir, "SKILL.md"),
+    refFiles: [],
+    source: { source: opts.sourceStr, ref: opts.ref, channel: opts.channel, installedAt, localEdits: false },
+    retired: false,
+    mirrorOf: null,
+    contentHash: "",
+  };
+  if (opts.domainFolder) await setDomainsForName(opts.libraryPath, rawName, [opts.domainFolder]);
+
+  let inferred: string[] | null = null;
+  if (opts.infer) {
+    inferred = await maybeInferTags(installed, (m) => ctx.error(m));
+    if (inferred && inferred.length > 0) await setDomainsForName(opts.libraryPath, rawName, inferred);
+  }
+  const domains = inferred && inferred.length > 0 ? inferred : opts.domainFolder ? [opts.domainFolder] : [];
+
+  return {
+    ...base,
+    status: "installed",
+    reason:
+      verdict === "identical"
+        ? "re-installed (identical body)"
+        : verdict === "differs"
+          ? "overwrote differing body (--force)"
+          : "installed",
+    path: destDir,
+    installedAt,
+    tagged: Boolean(inferred && inferred.length > 0),
+    domains,
+  };
+}
+
+/** `--list`: discover + print, no writes. */
+function reportList(
+  ctx: Ctx,
+  flags: Flags,
+  parsed: ParsedSource,
+  ref: string,
+  discovered: DiscoveredSkill[],
+  library: Skill[],
+): number {
+  const rows = discovered.map((d) => ({
+    name: d.name,
+    description: d.description,
+    subpath: d.subpath,
+    inLibrary: Boolean(findByName(library, d.name)),
+  }));
+  if (flags.json) {
+    ctx.json({ ok: true, action: "list", source: parsed.source, ref, count: rows.length, skills: rows });
+    return 0;
+  }
+  ctx.log(`${rows.length} skill(s) in ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""}:`);
+  ctx.log("");
+  for (const r of rows) {
+    const mark = r.inLibrary ? "✓" : " ";
+    ctx.log(`  ${mark} ${r.name.padEnd(28)} ${r.subpath || "(root)"}`);
+    if (r.description) ctx.log(`      ${r.description.length > 100 ? r.description.slice(0, 99) + "…" : r.description}`);
+  }
+  ctx.log("");
+  ctx.log(`✓ = already in your library. Install with: skl add ${flags.src} --all   (or --skill <name,…>)`);
+  return 0;
+}
+
+/** `--dry-run`: drift preflight over the full discovered set, no writes. */
+async function reportDryRun(
+  ctx: Ctx,
+  flags: Flags,
+  parsed: ParsedSource,
+  ref: string,
+  discovered: DiscoveredSkill[],
+  domainFolder: string | null,
+): Promise<number> {
+  interface Row {
+    name: string;
+    subpath: string;
+    verdict: Verdict | "invalid" | "linked";
+    willInstall: boolean;
+    needsForce: boolean;
+  }
+  const rows: Row[] = [];
+  for (const d of discovered) {
+    if (!SLUG_RE.test(d.name)) {
+      rows.push({ name: d.name, subpath: d.subpath, verdict: "invalid", willInstall: false, needsForce: false });
+      continue;
+    }
+    const destDir = destDirFor(ctx.config.libraryPath, domainFolder, d.name);
+    if (isSymlink(destDir)) {
+      rows.push({ name: d.name, subpath: d.subpath, verdict: "linked", willInstall: false, needsForce: false });
+      continue;
+    }
+    const verdict = await driftVerdict(d, destDir);
+    const needsForce = verdict === "differs";
+    const willInstall = verdict === "new" || verdict === "identical" || (verdict === "differs" && flags.force);
+    rows.push({ name: d.name, subpath: d.subpath, verdict, willInstall, needsForce });
+  }
+  const counts = {
+    new: rows.filter((r) => r.verdict === "new").length,
+    identical: rows.filter((r) => r.verdict === "identical").length,
+    differs: rows.filter((r) => r.verdict === "differs").length,
+    linked: rows.filter((r) => r.verdict === "linked").length,
+    invalid: rows.filter((r) => r.verdict === "invalid").length,
+  };
+  const willInstall = rows.filter((r) => r.willInstall).length;
+  if (flags.json) {
+    ctx.json({ ok: true, action: "dry-run", source: parsed.source, ref, counts, willInstall, force: flags.force, skills: rows });
+    return 0;
+  }
+  ctx.log(`dry-run for ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""} (${rows.length} skill(s)):`);
+  ctx.log("");
+  for (const r of rows) {
+    const tag =
+      r.verdict === "new"
+        ? "new      "
+        : r.verdict === "identical"
+          ? "identical"
+          : r.verdict === "differs"
+            ? "DIFFERS  "
+            : r.verdict === "linked"
+              ? "linked   "
+              : "INVALID  ";
+    const note = r.verdict === "differs" && !flags.force ? "  (needs --force)" : "";
+    ctx.log(`  ${tag}  ${r.name.padEnd(28)} ${r.subpath || "(root)"}${note}`);
+  }
+  ctx.log("");
+  ctx.log(
+    `${counts.new} new, ${counts.identical} identical, ${counts.differs} differ${counts.linked ? `, ${counts.linked} linked` : ""}${counts.invalid ? `, ${counts.invalid} invalid` : ""} → ${willInstall} would install${flags.force ? " (--force)" : ""}.`,
+  );
+  if (counts.differs > 0 && !flags.force) ctx.log("re-run with --force to overwrite differing skills.");
+  return 0;
+}
+
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const flags = parseFlags(argv);
   if (!flags.src) {
     ctx.error("usage:", meta.usage);
     return 1;
   }
-
-  const parsed = parseSource(flags.src);
-
-  // 1+2. DOWNLOAD into a staging dir (shell out only).
-  const fetched = await fetchSource(parsed);
-  if (!fetched.ok) {
-    await cleanupStaging(fetched.staging);
-    ctx.error("add: download failed:", fetched.error);
+  if (flags.all && flags.skill !== null) {
+    ctx.error("add: --all and --skill are mutually exclusive");
     return 1;
   }
 
+  // --domain validated once up front (applies to every install path).
+  const domainFolder = flags.domain && flags.domain.trim() !== "" ? flags.domain.trim() : null;
+  if (domainFolder !== null && !SLUG_RE.test(domainFolder)) {
+    ctx.error(`add: invalid --domain "${domainFolder}" — use lowercase letters, digits, and hyphens`);
+    return 1;
+  }
+
+  const parsed = parseSource(flags.src);
+  const repoChannel = parsed.channel === "github" || parsed.channel === "git";
+  const wantsMulti = flags.all || flags.skill !== null;
+
+  if (flags.name && wantsMulti) {
+    ctx.error("add: --name applies only to a single-skill add (omit --all/--skill)");
+    return 1;
+  }
+  if (wantsMulti && !repoChannel) {
+    ctx.error("add: --all/--skill apply to github:/git: repo sources, not registry names");
+    return 1;
+  }
+
+  // Per-skill lockfile `source`: each skill carries its OWN subpath (github uses the
+  // `owner/repo@subpath` convention; git encodes it after `#`; registry is the name).
+  const sourceOf = (skill: DiscoveredSkill): string => {
+    if (parsed.channel === "github") return `${parsed.source}${skill.subpath ? `@${skill.subpath}` : ""}`;
+    if (parsed.channel === "git") return `git:${parsed.localPath}${skill.subpath ? `#${skill.subpath}` : ""}`;
+    return parsed.source; // registry: the bare name
+  };
+
+  // ---- 1+2. FETCH (clone once for repos; the `skills` CLI for a registry name) ----
+  let staging: string | undefined;
+  let ref: string;
+  let channel: string;
+  let discovered: DiscoveredSkill[];
+
+  if (repoChannel) {
+    const repo = await fetchRepo(parsed);
+    if (!repo.ok) {
+      await cleanupStaging(repo.staging);
+      ctx.error("add: download failed:", repo.error);
+      return 1;
+    }
+    staging = repo.staging;
+    ref = repo.ref;
+    channel = repo.channel;
+    discovered = await discoverSkills(repo.checkout, parsed.subpath);
+  } else {
+    const fetched = await fetchSource(parsed);
+    if (!fetched.ok) {
+      await cleanupStaging(fetched.staging);
+      ctx.error("add: download failed:", fetched.error);
+      return 1;
+    }
+    staging = fetched.staging;
+    ref = fetched.ref;
+    channel = fetched.channel;
+    const body = await readSkillBody(fetched.skillDir);
+    const { data } = parseFrontmatter(body);
+    const nm = typeof data.name === "string" && data.name.trim() !== "" ? data.name.trim() : basename(fetched.skillDir);
+    const desc = typeof data.description === "string" ? data.description.trim() : "";
+    discovered = [{ name: nm, dir: fetched.skillDir, subpath: "", description: desc }];
+  }
+
   try {
-    // 3. Determine destination in the library.
-    const name = await deriveName(fetched.skillDir, flags.name);
-    if (!SLUG_RE.test(name)) {
+    if (discovered.length === 0) {
       ctx.error(
-        `add: invalid skill name "${name}" — use lowercase letters, digits, and hyphens (override with --name <slug>)`,
-      );
-      return 1;
-    }
-    const domainFolder = flags.domain && flags.domain.trim() !== "" ? flags.domain.trim() : null;
-    if (domainFolder !== null && !SLUG_RE.test(domainFolder)) {
-      ctx.error(
-        `add: invalid --domain "${domainFolder}" — use lowercase letters, digits, and hyphens`,
-      );
-      return 1;
-    }
-    const destDir = domainFolder
-      ? join(ctx.config.libraryPath, domainFolder, name)
-      : join(ctx.config.libraryPath, name);
-
-    if (existsSync(destDir) && !flags.force) {
-      ctx.error(
-        `add: ${name} already exists at ${destDir} (use --force to overwrite, or skl update ${name} to re-pull)`,
+        "add:",
+        parsed.subpath
+          ? `no SKILL.md found at ${parsed.subpath} in ${parsed.source}`
+          : `no skills found in ${parsed.source}`,
       );
       return 1;
     }
 
-    await ensureDir(domainFolder ? join(ctx.config.libraryPath, domainFolder) : ctx.config.libraryPath);
-    await copySkillDir(fetched.skillDir, destDir);
-
-    // 4. Provenance lockfile entry. Record the installed body hash so a later
-    //    `skl update` can tell a user hand-edit apart from upstream moving forward.
-    const installedBody = parseFrontmatter(await readSkillBody(fetched.skillDir)).body;
-    // git: sources already encode their subpath as `#subpath` in fetched.source;
-    // only github sources use the `@subpath` suffix convention here.
-    const subSuffix = parsed.subpath && parsed.channel !== "git" ? `@${parsed.subpath}` : "";
-    const entry: LockEntry = {
-      name,
-      source: `${fetched.source}${subSuffix}`,
-      ref: fetched.ref,
-      channel: fetched.channel,
-      installedAt: new Date().toISOString(),
-      localEdits: false,
-      installedHash: hashContent(installedBody),
-    };
-    await recordEntry(ctx.config.libraryPath, entry);
-
-    // 5. If a domain is known at add time, record it centrally in taxonomy.json
-    //    (survives upstream updates). The Skill object is also handed to the
-    //    optional inference hook below.
-    const installed: Skill = {
-      name,
-      description: "",
-      primaryDomain: domainFolder,
-      domains: domainFolder ? [domainFolder] : [],
-      path: destDir,
-      bodyPath: join(destDir, "SKILL.md"),
-      refFiles: [],
-      source: {
-        source: entry.source,
-        ref: entry.ref,
-        channel: entry.channel,
-        installedAt: entry.installedAt,
-        localEdits: false,
-      },
-      retired: false,
-      mirrorOf: null,
-      contentHash: "",
-    };
-    if (domainFolder) {
-      await setDomainsForName(ctx.config.libraryPath, name, [domainFolder]);
+    // ---- --list (report full set, no writes) ----
+    if (flags.list) {
+      const library = await loadLibrary(ctx.config.libraryPath);
+      return reportList(ctx, flags, parsed, ref, discovered, library);
     }
 
-    // 6. Inference tagging hook (best-effort, leaves untagged if unavailable).
-    //    Any inferred domains are unioned into the central taxonomy (non-destructive).
-    let inferredDomains: string[] | null = null;
-    if (flags.infer) {
-      inferredDomains = await maybeInferTags(installed, (m) => ctx.error(m));
-      if (inferredDomains && inferredDomains.length > 0) {
-        await setDomainsForName(ctx.config.libraryPath, name, inferredDomains);
+    // ---- --dry-run (drift preflight over the full set, no writes) ----
+    if (flags.dryRun) {
+      return await reportDryRun(ctx, flags, parsed, ref, discovered, domainFolder);
+    }
+
+    // ---- selection ----
+    let selected: DiscoveredSkill[];
+    let multi: boolean;
+    if (flags.skill !== null) {
+      const want = new Set(flags.skill);
+      selected = discovered.filter((d) => want.has(d.name));
+      const missing = [...want].filter((n) => !discovered.some((d) => d.name === n));
+      if (missing.length > 0) {
+        ctx.error(`add: requested skill(s) not found in ${parsed.source}: ${missing.join(", ")}`);
+        ctx.error(`     available: ${discovered.map((d) => d.name).join(", ") || "(none)"}`);
+        return 1;
       }
+      multi = true;
+    } else if (flags.all) {
+      selected = discovered;
+      multi = true;
+    } else if (discovered.length > 1) {
+      ctx.error(
+        `add: ${discovered.length} skills found in ${parsed.source} — choose with --all, --skill <name,…>, or inspect with --list:`,
+      );
+      for (const d of discovered) ctx.error(`     ${d.name}${d.subpath ? `  (${d.subpath})` : ""}`);
+      return 1;
+    } else {
+      selected = discovered;
+      multi = false;
     }
 
-    const summary = {
-      ok: true,
-      name,
-      path: destDir,
-      source: entry.source,
-      ref: entry.ref,
-      channel: entry.channel,
-      installedAt: entry.installedAt,
-      tagged: Boolean(inferredDomains && inferredDomains.length > 0),
-      domains: inferredDomains ?? (domainFolder ? [domainFolder] : []),
-    };
+    // ---- install ----
+    if (!multi) {
+      const o = await installOne(ctx, selected[0]!, {
+        libraryPath: ctx.config.libraryPath,
+        domainFolder,
+        nameOverride: flags.name,
+        sourceStr: sourceOf(selected[0]!),
+        ref,
+        channel,
+        infer: flags.infer,
+        force: flags.force,
+        multi: false,
+      });
+      if (o.status === "error") {
+        ctx.error("add:", o.reason);
+        return 1;
+      }
+      // Legacy single-skill summary shape (unchanged for existing consumers).
+      const summary = {
+        ok: true,
+        name: o.name,
+        path: o.path,
+        source: o.source,
+        ref: o.ref,
+        channel: o.channel,
+        installedAt: o.installedAt,
+        tagged: o.tagged,
+        domains: o.domains,
+      };
+      if (flags.json) {
+        ctx.json(summary);
+      } else {
+        ctx.log(`added ${o.name}`);
+        ctx.log(`  path:    ${o.path}`);
+        ctx.log(`  source:  ${o.source}`);
+        ctx.log(`  ref:     ${o.ref || "(unknown)"}`);
+        ctx.log(`  channel: ${o.channel}`);
+        if (o.tagged) ctx.log(`  domains: ${o.domains.join(", ")}`);
+        else ctx.log(`  domains: (untagged — run \`skl infer\` to assign)`);
+      }
+      return 0;
+    }
+
+    // multi: install each selected skill out of the single staging checkout.
+    const outcomes: InstallOutcome[] = [];
+    for (const s of selected) {
+      outcomes.push(
+        await installOne(ctx, s, {
+          libraryPath: ctx.config.libraryPath,
+          domainFolder,
+          nameOverride: null,
+          sourceStr: sourceOf(s),
+          ref,
+          channel,
+          infer: flags.infer,
+          force: flags.force,
+          multi: true,
+        }),
+      );
+    }
+    const installed = outcomes.filter((o) => o.status === "installed");
+    const skipped = outcomes.filter((o) => o.status === "skipped");
+    const errored = outcomes.filter((o) => o.status === "error");
 
     if (flags.json) {
-      ctx.json(summary);
+      ctx.json({
+        ok: errored.length === 0,
+        action: "add",
+        source: parsed.source,
+        ref,
+        counts: { selected: selected.length, installed: installed.length, skipped: skipped.length, errors: errored.length },
+        results: outcomes.map((o) => ({
+          name: o.name,
+          subpath: o.subpath,
+          status: o.status,
+          verdict: o.verdict,
+          reason: o.reason,
+          source: o.source,
+          ref: o.ref,
+          path: o.path,
+          tagged: o.tagged,
+          domains: o.domains,
+        })),
+      });
     } else {
-      ctx.log(`added ${name}`);
-      ctx.log(`  path:    ${destDir}`);
-      ctx.log(`  source:  ${entry.source}`);
-      ctx.log(`  ref:     ${entry.ref || "(unknown)"}`);
-      ctx.log(`  channel: ${entry.channel}`);
-      if (summary.tagged) ctx.log(`  domains: ${summary.domains.join(", ")}`);
-      else ctx.log(`  domains: (untagged — run \`skl infer\` to assign)`);
+      for (const o of outcomes) {
+        const tag = o.status === "installed" ? "added   " : o.status === "skipped" ? "skipped " : "ERROR   ";
+        ctx.log(`${tag}  ${o.name.padEnd(28)} ${o.reason}`);
+      }
+      ctx.log("");
+      ctx.log(
+        `${selected.length} selected, ${installed.length} installed, ${skipped.length} skipped${errored.length ? `, ${errored.length} error(s)` : ""} from ${parsed.source}`,
+      );
+      if (skipped.some((o) => o.verdict === "differs")) ctx.log("re-run with --force to overwrite differing skills.");
     }
-    return 0;
+    return errored.length > 0 ? 1 : 0;
   } catch (err) {
     ctx.error("add: failed:", err instanceof Error ? err.message : String(err));
     return 1;
   } finally {
-    await cleanupStaging(fetched.staging);
+    await cleanupStaging(staging);
   }
 }
