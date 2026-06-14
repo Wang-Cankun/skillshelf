@@ -23,6 +23,28 @@ import { writeIndex } from "./indexgen.ts";
 
 const RETIRED_DIR = "_retired";
 
+/**
+ * Reject a skill name that is not a single path segment — the choke point that keeps
+ * a crafted/typo'd/agent-supplied `name` (e.g. "../../etc") from escaping the library
+ * when it reaches `join(libraryPath, name)` and then `rm`/`rename`. A name with no path
+ * separator and no `.`/`..` cannot resolve outside its parent dir, so containment is
+ * guaranteed without over-restricting otherwise-unusual existing slugs. Throws on a bad
+ * name; every name-keyed mutation funnels through locateEntry, so validating here covers
+ * removeSkill / retireSkill / unretireSkill / renameSkill in one place.
+ */
+export function assertSafeName(name: string): void {
+  if (
+    name === "" ||
+    name === "." ||
+    name === ".." ||
+    name.includes("/") ||
+    name.includes("\\") ||
+    name.includes("\0")
+  ) {
+    throw new Error(`invalid skill name '${name}' — must be a single name, no path separators or '..'`);
+  }
+}
+
 /** Regenerate INDEX.md from the current library state. Returns the path written. */
 export async function reindexLibrary(libraryPath: string): Promise<string> {
   const skills = await loadLibrary(libraryPath);
@@ -43,6 +65,7 @@ export interface EntryLocation {
 
 /** Locate a skill entry across the active and retired locations. */
 export function locateEntry(libraryPath: string, name: string): EntryLocation {
+  assertSafeName(name);
   const activePath = join(libraryPath, name);
   const retiredPath = join(libraryPath, RETIRED_DIR, name);
   const active = existsSync(activePath) || isSymlink(activePath);
@@ -163,44 +186,57 @@ export async function renameSkill(
   }
 
   const wasRetired = loc.retired && !loc.active;
+  const srcDir = loc.path;
   const destDir = wasRetired ? join(libraryPath, RETIRED_DIR, to) : join(libraryPath, to);
-  await rename(loc.path, destDir);
+  await rename(srcDir, destDir);
 
-  // Rewrite the SKILL.md frontmatter name: to match the new slug (if it has one and
-  // it named the old slug). For a LINKED entry the SKILL.md lives in the dev repo —
-  // skip the body rewrite (we must not edit the dev repo); only the library-side
-  // metadata (taxonomy/lock) is rekeyed.
-  let frontmatterRewritten = false;
-  const skillMd = join(destDir, "SKILL.md");
-  if (!loc.isLink && existsSync(skillMd)) {
-    const raw = await Bun.file(skillMd).text();
-    const fm = parseFrontmatter(raw);
-    if (fm.hasFrontmatter && fm.data.name === from) {
-      fm.data.name = to;
-      await Bun.write(skillMd, serializeFrontmatter(fm.data, fm.body));
-      frontmatterRewritten = true;
+  // The dir move is the only hard-to-reverse step; the frontmatter rewrite + taxonomy
+  // + lock re-keying that follow are coupled (a crash between frontmatter-name=`to` and
+  // taxonomy-key=`to` would strand the skill's tags — name derives from frontmatter but
+  // tags key off the taxonomy). Wrap them so a thrown write rolls the dir move back:
+  // rename becomes all-or-nothing for the realistic IO/permission failure, instead of
+  // leaving a half-renamed skill.
+  try {
+    // Rewrite the SKILL.md frontmatter name: to match the new slug (if it has one and
+    // it named the old slug). For a LINKED entry the SKILL.md lives in the dev repo —
+    // skip the body rewrite (we must not edit the dev repo); only the library-side
+    // metadata (taxonomy/lock) is rekeyed.
+    let frontmatterRewritten = false;
+    const skillMd = join(destDir, "SKILL.md");
+    if (!loc.isLink && existsSync(skillMd)) {
+      const raw = await Bun.file(skillMd).text();
+      const fm = parseFrontmatter(raw);
+      if (fm.hasFrontmatter && fm.data.name === from) {
+        fm.data.name = to;
+        await Bun.write(skillMd, serializeFrontmatter(fm.data, fm.body));
+        frontmatterRewritten = true;
+      }
     }
-  }
 
-  const tax = await readTaxonomy(libraryPath);
-  let taxonomyMoved = false;
-  if (from in tax.skills) {
-    tax.skills[to] = tax.skills[from]!;
-    delete tax.skills[from];
-    await writeTaxonomy(libraryPath, tax);
-    taxonomyMoved = true;
-  }
+    const tax = await readTaxonomy(libraryPath);
+    let taxonomyMoved = false;
+    if (from in tax.skills) {
+      tax.skills[to] = tax.skills[from]!;
+      delete tax.skills[from];
+      await writeTaxonomy(libraryPath, tax);
+      taxonomyMoved = true;
+    }
 
-  const lock = await readLockfile(libraryPath);
-  let lockMoved = false;
-  if (from in lock.entries) {
-    lock.entries[to] = { ...lock.entries[from]!, name: to };
-    delete lock.entries[from];
-    await writeLockfile(libraryPath, lock);
-    lockMoved = true;
-  }
+    const lock = await readLockfile(libraryPath);
+    let lockMoved = false;
+    if (from in lock.entries) {
+      lock.entries[to] = { ...lock.entries[from]!, name: to };
+      delete lock.entries[from];
+      await writeLockfile(libraryPath, lock);
+      lockMoved = true;
+    }
 
-  return { from, to, movedPath: destDir, frontmatterRewritten, taxonomyMoved, lockMoved, wasRetired };
+    return { from, to, movedPath: destDir, frontmatterRewritten, taxonomyMoved, lockMoved, wasRetired };
+  } catch (err) {
+    // Best-effort rollback of the dir move so a failed rename leaves the original intact.
+    await rename(destDir, srcDir).catch(() => {});
+    throw err;
+  }
 }
 
 /** Remove <library>/_retired/ if it is present and empty. Best-effort. */

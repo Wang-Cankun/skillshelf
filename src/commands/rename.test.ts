@@ -76,6 +76,32 @@ describe("skl rename — atomic slug move (friction #5)", () => {
     expect(errors.join("\n")).toContain("not in the library");
   });
 
+  test("renames a RETIRED skill in place (stays under _retired/)", async () => {
+    // retire alpha by moving it into _retired/
+    await mkdir(join(library, "_retired"), { recursive: true });
+    const { rename: fsRename } = await import("node:fs/promises");
+    await fsRename(join(library, "alpha"), join(library, "_retired", "alpha"));
+
+    const { ctx, json } = makeCtx(library);
+    const code = await renameRun(["alpha", "alpha2", "--json"], ctx);
+    expect(code).toBe(0);
+    expect((json[0] as { wasRetired: boolean }).wasRetired).toBe(true);
+    expect(existsSync(join(library, "_retired", "alpha2", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(library, "_retired", "alpha"))).toBe(false);
+    expect(existsSync(join(library, "alpha2"))).toBe(false); // did NOT escape to active
+  });
+
+  test("refuses a path-traversal <old> name", async () => {
+    const victim = join(tmp, "victim");
+    await mkdir(victim, { recursive: true });
+    const { ctx, errors } = makeCtx(library);
+    const code = await renameRun(["../victim", "stolen"], ctx);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("path separators");
+    expect(existsSync(victim)).toBe(true);
+    expect(existsSync(join(library, "stolen"))).toBe(false);
+  });
+
   test("a LINKED entry rekeys metadata but leaves the dev-repo SKILL.md untouched", async () => {
     const dev = join(tmp, "dev", "linked");
     await mkdir(dev, { recursive: true });

@@ -105,4 +105,29 @@ describe("skl rm/retire/unretire — removal lifecycle (friction #1)", () => {
     expect(code).toBe(1);
     expect(errors.join("\n")).toContain("not in the library");
   });
+
+  test("rm refuses a path-traversal name (no escape outside the library)", async () => {
+    // a sibling dir outside the library that must NOT be deletable via `../`
+    const victim = join(tmp, "victim");
+    await mkdir(victim, { recursive: true });
+    await writeFile(join(victim, "keep.txt"), "x");
+
+    const { ctx, errors } = makeCtx(library);
+    const code = await rmRun(["../victim", "--force"], ctx);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("path separators");
+    expect(existsSync(join(victim, "keep.txt"))).toBe(true); // untouched
+  });
+
+  test("rm of a skill present in BOTH active and _retired still refuses the live copy without --force", async () => {
+    // manufacture the twin state (active alpha already exists; add a retired twin)
+    await mkdir(join(library, "_retired", "alpha"), { recursive: true });
+    await writeFile(join(library, "_retired", "alpha", "SKILL.md"), "---\nname: alpha\n---\n\nold\n");
+
+    const { ctx, errors } = makeCtx(library);
+    const code = await rmRun(["alpha"], ctx); // no --force
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("live skill");
+    expect(existsSync(join(library, "alpha"))).toBe(true); // active copy survives
+  });
 });

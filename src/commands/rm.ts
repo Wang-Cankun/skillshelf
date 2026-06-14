@@ -50,8 +50,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // Refuse only a live OWNED skill unless forced — that destroys real bytes. A
     // LINKED entry is just a symlink: removing it loses nothing (the dev repo stays
     // canonical), so `skl rm <linked>` is the safe `unlink` and needs no --force. A
-    // retired skill is already in the reversible holding area, so it purges freely.
-    if (loc.active && !loc.retired && !loc.isLink && !force) {
+    // purely-retired skill is already in the reversible holding area, so it purges
+    // freely. NOTE: gate on `loc.active` itself (the resolved path IS the active copy
+    // when active), NOT on the absence of a retired twin — a skill present in BOTH
+    // active and _retired still resolves `path` to the active copy, so a `!loc.retired`
+    // term would wrongly drop the guard and delete the live copy without --force.
+    if (loc.active && !loc.isLink && !force) {
       if (json) {
         ctx.json({ ok: false, name, refused: true, reason: "live-owned-needs-force" });
       } else {

@@ -8,6 +8,7 @@ import { run as refreshRun } from "./refresh.ts";
 import { run as statusRun } from "./status.ts";
 import { isSymlink, realpathOrSelf } from "../lib/fs.ts";
 import { loadLibrary } from "../core/library.ts";
+import { inventoryDeployments, remediationFor } from "../core/deployments.ts";
 import type { Ctx, DeploymentSite } from "../types.ts";
 
 function site(partial: Partial<DeploymentSite> & Pick<DeploymentSite, "name" | "path" | "kind">): DeploymentSite {
@@ -109,6 +110,23 @@ describe("where remediation + refresh + status drift (friction #6)", () => {
     } finally {
       process.chdir(prev);
     }
+  });
+
+  test("a copy with identical body but a CUSTOMIZED description is drift, not dedupe-able", async () => {
+    // the load-bearing `description` differs while the body is byte-identical —
+    // `where --fix` must NOT silently replace it with a symlink (data loss).
+    const surface = join(tmp, "surface");
+    await mkdir(join(surface, "alpha"), { recursive: true });
+    await writeFile(
+      join(surface, "alpha", "SKILL.md"),
+      "---\nname: alpha\ndescription: CUSTOMIZED trigger text\n---\n\nbody\n", // same body, diff description
+    );
+    const lib = await loadLibrary(library);
+    const report = await inventoryDeployments([surface], library, lib);
+    const alpha = report.sites.find((s) => s.surface === surface && s.name === "alpha")!;
+    expect(alpha.kind).toBe("copy");
+    expect(alpha.drift).toBe(true); // description difference counts as drift
+    expect(remediationFor(alpha)).toBe("manual"); // never auto-deduped
   });
 
   test("status flags an unmanaged real copy (drift-prone)", async () => {

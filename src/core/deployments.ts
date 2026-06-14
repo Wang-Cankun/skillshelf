@@ -16,11 +16,18 @@ import { parseFrontmatter } from "../lib/frontmatter.ts";
 
 const SKILL_FILE = "SKILL.md";
 
-/** Hash a candidate's SKILL.md body the SAME way crawl does (frontmatter stripped). */
-async function bodyHash(skillDir: string): Promise<string | null> {
+/**
+ * Hash a candidate's SKILL.md body (frontmatter stripped, same as crawl) AND return its
+ * frontmatter `description`. Drift must consider BOTH: the body, and the description —
+ * because the deployed `description` is load-bearing (agents read it to decide when to
+ * trigger a skill), so a copy with an identical body but a customized description is a
+ * real divergence that `where --fix` must NOT silently dedupe away.
+ */
+async function readDeployed(skillDir: string): Promise<{ hash: string; description: string } | null> {
   try {
     const raw = await Bun.file(join(skillDir, SKILL_FILE)).text();
-    return hashContent(parseFrontmatter(raw).body);
+    const fm = parseFrontmatter(raw);
+    return { hash: hashContent(fm.body), description: String(fm.data.description ?? "") };
   } catch {
     return null;
   }
@@ -42,6 +49,7 @@ export async function inventoryDeployments(
   const libPrefix = libReal.endsWith(sep) ? libReal : libReal + sep;
   const libNames = new Set(libSkills.map((s) => s.name));
   const libHash = new Map(libSkills.map((s) => [s.name, s.contentHash] as const));
+  const libDesc = new Map(libSkills.map((s) => [s.name, s.description] as const));
 
   // De-dupe surfaces by realpath (CloudStorage/Dropbox aliases the same vault);
   // never scan the library itself as a "surface".
@@ -91,8 +99,13 @@ export async function inventoryDeployments(
           kind = "copy";
           const want = libHash.get(e.name);
           if (want) {
-            const got = await bodyHash(full);
-            drift = got != null && got !== want;
+            const got = await readDeployed(full);
+            // Drift if the body differs OR the (load-bearing) description differs —
+            // either makes this copy non-identical, so `where --fix` leaves it `manual`
+            // rather than replacing it with a symlink and discarding the difference.
+            drift =
+              got != null &&
+              (got.hash !== want || got.description !== (libDesc.get(e.name) ?? ""));
           }
         }
       } else {

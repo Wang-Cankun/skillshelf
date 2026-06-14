@@ -88,7 +88,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         // into the library (renamed/removed -> prune) or somewhere unrelated (leave).
         const raw = await readlink(link).catch(() => null);
         const targetAbs = raw == null ? "" : isAbsolute(raw) ? raw : resolve(dirname(link), raw);
-        const pointsIntoLibrary = libPrefixes.some((pre) => targetAbs === pre.slice(0, -1) || targetAbs.startsWith(pre));
+        // Strictly UNDER the library (a per-skill entry) — a link to the library ROOT
+        // itself was never a skill deployment, so leave it as `foreign` rather than prune.
+        const pointsIntoLibrary = libPrefixes.some((pre) => targetAbs.startsWith(pre));
 
         if (pointsIntoLibrary) {
           // Was a library skill (link still resolves into the library tree) but no
