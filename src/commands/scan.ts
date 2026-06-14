@@ -31,17 +31,18 @@ export const meta = {
   name: "scan",
   summary: "Read-only discovery of skill candidates across roots (counts, duplicates, drift)",
   usage:
-    "skl scan [roots…] [--add-root <path>] [--json]",
+    "skl scan [roots…] [--add-root <path>] [--remove-root <path>] [--json]",
 } as const;
 
 interface Args {
   roots: string[];
   addRoot: string | null;
+  removeRoot: string | null;
   json: boolean;
 }
 
 function parseArgs(argv: string[]): { args: Args } | { error: string } {
-  const args: Args = { roots: [], addRoot: null, json: false };
+  const args: Args = { roots: [], addRoot: null, removeRoot: null, json: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--json") {
@@ -53,11 +54,24 @@ function parseArgs(argv: string[]): { args: Args } | { error: string } {
     } else if (a.startsWith("--add-root=")) {
       args.addRoot = a.slice("--add-root=".length);
       if (args.addRoot === "") return { error: "--add-root requires a <path>" };
+    } else if (a === "--remove-root" || a === "--rm-root") {
+      const p = argv[++i];
+      if (!p) return { error: "--remove-root requires a <path>" };
+      args.removeRoot = p;
+    } else if (a.startsWith("--remove-root=")) {
+      args.removeRoot = a.slice("--remove-root=".length);
+      if (args.removeRoot === "") return { error: "--remove-root requires a <path>" };
+    } else if (a.startsWith("--rm-root=")) {
+      args.removeRoot = a.slice("--rm-root=".length);
+      if (args.removeRoot === "") return { error: "--remove-root requires a <path>" };
     } else if (a.startsWith("--")) {
       return { error: `unknown argument: ${a}` };
     } else {
       args.roots.push(a);
     }
+  }
+  if (args.addRoot != null && args.removeRoot != null) {
+    return { error: "--add-root and --remove-root are mutually exclusive" };
   }
   return { args };
 }
@@ -180,6 +194,20 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         ctx.json({ added: realpathLike(args.addRoot, roots), roots });
         return 0;
       }
+      ctx.log(`Roots (${roots.length}):`);
+      for (const r of roots) ctx.log(`  ${r}`);
+      return 0;
+    }
+
+    // --remove-root: de-register (inverse of --add-root), then report. Idempotent —
+    // a not-registered path reports removed:false and is not an error.
+    if (args.removeRoot != null) {
+      const { roots, removed } = await ctx.removeRoot(args.removeRoot);
+      if (args.json) {
+        ctx.json({ removed, target: args.removeRoot, roots });
+        return 0;
+      }
+      ctx.log(removed ? `Removed root: ${args.removeRoot}` : `Not a registered root: ${args.removeRoot}`);
       ctx.log(`Roots (${roots.length}):`);
       for (const r of roots) ctx.log(`  ${r}`);
       return 0;

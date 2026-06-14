@@ -2,7 +2,7 @@
 // bundle (tag query). Excludes retired by default; `--all` includes them.
 
 import type { Ctx, Skill } from "../types.ts";
-import { activeSkills } from "../core/library.ts";
+import { activeSkills, entryModeInfo } from "../core/library.ts";
 import { resolveBundle } from "../core/bundle.ts";
 
 export const meta = {
@@ -29,15 +29,20 @@ function emitHuman(ctx: Ctx, skills: Skill[]): void {
   }
 }
 
-function toJson(skills: Skill[]): unknown {
-  return skills.map((s) => ({
-    name: s.name,
-    description: s.description,
-    primaryDomain: s.primaryDomain,
-    domains: s.domains,
-    path: s.path,
-    retired: s.retired,
-  }));
+function toJson(skills: Skill[], libraryPath: string): unknown {
+  return skills.map((s) => {
+    const { mode, linkTarget } = entryModeInfo(libraryPath, s.name);
+    return {
+      name: s.name,
+      description: s.description,
+      primaryDomain: s.primaryDomain,
+      domains: s.domains,
+      path: s.path,
+      retired: s.retired,
+      mode,
+      linkTarget,
+    };
+  });
 }
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
@@ -54,7 +59,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         includeRetired: all,
       });
       if (json) {
-        ctx.json({ bundle: bundle.name, skills: toJson(bundle.skills) });
+        ctx.json({ bundle: bundle.name, skills: toJson(bundle.skills, ctx.libraryPath) });
         return 0;
       }
       if (bundle.skills.length === 0) {
@@ -68,7 +73,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
     const listed = all ? skills : activeSkills(skills);
     if (json) {
-      ctx.json(toJson(listed));
+      ctx.json(toJson(listed, ctx.libraryPath));
       return 0;
     }
     emitHuman(ctx, listed);

@@ -235,6 +235,8 @@ export interface Ctx {
   roots: string[];
   /** add a scan root: expands ~, makes absolute, de-dupes, persists to config.json. Returns the updated roots. */
   addRoot: (path: string) => Promise<string[]>;
+  /** remove a scan root by resolved path (inverse of addRoot); persists to config.json. Returns the updated roots + whether one was removed. */
+  removeRoot: (path: string) => Promise<{ roots: string[]; removed: boolean }>;
   /** human-readable logging to stdout */
   log: (...args: unknown[]) => void;
   /** machine-parseable single-line JSON to stdout */

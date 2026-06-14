@@ -110,3 +110,81 @@ export async function setDomainsForName(
   tax.skills[name] = merged;
   await writeTaxonomy(libraryPath, tax);
 }
+
+/**
+ * Add domains to a skill's taxonomy entry (union). Returns which were newly added vs
+ * already present, plus the resulting list — so `skl tag` can report precisely
+ * instead of silently no-op'ing. Only writes if something changed.
+ */
+export async function addDomainsForName(
+  libraryPath: string,
+  name: string,
+  domains: string[],
+): Promise<{ added: string[]; already: string[]; domains: string[] }> {
+  const tax = await readTaxonomy(libraryPath);
+  const cur = [...(tax.skills[name] ?? [])];
+  const added: string[] = [];
+  const already: string[] = [];
+  for (const d of domains) {
+    const s = String(d).trim();
+    if (s === "") continue;
+    if (cur.includes(s)) already.push(s);
+    else {
+      cur.push(s);
+      added.push(s);
+    }
+  }
+  if (added.length > 0) {
+    tax.skills[name] = cur;
+    await writeTaxonomy(libraryPath, tax);
+  }
+  return { added, already, domains: cur };
+}
+
+/**
+ * Remove ONE domain from a skill's taxonomy entry. Returns true if it was present
+ * and removed; false if the skill had no such taxonomy domain (caller errors rather
+ * than silently no-op'ing — a typo'd untag should be visible). Drops the skill's key
+ * entirely if it becomes empty.
+ */
+export async function removeDomainForName(
+  libraryPath: string,
+  name: string,
+  domain: string,
+): Promise<boolean> {
+  const tax = await readTaxonomy(libraryPath);
+  const cur = tax.skills[name];
+  if (!cur || !cur.includes(domain)) return false;
+  const next = cur.filter((d) => d !== domain);
+  if (next.length === 0) delete tax.skills[name];
+  else tax.skills[name] = next;
+  await writeTaxonomy(libraryPath, tax);
+  return true;
+}
+
+/**
+ * Deterministically rename a domain across the WHOLE library taxonomy (every skill
+ * tagged `oldDomain` becomes `newDomain`, de-duped, position preserved). This is the
+ * pure rename the AI `infer` pass cannot promise — no re-reasoning, no other tag
+ * touched. Returns the names of skills changed. Only writes if at least one changed.
+ */
+export async function renameDomainAcrossLibrary(
+  libraryPath: string,
+  oldDomain: string,
+  newDomain: string,
+): Promise<string[]> {
+  const tax = await readTaxonomy(libraryPath);
+  const changed: string[] = [];
+  for (const [name, domains] of Object.entries(tax.skills)) {
+    if (!domains.includes(oldDomain)) continue;
+    const next: string[] = [];
+    for (const d of domains) {
+      const v = d === oldDomain ? newDomain : d;
+      if (!next.includes(v)) next.push(v);
+    }
+    tax.skills[name] = next;
+    changed.push(name);
+  }
+  if (changed.length > 0) await writeTaxonomy(libraryPath, tax);
+  return changed;
+}

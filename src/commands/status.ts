@@ -35,12 +35,22 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const byReal = new Map<string, Skill>();
     for (const s of skills) byReal.set(realpathOrSelf(s.path), s);
 
+    // index library skills by NAME too, to flag a real project copy that shadows a
+    // library skill (a drift-prone unmanaged copy — a symlink can't drift, a copy can).
+    const byName = new Map<string, Skill>(skills.map((s) => [s.name, s]));
+
     const linked: LinkedEntry[] = [];
+    const unmanaged: Array<{ name: string; inLibrary: boolean }> = [];
     if (pathExists(skillsDir)) {
       const names = await listDirNames(skillsDir);
       for (const name of names) {
         const linkPath = join(skillsDir, name);
-        if (!isSymlink(linkPath)) continue; // only count managed symlinks
+        if (!isSymlink(linkPath)) {
+          // a real (non-symlink) skill dir sitting in the project — unmanaged; if it
+          // shadows a library skill it is a drift-prone copy, not a clean deployment.
+          unmanaged.push({ name, inLibrary: byName.has(name) });
+          continue;
+        }
         const target = realpathOrSelf(linkPath);
         linked.push({
           link: name,
@@ -51,6 +61,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
     }
     linked.sort((a, b) => (a.link < b.link ? -1 : a.link > b.link ? 1 : 0));
+    unmanaged.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
     // group resolved skills by bundle (domain tag) for the human summary
     const bundles = new Map<string, string[]>();
@@ -69,6 +80,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         skillsDir,
         skillsDirExists: pathExists(skillsDir),
         linkedCount: linked.length,
+        unmanaged,
         bundles: [...bundles.keys()].sort().map((name) => ({
           name,
           skills: bundles.get(name)!.slice().sort(),
@@ -84,7 +96,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       return 0;
     }
 
-    if (linked.length === 0) {
+    if (linked.length === 0 && unmanaged.length === 0) {
       ctx.log(`No skills linked into ${skillsDir}`);
       return 0;
     }
@@ -107,6 +119,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       for (const name of [...bundles.keys()].sort()) {
         const members = bundles.get(name)!.slice().sort();
         ctx.log(`  ${name} (${members.length}): ${members.join(", ")}`);
+      }
+    }
+
+    if (unmanaged.length) {
+      ctx.log("");
+      ctx.log(`⚠ Unmanaged real copies (${unmanaged.length}) — not symlinks, can drift:`);
+      for (const u of unmanaged) {
+        ctx.log(`  ${u.name}${u.inLibrary ? " (shadows a library skill — `skl where --fix` to dedupe)" : ""}`);
       }
     }
     return 0;

@@ -45,7 +45,15 @@ export async function resolveConfig(opts: {
   configFilePath?: string;
 } = {}): Promise<Config> {
   const env = opts.env ?? process.env;
-  const configFilePath = opts.configFilePath ?? DEFAULT_CONFIG_FILE;
+  // Config-file resolution: explicit opt override (tests) → SKILLSHELF_CONFIG env →
+  // default ~/.skillshelf/config.json. The env override lets an experiment redirect
+  // ALL persisted state (roots especially) into a sandbox without touching the real
+  // config — `skl scan --add-root` otherwise writes the real file regardless of
+  // SKILLSHELF_LIBRARY (the isolation gap this closes).
+  const envCfg = env.SKILLSHELF_CONFIG;
+  const configFilePath =
+    opts.configFilePath ??
+    (envCfg && envCfg.trim() !== "" ? abs(envCfg.trim()) : DEFAULT_CONFIG_FILE);
 
   const fileCfg = await readConfigFile(configFilePath);
   const usedConfigFile = fileCfg ? configFilePath : null;
@@ -145,6 +153,35 @@ export async function addRoot(
 }
 
 /**
+ * Remove a scan root from the config file (`configFilePath`) — the inverse of
+ * addRoot. Matches by resolved absolute path, so the caller may pass a bare/`~`/
+ * relative form of an already-persisted root. Preserves the rest of the config and
+ * any annotations on the surviving root entries. Returns the updated roots list as
+ * resolved absolute path strings, plus whether anything was actually removed.
+ */
+export async function removeRoot(
+  configFilePath: string,
+  path: string,
+): Promise<{ roots: string[]; removed: boolean }> {
+  const target = abs(path.trim());
+  const current = (await readConfigFile(configFilePath)) ?? {};
+  const persisted: Array<string | RootEntry> = Array.isArray(current.roots)
+    ? [...current.roots]
+    : [];
+  const resolvedOf = (entry: string | RootEntry): string | null => {
+    const raw = typeof entry === "string" ? entry : entry?.path;
+    return typeof raw === "string" && raw.trim() !== "" ? abs(raw.trim()) : null;
+  };
+  const kept = persisted.filter((e) => resolvedOf(e) !== target);
+  const removed = kept.length !== persisted.length;
+  if (removed) {
+    const next: ConfigFile = { ...current, roots: kept };
+    await Bun.write(configFilePath, JSON.stringify(next, null, 2) + "\n");
+  }
+  return { roots: normalizeRoots(kept), removed };
+}
+
+/**
  * Build the execution Ctx handed to every command's run().
  * `loadLibrary` is lazily wired to avoid a circular import at module load.
  */
@@ -170,6 +207,13 @@ export async function loadContext(opts: {
       ctx.roots = roots;
       config.roots = roots;
       return roots;
+    },
+    removeRoot: async (path: string): Promise<{ roots: string[]; removed: boolean }> => {
+      const res = await removeRoot(config.configFilePath, path);
+      roots = res.roots;
+      ctx.roots = roots;
+      config.roots = roots;
+      return res;
     },
     log: (...args: unknown[]) => {
       console.log(...args);

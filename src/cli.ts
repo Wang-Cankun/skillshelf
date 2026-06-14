@@ -28,9 +28,18 @@ import * as update from "./commands/update.ts";
 import * as infer from "./commands/infer.ts";
 import * as newCmd from "./commands/new.ts";
 import * as scan from "./commands/scan.ts";
+import * as roots from "./commands/roots.ts";
 import * as importCmd from "./commands/import.ts";
 import * as link from "./commands/link.ts";
 import * as where from "./commands/where.ts";
+import * as tag from "./commands/tag.ts";
+import * as untag from "./commands/untag.ts";
+import * as retag from "./commands/retag.ts";
+import * as rm from "./commands/rm.ts";
+import * as retire from "./commands/retire.ts";
+import * as unretire from "./commands/unretire.ts";
+import * as rename from "./commands/rename.ts";
+import * as refresh from "./commands/refresh.ts";
 
 // Registration order = display order in help.
 const MODULES: CommandModule[] = [
@@ -41,10 +50,19 @@ const MODULES: CommandModule[] = [
   show,
   use,
   drop,
+  refresh,
   add,
   scan,
+  roots,
   importCmd,
   link,
+  tag,
+  untag,
+  retag,
+  retire,
+  unretire,
+  rename,
+  rm,
   outdated,
   update,
   init,
@@ -56,6 +74,13 @@ const MODULES: CommandModule[] = [
 const COMMANDS = new Map<string, CommandModule>();
 for (const mod of MODULES) {
   COMMANDS.set(mod.meta.name, mod);
+}
+
+// Command aliases (not shown in the help listing; resolve to the canonical module).
+const ALIASES: Record<string, string> = { mv: "rename" };
+for (const [alias, target] of Object.entries(ALIASES)) {
+  const mod = COMMANDS.get(target);
+  if (mod) COMMANDS.set(alias, mod);
 }
 
 function helpText(): string {

@@ -218,15 +218,24 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     if (nameArg) entries = entries.filter((e) => e.name === nameArg);
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
-    if (entries.length === 0) {
+    // Resolve on-disk dirs via the library so renames/domain folders are honored;
+    // also lets us surface LINKED skills that have NO lock entry (the normal `skl
+    // link --from` case) as positive 'skipped (linked)' evidence rather than silence.
+    const library = await loadLibrary(ctx.config.libraryPath);
+    const lockNames = new Set(entries.map((e) => e.name));
+    const linkedNoLock = library.filter(
+      (s) =>
+        !lockNames.has(s.name) &&
+        (!nameArg || s.name === nameArg) &&
+        entryMode(ctx.config.libraryPath, s.name) === "linked",
+    );
+
+    if (entries.length === 0 && linkedNoLock.length === 0) {
       if (json) ctx.json({ ok: true, updated: 0, diverged: 0, results: [] });
       else if (nameArg) ctx.error(`no tracked skill named "${nameArg}"`);
       else ctx.log("no tracked third-party skills (lockfile is empty)");
       return nameArg && !json ? 1 : 0;
     }
-
-    // Resolve on-disk dirs via the library so renames/domain folders are honored.
-    const library = await loadLibrary(ctx.config.libraryPath);
 
     const results: Result[] = [];
     for (const entry of entries) {
@@ -250,6 +259,21 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       const destDir = skill?.path ?? join(ctx.config.libraryPath, entry.name);
       results.push(await updateOne(ctx, entry, destDir, { force, dryRun }));
     }
+
+    // LINKED skills with no lock entry: report them as explicitly skipped so the
+    // never-clobber-a-dev-repo guarantee is visible, not silent.
+    for (const s of linkedNoLock) {
+      results.push({
+        name: s.name,
+        source: "(dev repo)",
+        channel: "local",
+        fromRef: "-",
+        toRef: null,
+        outcome: "skipped",
+        note: "LINKED to a dev repo — its own git owns versioning; not pulling upstream",
+      });
+    }
+    results.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
     const updated = results.filter((r) => r.outcome === "updated").length;
     const diverged = results.filter((r) => r.outcome === "diverged").length;

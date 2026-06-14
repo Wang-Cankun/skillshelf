@@ -5,12 +5,13 @@
 import { join } from "node:path";
 import type { Ctx } from "../types.ts";
 import { resolveBundle } from "../core/bundle.ts";
+import { findByName } from "../core/library.ts";
 import { isSymlink, realpathOrSelf, realpathOrSelfAsync, removeSymlink } from "../lib/fs.ts";
 
 export const meta = {
   name: "drop",
-  summary: "Remove a bundle's symlinks from ./.claude/skills/",
-  usage: "skl drop <bundle> [--json]",
+  summary: "Remove a bundle's (or single skill's) symlinks from ./.claude/skills/",
+  usage: "skl drop <bundle|skill> [--json]",
 } as const;
 
 interface DropResult {
@@ -36,10 +37,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // Include retired so a bundle that was `use`d (which excludes retired) and a
     // later drop stay symmetric on the active set — we match on the same active set.
     const skills = await ctx.loadLibrary();
-    const bundle = await resolveBundle(
-      skills.filter((s) => !s.retired),
-      bundleName,
-    );
+    const active = skills.filter((s) => !s.retired);
+    // Mirror `use`: resolve a single skill name first, else a bundle, so
+    // `skl drop <skill>` undoes `skl use <skill>` symmetrically.
+    const single = findByName(active, bundleName);
+    const bundle = single
+      ? { name: single.name, skills: [single] }
+      : await resolveBundle(active, bundleName);
 
     const skillsDir = projectSkillsDir();
     const results: DropResult[] = [];

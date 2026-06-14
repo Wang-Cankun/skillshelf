@@ -16,11 +16,18 @@ import { parseFrontmatter } from "../lib/frontmatter.ts";
 
 const SKILL_FILE = "SKILL.md";
 
-/** Hash a candidate's SKILL.md body the SAME way crawl does (frontmatter stripped). */
-async function bodyHash(skillDir: string): Promise<string | null> {
+/**
+ * Hash a candidate's SKILL.md body (frontmatter stripped, same as crawl) AND return its
+ * frontmatter `description`. Drift must consider BOTH: the body, and the description —
+ * because the deployed `description` is load-bearing (agents read it to decide when to
+ * trigger a skill), so a copy with an identical body but a customized description is a
+ * real divergence that `where --fix` must NOT silently dedupe away.
+ */
+async function readDeployed(skillDir: string): Promise<{ hash: string; description: string } | null> {
   try {
     const raw = await Bun.file(join(skillDir, SKILL_FILE)).text();
-    return hashContent(parseFrontmatter(raw).body);
+    const fm = parseFrontmatter(raw);
+    return { hash: hashContent(fm.body), description: String(fm.data.description ?? "") };
   } catch {
     return null;
   }
@@ -42,6 +49,7 @@ export async function inventoryDeployments(
   const libPrefix = libReal.endsWith(sep) ? libReal : libReal + sep;
   const libNames = new Set(libSkills.map((s) => s.name));
   const libHash = new Map(libSkills.map((s) => [s.name, s.contentHash] as const));
+  const libDesc = new Map(libSkills.map((s) => [s.name, s.description] as const));
 
   // De-dupe surfaces by realpath (CloudStorage/Dropbox aliases the same vault);
   // never scan the library itself as a "surface".
@@ -91,8 +99,13 @@ export async function inventoryDeployments(
           kind = "copy";
           const want = libHash.get(e.name);
           if (want) {
-            const got = await bodyHash(full);
-            drift = got != null && got !== want;
+            const got = await readDeployed(full);
+            // Drift if the body differs OR the (load-bearing) description differs —
+            // either makes this copy non-identical, so `where --fix` leaves it `manual`
+            // rather than replacing it with a symlink and discarding the difference.
+            drift =
+              got != null &&
+              (got.hash !== want || got.description !== (libDesc.get(e.name) ?? ""));
           }
         }
       } else {
@@ -129,6 +142,24 @@ export function sitesByName(report: DeploymentReport): Map<string, DeploymentSit
     m.set(s.name, arr);
   }
   return m;
+}
+
+/**
+ * What `skl where --fix` may do automatically for a flagged site. Only DETERMINISTIC,
+ * non-destructive remediations are auto-applied (skillshelf never guesses which copy
+ * wins). Everything that needs a human decision is "manual".
+ *   - remove-dead : the symlink's target is gone — removing it loses nothing.
+ *   - dedupe-copy : a real copy whose body MATCHES the library (inLibrary && !drift) —
+ *                   safe to replace with a symlink into the library.
+ *   - manual      : drifted copy / foreign-link / untracked copy — a real decision
+ *                   (which wins, or import) that --fix must not make silently.
+ */
+export type RemediationAction = "remove-dead" | "dedupe-copy" | "manual";
+
+export function remediationFor(site: DeploymentSite): RemediationAction {
+  if (site.kind === "dead") return "remove-dead";
+  if (site.kind === "copy" && site.inLibrary && !site.drift) return "dedupe-copy";
+  return "manual";
 }
 
 /** One-line suggested fix for a flagged site (empty string for clean `linked`). */

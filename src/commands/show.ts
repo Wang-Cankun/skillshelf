@@ -4,7 +4,7 @@
 // progressive disclosure: cheap by default, deep on demand.
 
 import type { Ctx, Skill } from "../types.ts";
-import { findByName } from "../core/library.ts";
+import { findByName, entryModeInfo } from "../core/library.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 
 export const meta = {
@@ -40,6 +40,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const body = await bodyOf(skill);
 
     if (json) {
+      const { mode, linkTarget } = entryModeInfo(ctx.libraryPath, skill.name);
       ctx.json({
         name: skill.name,
         description: skill.description,
@@ -51,6 +52,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         refFiles: skill.refFiles,
         retired: skill.retired,
         source: skill.source,
+        mode,
+        linkTarget,
       });
       return 0;
     }

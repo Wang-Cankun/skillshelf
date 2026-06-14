@@ -158,28 +158,53 @@ value-add is **provenance + central taxonomy + AI inference + bundles** layered 
 ## 4. CLI surface (agent-first)
 
 The CLI is designed to be called by an agent from inside Claude Code, with parseable output
-(`--json` on every command). Sixteen commands:
+(`--json` on every command). The surface splits into **forward** verbs (acquire/create/
+deploy), a **read/diagnosis** layer, and the **inverse + fine-grained-edit** family
+([ADR-0005](adr/0005-inverse-and-edit-verbs.md)) — the last added because an agent forced to
+hand-`rm`/`mv`/`ln -s` to undo or tweak is the signal of a missing primitive.
+
+**Forward — acquire / create:**
 
 | Command | Purpose |
 |---|---|
-| `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift). |
+| `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift). `--add-root`/`--remove-root` mutate the registry; `skl roots` lists it. |
 | `skl import <name> --from <path>` | Adopt one of your own skills into the library as an OWNED copy (move + symlink-back, or `--copy`). |
 | `skl link [<name>] --from <dev-repo>` | Shelve a dev-repo skill as a LINKED entry (library symlinks to it). `--at <path>` instead collapses a stray copy into the library ([ADR-0004](adr/0004-owned-vs-linked-entries.md)). |
-| `skl search <kw>` | Fuzzy search over name + description across the whole library. |
-| `skl ls [bundle]` | List all skills, or one bundle, with one-line descriptions. |
-| `skl status` | Which bundles/skills are currently linked into the current project. |
-| `skl show <name>` | Print the SKILL.md instruction layer; list reference-file paths. |
-| `skl use <bundle>` | Symlink a bundle into `./.claude/skills/`. |
-| `skl drop <bundle>` | Remove a bundle's symlinks. |
 | `skl add <src>` | Install a third-party skill, record provenance, AI-tag it. |
-| `skl outdated` | Check upstream commit/version per tracked skill → mark stale. |
-| `skl update [name]` | Re-pull the upstream body (OWNED only), preserve domain tags, diff if diverged. |
-| `skl init` | Initialize a library / global core. |
 | `skl new` | Scaffold a new skill into the library. |
+| `skl init` | Initialize a library / global core. |
+
+**Read / diagnosis:**
+
+| Command | Purpose |
+|---|---|
+| `skl search <kw>` | Fuzzy search over name + description across the whole library. |
+| `skl ls [bundle]` | List all skills, or one bundle (`--json` carries `mode`/`linkTarget`). |
+| `skl show <name>` | Print the SKILL.md instruction layer; list reference-file paths. |
+| `skl status` | Which bundles/skills are linked into the current project; flags unmanaged real copies. |
+| `skl where [name]` | Deployment map across all agent surfaces; classifies copies/drift/2nd-sources/dead links. |
+| `skl outdated` | Check upstream ref per tracked skill → mark stale; `--check-local` diffs locally, offline. |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain). |
 | `skl infer` | Re-run the AI taxonomy pass; propose domains/tags for approval. |
 
-Discovery surfaces: `skl search`, the generated **`INDEX.md`**, `skl ls`, and `skl status`.
+**Deploy + inverse / edit ([ADR-0005](adr/0005-inverse-and-edit-verbs.md)):**
+
+| Command | Purpose |
+|---|---|
+| `skl use <bundle\|skill>` / `drop` | Symlink (or unlink) a bundle **or a single skill** into `./.claude/skills/`. |
+| `skl refresh` | Re-sync this project's links to library reality (repoint stale, prune vanished). |
+| `skl update [name]` | Re-pull the upstream body (OWNED only), preserve domain tags, diff if diverged. |
+| `skl tag` / `untag` / `retag` | Deterministic single-item taxonomy edits (and a library-wide domain rename). |
+| `skl rename <old> <new>` | Atomic slug rename (dir + frontmatter + taxonomy + lock). Alias `skl mv`. |
+| `skl retire` / `unretire` / `rm` | Reversible removal lifecycle: soft-delete → restore → hard purge (guarded). |
+| `skl where --prune` / `--fix` | Apply where's own remediation: prune dead links, dedupe identical copies (deterministic only). |
+
+The inverse/edit verbs are transactional across the skill dir + `taxonomy.json` +
+`shelf.lock.json` + `INDEX.md` (`core/lifecycle.ts`), reversible by default, and never
+auto-resolve a decision that needs human judgment (a drifted copy stays `manual`).
+
+Discovery surfaces: `skl search`, the generated **`INDEX.md`**, `skl ls`, `skl status`, and
+`skl where`.
 
 ---
 
