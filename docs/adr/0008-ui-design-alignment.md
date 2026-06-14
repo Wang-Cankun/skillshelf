@@ -1,7 +1,8 @@
 # 8. Align the built UI with the Workbench design (visual port, multi-agent, drawer)
 
-Date: 2026-06-14 (rev. 3 — view layer switches **Svelte 5 → React 19** (see §0); rev. 2
-fidelity-audited the design against `Workbench.dc.html` and added the Drawer + multi-agent)
+Date: 2026-06-14 (rev. 4 — stack pinned: **React 19 + Tailwind v4 + shadcn/ui + TanStack Query +
+Zod + react-markdown** (see §0). rev. 3 switched Svelte 5 → React; rev. 2 fidelity-audited the
+design against `Workbench.dc.html` and added the Drawer + multi-agent)
 
 ## Status
 
@@ -36,44 +37,58 @@ opt-in deferred suggestion (ADR-0007): the drawer's **Explanation tab is "coming
 slim Inspector's "near-duplicate" block is **deferred/omitted** for v1 (it's the one AI-as-fact
 remnant; do not render an LLM judgment as fact).
 
-### 0. Stack — view layer moves to React (rev. 3)
+### 0. Stack — React + Tailwind/shadcn + a small typed data layer (rev. 4)
 
 Since rev. 2 is a near-total UI rebuild anyway, the sunk cost of staying on Svelte is ~nil, so we
-pick the framework with the most forward leverage for **how this app is actually built**:
-**React 19 + Vite + plain CSS** (no Tailwind, no shadcn).
+pick the framework with the most forward leverage for **how this app is actually built (by agents)**.
+The committed stack:
 
-- **Why React** — agents generate React + plain CSS more reliably than Svelte 5 runes (this app is
-  built largely by agents), and the React ecosystem / skills-manage adjacency is deeper. This is the
-  real driver — **not** "1:1 code reuse" (the mockup is a bespoke `DCLogic` DSL, not React, and
-  ports to either framework with equal effort) and **not** shadcn polish (the mockup is hand-rolled
-  and uses zero shadcn).
-- **Why plain CSS (not Tailwind/shadcn)** — the design is hand-rolled inline tokens + keyframes;
-  lifting them verbatim into CSS keeps the build **maximally faithful to `Workbench.dc.html` and
-  dependency-light**, matching the function-first/transparent identity. Drop `@tailwindcss/vite`
-  and the svelte plugin; no UI-component dependency.
+| Layer | Pick | Why for skillshelf |
+|---|---|---|
+| Build | **Vite + React 19 + TypeScript** | Tauri default; fast HMR; agents emit React most reliably. |
+| Styling | **Tailwind v4 + CSS variables** | Token-driven, dense-UI friendly; the §2 design tokens become CSS vars (theme + status hues). |
+| Components | **shadcn/ui (Radix + Tailwind)** | You own the source — ideal for a tool you customize forever. Pull only what you need; re-skin to the §2 light tokens. |
+| Icons | **lucide-react** | Pairs with shadcn. Keep the mockup's Unicode status glyphs (`●◆✓⚠□✗🏷`) for cells; lucide for chrome. |
+| Server state (`skl --json`) | **TanStack Query** | Caches `ls`/`where`/`scan`; optimistic mutation + `onError` rollback = the Undo pattern for free; `invalidateQueries` on FSEvents = live updates. |
+| Schema / types | **Zod** | Runtime-validate every `--json` payload at the boundary; Zod is the **single source of truth** that generates the TS types the whole UI binds to (`DeploymentReport`, `ls`, lockfile). |
+| Markdown (drawer) | **react-markdown + remark-gfm + rehype-sanitize** | React-native render for the Rendered tab; frontmatter stripped first. |
+
+- **Why React (the honest driver)** — agents generate React reliably and the ecosystem /
+  skills-manage adjacency is deeper. **Not** "1:1 code reuse" (the mockup is a bespoke `DCLogic`
+  DSL, not React — it ports to either framework with equal effort).
+- **Deliberately deferred (don't pre-pay):** **TanStack Table/Virtual** — only when rows hit 1000s
+  (Matrix ~17×12, Library ~113 today render fine; hand-roll sort/group per the mockup until then);
+  **cmdk** (⌘K is P2); **sonner** (use shadcn's toaster when wired, else the mockup's hand-rolled
+  toast); **Zustand** (start with `useReducer` + context; add only if prop-drilling hurts);
+  **React Hook Form** (no real multi-field forms in P1 — keep Zod, skip RHF); **TanStack Router**
+  (single-window desktop app — `view`/`scope`/`filter` live in reducer state, not a URL).
 - **What this does NOT touch** — `skl.ts`, `types.ts`, `fixtures.ts`, and all of `src-tauri/**`
   are framework-agnostic and carry over **untouched** (§1). Only `App.svelte` + the components are
   rebuilt — which rev. 2 was already rebuilding.
-- **One real cost (do not wave off)** — the dispatch/error contract (§1) is *security-sensitive*
-  logic (the `ALLOWED_VERBS` sync that regressed once, path-traversal + rm-guard, `res.ok`/`stderr`
-  surfacing). Re-implement it in React **deliberately and re-run the same review pass** — don't
-  treat the port as free.
+- **One real cost (do not wave off)** — adopting TanStack Query means the preserved dispatch/error
+  **contract** (§1) is re-expressed as Query **mutations** (optimistic patch → `onError` rollback →
+  `invalidateQueries`). That logic is *security-sensitive* (the `ALLOWED_VERBS` sync that regressed
+  once, path-traversal + rm-guard, `res.ok`/`stderr` surfacing). Port it **deliberately and re-run
+  the same review pass** — the behaviour is preserved even though the mechanism changes.
 
 ### 1. Preserve (DO NOT rewrite — passed review + verification)
 
 - `app/src/lib/skl.ts` — bridge (`IS_TAURI`, `invokeJson` guarded parse + non-zero throw,
   `runAction` → `SklResult`, `cmdEcho`, browser fixture fallback). Add loaders for new feeds (§7).
-- `app/src/lib/types.ts` — `--json` contract types. Extend only.
+- `app/src/lib/types.ts` — `--json` contract types. Extend only — and back them with **Zod schemas**
+  (§0) so the same definition validates the payload at runtime *and* generates the TS type.
 - `app/src/lib/fixtures.ts` — real captured data; regenerate after §7.
 - `app/src-tauri/**` — Rust shell: absolute-`skl`-path resolution (Finder launch), subcommand
   **allowlist** (`ALLOWED_VERBS` — keep covering every dispatched verb; **add `agents`, `show`,
   `diff`** as they get used), `SklResult`, CSP.
 - The **dispatch + error contract** currently in `App.svelte` — **the behaviour, not the file**:
   `dispatch(args,onOk)` checks `res.ok`, surfaces `res.stderr`, reloads only on success; `loadAll`
-  uses `Promise.allSettled`; bulk tag needs a domain; valid verbs only. Re-implement verbatim in the
-  React root (it's security-sensitive — §0) and re-review.
+  uses `Promise.allSettled`; bulk tag needs a domain; valid verbs only. Re-express as **TanStack
+  Query mutations** (optimistic patch → `onError` rollback → `invalidateQueries`) preserving every
+  one of those guarantees; it's security-sensitive (§0) — re-review.
 - `app/src/lib/skl.ts` / `types.ts` / `fixtures.ts` are **framework-agnostic** — they're plain TS,
-  so React imports them unchanged (no Svelte store/`.svelte` coupling to unwind).
+  so React imports them unchanged (no Svelte store/`.svelte` coupling to unwind). `skl.ts` becomes
+  the `queryFn`/`mutationFn` body Query calls; `fixtures.ts` is the browser-mode `queryFn` fallback.
 
 ### 2. Design tokens (from the mockup `<style>` — use everywhere)
 
@@ -84,10 +99,11 @@ pick the framework with the most forward leverage for **how this app is actually
   docs `#7C3AED`, meta `#15A34A`, philosophy `#DB2777`, ops `#71717A`, bioinfo `#0D9488`,
   browser `#65A30D`, media `#9333EA`, `_unclassified` `#C7C7CC`
 - type: `system-ui` sans (chrome) + `ui-monospace,'SF Mono',Menlo` (paths/commands/names/counts).
-  radii 6–14px, 1px borders. Markdown body styles + `livepulse`/`drawerIn`/`scrimIn`/`toastIn`
-  keyframes: copy from the mockup verbatim into plain CSS (no Tailwind). Rendered markdown uses
-  `marked` + GFM + `DOMPurify` sanitize (or `react-markdown` + `remark-gfm` + `rehype-sanitize`);
-  strip frontmatter before render.
+  radii 6–14px, 1px borders. Encode all of the above as **Tailwind v4 `@theme` CSS variables**
+  (`--color-ink`, `--color-domain-green-card`, …) so utilities + shadcn components read the same
+  token set; the `livepulse`/`drawerIn`/`scrimIn`/`toastIn` keyframes + `.md-body` styles port from
+  the mockup. Rendered markdown uses **`react-markdown` + `remark-gfm` + `rehype-sanitize`** into
+  the `.md-body` scope; strip frontmatter before render.
 
 ### 3. Layout shell
 
@@ -156,7 +172,8 @@ this ADR specifies structure + behavior, not each token.)*
 ### 5. Detail Drawer ⭐ (the centerpiece — `feature-scope-v2.md §7.1`)
 
 Opens on any skill-name click; full-width `min(1080px, 94vw)`, right-anchored, scrim + `drawerIn`
-animation, **Esc closes**. Three columns:
+animation, **Esc closes**. Build on shadcn's **`Sheet`** (Radix Dialog — gives scrim, focus-trap,
+Esc, `side="right"` for free); restyle to the mockup tokens + the `drawerIn` keyframe. Three columns:
 
 1. **File tree (212px):** `FILES` list from the skill's `refFiles` — `[path, kind, depth]`,
    indented by depth, icons (`·` md, `{}` json, `▸` dir; dirs non-clickable). Clicking a file
@@ -215,10 +232,12 @@ animation, **Esc closes**. Three columns:
   `Undo` + a `✕` manual-dismiss (auto-dismiss ~6s). Undo reverses the optimistic state and
   re-issues the inverse verb. A **no-undo variant** exists (Undo hidden when there's nothing to
   reverse): confirming a hard **Remove** fires `Removed <name> — deleted from disk` echoing
-  `skl rm <name>` with no Undo.
-- **Type-to-confirm Remove:** `skl rm` modal — warns it deletes from disk + **irreversible**,
-  suggests Retire instead, shows an in-modal `$ skl rm <name>` echo, and only enables the red
-  `Remove` once the user types the exact skill name. (Retire stays one-click + undoable.)
+  `skl rm <name>` with no Undo. Implement on **`sonner`** (shadcn toaster) restyled to the dark
+  mockup token; the Undo `action`/inverse-verb falls out of the Query mutation's `onError` rollback.
+- **Type-to-confirm Remove:** `skl rm` modal (shadcn **`AlertDialog`**) — warns it deletes from disk
+  + **irreversible**, suggests Retire instead, shows an in-modal `$ skl rm <name>` echo, and only
+  enables the red `Remove` once the user types the exact skill name. (Retire stays one-click +
+  undoable.)
 
 ### 7. Backend additions (`skl --json`) this implies — keep in the engine
 
@@ -249,9 +268,11 @@ animation, **Esc closes**. Three columns:
 
 ## Build, run, verify
 
-First re-point the toolchain: swap `@sveltejs/vite-plugin-svelte` + `@tsconfig/svelte` + `svelte`
-+ `@tailwindcss/vite` for `@vitejs/plugin-react` + `react`/`react-dom` (+ types); `check` becomes
-`tsc --noEmit` (not `svelte-check`). Then:
+First re-point the toolchain: **drop** `@sveltejs/vite-plugin-svelte` + `@tsconfig/svelte` +
+`svelte`; **add** `@vitejs/plugin-react` + `react`/`react-dom` (+ `@types/*`), `@tanstack/react-query`,
+`zod`, `react-markdown` + `remark-gfm` + `rehype-sanitize`, `lucide-react`. **Keep**
+`@tailwindcss/vite` (v4 — it was already wired) and init **shadcn/ui** (`components.json` + a
+`src/components/ui/` you own). `check` becomes `tsc --noEmit` (not `svelte-check`). Then:
 
 ```bash
 cd /Users/wang.13246/Documents/GitHub/skillshelf-ui/app

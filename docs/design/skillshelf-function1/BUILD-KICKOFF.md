@@ -8,15 +8,28 @@
 
 ## Mission
 
-Rebuild the **presentation layer** of the Tauri skill manager in **React 19 + Vite + plain CSS**
-(see ADR-0008 §0 — the view layer is migrating off Svelte; **no Tailwind, no shadcn**), so it
-faithfully reproduces the approved design mockup, wired to **real deterministic `skl --json` data**,
-and finally **reads as multi-agent**. Preserve every hardened bridge/Rust behaviour from the prior
-review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never rendered as fact.
+Rebuild the **presentation layer** of the Tauri skill manager in **React 19 + Vite + TypeScript +
+Tailwind v4 + shadcn/ui**, wired to **real deterministic `skl --json` data**, so it faithfully
+reproduces the approved design mockup and finally **reads as multi-agent**. Preserve every hardened
+bridge/Rust behaviour from the prior review. AI stays an opt-in, clearly-deferred suggestion
+(ADR-0007) — never rendered as fact. Full stack rationale: **ADR-0008 §0**.
 
-**First, re-point the toolchain:** swap `@sveltejs/vite-plugin-svelte` + `@tsconfig/svelte` +
-`svelte` + `@tailwindcss/vite` for `@vitejs/plugin-react` + `react`/`react-dom` (+ `@types/*`);
-`bun run check` becomes `tsc --noEmit`. `src-tauri/**` + `src/lib/*.ts` are untouched.
+**Stack (pinned, ADR-0008 §0):**
+- React 19 + Vite + TS · **Tailwind v4** (the §2 design tokens become `@theme` CSS vars) ·
+  **shadcn/ui** (own the source; `Sheet`→drawer, `AlertDialog`→Remove modal, `sonner`→Undo toast) ·
+  **lucide-react** (keep the mockup's Unicode status glyphs for cells).
+- **TanStack Query** = server-state for `skl --json` (optimistic + `onError` rollback = Undo;
+  `invalidateQueries` on FSEvents = live). **Zod** validates every `--json` payload + is the
+  source-of-truth that generates the TS types. **react-markdown + remark-gfm + rehype-sanitize**
+  for the drawer Rendered tab.
+- **Deferred (don't pre-pay):** TanStack Table/Virtual (until 1000s of rows — hand-roll sort/group
+  per the mockup), cmdk (⌘K = P2), Zustand (use `useReducer`+context first), React Hook Form
+  (no real forms in P1), TanStack Router (single-window — `view`/`scope`/`filter` live in reducer).
+
+**First, re-point the toolchain:** drop `@sveltejs/vite-plugin-svelte`/`@tsconfig/svelte`/`svelte`;
+add `@vitejs/plugin-react` + `react`/`react-dom` (+ `@types/*`), `@tanstack/react-query`, `zod`,
+`react-markdown`+`remark-gfm`+`rehype-sanitize`, `lucide-react`; **keep** `@tailwindcss/vite` (v4)
+and `npx shadcn init`. `bun run check` → `tsc --noEmit`. `src-tauri/**` + `src/lib/*.ts` untouched.
 
 ## Read these first (in order, in full)
 
@@ -42,17 +55,18 @@ review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never ren
 - `app/src/lib/{skl,types,fixtures}.ts` are **plain framework-agnostic TS** — React imports them
   unchanged.
 - The dispatch + error **contract** (currently in `App.svelte`) — preserve the *behaviour*,
-  re-implement in the React root: `dispatch(args,onOk)` checks `res.ok`, surfaces `res.stderr`,
-  reloads only on success; `loadAll` uses `Promise.allSettled`; valid verbs only. ⚠ It's
-  security-sensitive — port deliberately and **re-run the review pass** (don't treat it as free).
+  re-express as **TanStack Query mutations**: optimistic patch → `onError` rollback →
+  `invalidateQueries`, still checking `res.ok`, surfacing `res.stderr`, success-only commit,
+  `Promise.allSettled` loads, valid verbs only. ⚠ It's security-sensitive (`ALLOWED_VERBS`,
+  path-traversal, rm-guard) — port deliberately and **re-run the review pass** (not free).
 
 ## Build order (P1 — ship this)
 
-1. **Tokens + shell.** Lift the `<style>` design tokens (surfaces/borders/text/status/12 domain
-   hues, radii, fonts, the `livepulse/drawerIn/scrimIn/toastIn` keyframes) **verbatim into plain
-   CSS** (no Tailwind). Layout: top bar (46px) · three panes · health strip (30px). Rendered
-   markdown via `marked` + GFM + `DOMPurify` (or `react-markdown` + `remark-gfm` +
-   `rehype-sanitize`), frontmatter stripped.
+1. **Tokens + shell.** Encode the `<style>` design tokens (surfaces/borders/text/status/12 domain
+   hues, radii, fonts) as **Tailwind v4 `@theme` CSS vars**; port the `livepulse/drawerIn/scrimIn/
+   toastIn` keyframes + `.md-body`. `npx shadcn init` and re-skin its primitives to those tokens.
+   Layout: top bar (46px) · three panes · health strip (30px). Rendered markdown via
+   `react-markdown` + `remark-gfm` + `rehype-sanitize`, frontmatter stripped.
 2. **Sidebar (234px).** SMART VIEWS (5 rows: ⚠ Needs attention·6 → Inbox; ◆ Vendored·21 /
    ● Local·92 / 🏷 Untagged·1 → Library+filter; ◇ All·113 → Library, clears filter) / BY DOMAIN·12
    (hue dot + count + bar normalized to max domain) / PROVENANCE + pinned card `◆ dbskill @a58f647`.
@@ -71,8 +85,8 @@ review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never ren
    `●` primary / `◦` also-tagged. Agent: columns=agents (dimmed if not installed) + **SCOPE** pill
    row (`Global` + projects) + cell glyph per `(skill,agent,scope)` state
    (`✓⊙⚠□✗·`). Legend swaps per mode. Click skill → drawer.
-6. **Detail Drawer ⭐** (`min(1080px,94vw)`, right, scrim + `drawerIn`, **Esc closes**):
-   file tree (212px, lazy `skl show <name> --file <path>`) · center tabs **Rendered/Raw/
+6. **Detail Drawer ⭐** (shadcn **`Sheet`** `side="right"`, `min(1080px,94vw)`, scrim + `drawerIn`,
+   **Esc closes**): file tree (212px, lazy `skl show <name> --file <path>`) · center tabs **Rendered/Raw/
    Explanation** + Copy raw (Explanation = "coming soon" placeholder) · right rail (296px):
    FRONTMATTER / PROVENANCE (vendored only) / **AGENTS rail** / TAGS / LIFECYCLE.
    Header `Edit SKILL.md` / `Open folder` route through the **Tauri shell** (`$EDITOR`/Finder),
@@ -81,9 +95,10 @@ review. AI stays an opt-in, clearly-deferred suggestion (ADR-0007) — never ren
    `installed`). AGENTS rail: per-agent Link/Unlink → `skl use|drop <skill> --agent <id>
    --global` (global is the GUI mutation target); project deployments are **read-only chips**
    ("project copy shadows global"). Every toggle fires the **undo toast**.
-8. **Global affordances.** Undo toast (deploy/retire/untag, ~6s, command echo + Undo + `✕`
-   dismiss; a **no-undo variant** fires after a hard Remove) + type-to-confirm **Remove** modal
-   (`skl rm`, irreversible, in-modal echo, type exact name to enable the red button).
+8. **Global affordances.** Undo toast via **`sonner`** (deploy/retire/untag, ~6s, command echo +
+   Undo + `✕` dismiss; Undo = the Query mutation's rollback + inverse verb; **no-undo variant**
+   after a hard Remove) + type-to-confirm **Remove** modal (shadcn **`AlertDialog`**: `skl rm`,
+   irreversible, in-modal echo, type exact name to enable the red button).
 
 ## Backend additions (`skl --json`) — keep in the engine (NO SQLite)
 
