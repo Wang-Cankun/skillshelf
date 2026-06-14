@@ -132,6 +132,9 @@ export function stateForSite(site: DeploymentSite): DeployState {
       return site.drift ? "drift" : "copy";
     case "foreign-link":
       return "copy";
+    case "aliased":
+      // name mismatch — a real misconfiguration, not a clean deploy.
+      return "drift";
     case "dead":
       return "dead";
     default:
@@ -169,6 +172,10 @@ export function computeAgentsReport(
     if (scope !== "Global") scopeSet.add(scope);
     const state = stateForSite(site);
 
+    // Keyed by the deployed link name (site.name). For an `aliased` site this is
+    // the wrong-name alias, not a library skill — intentional: it raises the alarm
+    // under the name you'd `ls` in the surface; `skl where --problems` is the
+    // canonical place to see the real skill it points at.
     const perAgent = (deployments[site.name] ??= {});
     const dep = (perAgent[agentId] ??= {});
     if (scope === "Global") {
@@ -216,6 +223,64 @@ export function isKnownAgent(id: string): boolean {
   return AGENT_IDS.includes(id);
 }
 
+/** All known agent ids (the registry order). */
+export function knownAgentIds(): string[] {
+  return [...AGENT_IDS];
+}
+
+/**
+ * Read-side counterpart to parseDeployTarget (ADR-0008 §7.4 / CLI e2e fix): lets
+ * the READ verbs (`where`/`agents`/`status`) target the SAME place `use`/`drop`
+ * just wrote — a specific `--project <dir>` (and optionally one `--agent <id>`).
+ *
+ * Returns the surviving argv (`rest`, with --agent/--project + values removed so
+ * the command parses its own flags), and `extraSurfaces` to TRANSIENTLY inject
+ * into the deployment scan for this invocation only (never persisted to config —
+ * that was the `scan --add-root` anti-workaround the e2e test flagged). When
+ * `--project` is given without `--agent`, every known agent's project dir is
+ * scanned so an ad-hoc project shows all its agents.
+ */
+export function resolveReadTarget(
+  argv: string[],
+  home: string = homedir(),
+  cwd: string = process.cwd(),
+):
+  | { rest: string[]; agentId: string | null; projectDir: string | null; extraSurfaces: string[] }
+  | { error: string } {
+  let agentId: string | null = null;
+  let projectRaw: string | null = null;
+  const rest: string[] = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i] as string;
+    if (a === "--agent") {
+      agentId = argv[++i] ?? "";
+      if (!agentId || agentId.startsWith("-")) return { error: "--agent requires an agent id" };
+    } else if (a === "--project") {
+      projectRaw = argv[++i] ?? "";
+      if (!projectRaw || projectRaw.startsWith("-"))
+        return { error: "--project requires a project name or path" };
+    } else {
+      rest.push(a);
+    }
+  }
+
+  if (agentId !== null && !isKnownAgent(agentId)) {
+    return { error: `unknown agent "${agentId}" (known: ${AGENT_IDS.join(", ")})` };
+  }
+
+  const projectDir =
+    projectRaw === null ? null : projectRaw.startsWith(sep) ? projectRaw : join(cwd, projectRaw);
+
+  let extraSurfaces: string[] = [];
+  if (projectDir) {
+    const ids = agentId ? [agentId] : AGENT_IDS;
+    extraSurfaces = ids.map((id) => join(projectDir, `.${id}`, "skills"));
+  }
+
+  return { rest, agentId, projectDir, extraSurfaces };
+}
+
 export interface DeployTarget {
   /** absolute skills dir to deploy into / drop from */
   dir: string;
@@ -248,12 +313,13 @@ export function parseDeployTarget(
     const a = argv[i] as string;
     if (a === "--agent") {
       agentId = argv[++i] ?? "";
-      if (!agentId) return { error: "--agent requires an agent id" };
+      if (!agentId || agentId.startsWith("-")) return { error: "--agent requires an agent id" };
     } else if (a === "--global") {
       global = true;
     } else if (a === "--project") {
       project = argv[++i] ?? "";
-      if (!project) return { error: "--project requires a project name or path" };
+      if (!project || project.startsWith("-"))
+        return { error: "--project requires a project name or path" };
     } else if (a === "--json") {
       // consumed by the command, ignore here
     } else if (a.startsWith("-")) {

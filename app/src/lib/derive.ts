@@ -470,6 +470,9 @@ export function deriveInbox(
     } else if (p.kind === "foreign-link") {
       severity = "second-source";
       detail = `Links outside the library — ${p.target ?? p.surface}`;
+    } else if (p.kind === "aliased") {
+      severity = "aliased";
+      detail = `Link name ≠ the library skill it points at — ${p.surface}`;
     }
     if (!severity) continue;
     const m = SEV_MAP[severity];

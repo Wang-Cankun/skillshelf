@@ -13,6 +13,7 @@ import {
   parseDeployTarget,
   isKnownAgent,
   isCleanSite,
+  resolveReadTarget,
 } from "./agents.ts";
 import { knownAgentSurfacePaths } from "./surfaces.ts";
 
@@ -61,6 +62,40 @@ describe("stateForSite", () => {
     expect(stateForSite(site({ name: "a", surface: "/s", kind: "copy", drift: true }))).toBe("drift");
     expect(stateForSite(site({ name: "a", surface: "/s", kind: "foreign-link" }))).toBe("copy");
     expect(stateForSite(site({ name: "a", surface: "/s", kind: "dead" }))).toBe("dead");
+    expect(stateForSite(site({ name: "a", surface: "/s", kind: "aliased" }))).toBe("drift");
+  });
+});
+
+describe("resolveReadTarget", () => {
+  test("--project with no --agent injects every agent's project surface", () => {
+    const r = resolveReadTarget(["where", "--project", "/tmp/p"], HOME, "/cwd");
+    if ("error" in r) throw new Error(r.error);
+    expect(r.projectDir).toBe("/tmp/p");
+    expect(r.agentId).toBeNull();
+    expect(r.extraSurfaces).toContain("/tmp/p/.claude/skills");
+    expect(r.extraSurfaces).toContain("/tmp/p/.codex/skills");
+    expect(r.extraSurfaces).toContain("/tmp/p/.gemini/skills");
+  });
+  test("--agent narrows the injected surface to one agent", () => {
+    const r = resolveReadTarget(["x", "--agent", "codex", "--project", "/tmp/p"], HOME, "/cwd");
+    if ("error" in r) throw new Error(r.error);
+    expect(r.extraSurfaces).toEqual(["/tmp/p/.codex/skills"]);
+  });
+  test("leaves the command's own flags + positionals in `rest`", () => {
+    const r = resolveReadTarget(["cairn", "--problems", "--json", "--project", "/tmp/p"], HOME, "/cwd");
+    if ("error" in r) throw new Error(r.error);
+    expect(r.rest).toEqual(["cairn", "--problems", "--json"]);
+  });
+  test("relative --project resolves under cwd; no --project = no surfaces", () => {
+    const rel = resolveReadTarget(["--project", "sub"], HOME, "/cwd/proj");
+    if ("error" in rel) throw new Error(rel.error);
+    expect(rel.projectDir).toBe("/cwd/proj/sub");
+    const none = resolveReadTarget(["cairn"], HOME, "/cwd");
+    if ("error" in none) throw new Error(none.error);
+    expect(none.extraSurfaces).toEqual([]);
+  });
+  test("rejects an unknown agent", () => {
+    expect("error" in resolveReadTarget(["--agent", "nope"], HOME, "/cwd")).toBe(true);
   });
 });
 

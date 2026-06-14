@@ -92,3 +92,36 @@ describe("inventoryDeployments — linked-source recognition", () => {
     expect(report.problems.some((s) => s.name === "cairn")).toBe(true);
   });
 });
+
+describe("inventoryDeployments — aliased links (link-name ≠ library skill)", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await realpath(await mkdtemp(join(tmpdir(), "skl-alias-")));
+  });
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("a symlink into the library under a DIFFERENT name is `aliased`, and a problem", async () => {
+    const library = join(tmp, "library");
+    await makeSkillDir(library, "huashu-nuwa");
+    const lib = [libSkill("huashu-nuwa", join(library, "huashu-nuwa"))];
+
+    const surface = join(tmp, "surface");
+    await mkdir(surface, { recursive: true });
+    // deployed under the WRONG name `nuwa`, pointing at library/huashu-nuwa
+    await symlink(join(library, "huashu-nuwa"), join(surface, "nuwa"));
+    // control: a correctly-named link
+    await symlink(join(library, "huashu-nuwa"), join(surface, "huashu-nuwa"));
+
+    const report = await inventoryDeployments([surface], library, lib);
+    const aliased = report.sites.find((s) => s.name === "nuwa");
+    const correct = report.sites.find((s) => s.name === "huashu-nuwa");
+
+    expect(aliased!.kind).toBe("aliased");
+    expect(correct!.kind).toBe("linked");
+    // the aliased link must surface as a problem (was invisible before)
+    expect(report.problems.some((s) => s.name === "nuwa")).toBe(true);
+    expect(report.problems.some((s) => s.name === "huashu-nuwa")).toBe(false);
+  });
+});

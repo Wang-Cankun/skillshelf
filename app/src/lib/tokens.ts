@@ -72,7 +72,8 @@ export type InboxSeverity =
   | "drift"
   | "dead"
   | "untracked"
-  | "second-source";
+  | "second-source"
+  | "aliased";
 
 export const SEV_MAP: Record<
   InboxSeverity,
@@ -92,4 +93,5 @@ export const SEV_MAP: Record<
     label: "2ND-SOURCE",
     bg: "#FAF1E2",
   },
+  aliased: { glyph: "⚠", color: C.amber, label: "ALIASED", bg: "#FAF1E2" },
 };

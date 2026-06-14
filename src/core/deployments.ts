@@ -85,7 +85,19 @@ export async function inventoryDeployments(
           kind = "dead";
         } else {
           const real = realpathOrSelf(full);
-          kind = real === libReal || real.startsWith(libPrefix) ? "linked" : "foreign-link";
+          if (real === libReal || real.startsWith(libPrefix)) {
+            kind = "linked";
+            // Aliased: resolves INTO the library, but the deployed link-name differs
+            // from the library skill it points at (e.g. `nuwa` -> <lib>/huashu-nuwa).
+            // By realpath it looks clean, but a name-keyed view (agents/status) would
+            // miss the real skill — flag it so `where --problems` surfaces it.
+            const resolvedName = real.startsWith(libPrefix)
+              ? real.slice(libPrefix.length).split(sep)[0]
+              : "";
+            if (resolvedName && resolvedName !== e.name) kind = "aliased";
+          } else {
+            kind = "foreign-link";
+          }
         }
       } else if (e.isDirectory() && existsSync(join(full, SKILL_FILE))) {
         // Linked-bookshelf mode: the library entry of this name may itself be a
@@ -167,6 +179,8 @@ export function suggestionFor(site: DeploymentSite): string {
   switch (site.kind) {
     case "dead":
       return "broken link — remove it";
+    case "aliased":
+      return `link-name differs from the library skill it points at — rename the link to match, or \`skl link\` it to the right skill`;
     case "foreign-link":
       return `points outside the library (2nd source) — \`skl link ${site.name} --at ${site.path}\` to repoint at the library`;
     case "copy":

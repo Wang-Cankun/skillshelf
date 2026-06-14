@@ -4,6 +4,7 @@
 
 import { join } from "node:path";
 import type { Ctx, Skill } from "../types.ts";
+import { resolveReadTarget } from "../core/agents.ts";
 import {
   pathExists,
   isSymlink,
@@ -13,8 +14,8 @@ import {
 
 export const meta = {
   name: "status",
-  summary: "Which library skills are linked into ./.claude/skills",
-  usage: "skl status [--json]",
+  summary: "Which library skills are linked into an agent's project skills dir (default: ./.claude/skills)",
+  usage: "skl status [--agent <id>] [--project <dir>] [--json]",
 } as const;
 
 interface LinkedEntry {
@@ -26,9 +27,19 @@ interface LinkedEntry {
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
-    const json = argv.includes("--json");
-    const cwd = process.cwd();
-    const skillsDir = join(cwd, ".claude", "skills");
+    const rt = resolveReadTarget(argv);
+    if ("error" in rt) {
+      ctx.error(`skl status: ${rt.error}`);
+      ctx.error("usage: " + meta.usage);
+      return 1;
+    }
+    const json = rt.rest.includes("--json");
+    // --project <dir> / --agent <id> let status inspect the SAME dir `skl use
+    // --project … --agent …` wrote to; default stays the cwd project's .claude/skills.
+    const baseDir = rt.projectDir ?? process.cwd();
+    const agentId = rt.agentId ?? "claude";
+    const cwd = baseDir;
+    const skillsDir = join(baseDir, `.${agentId}`, "skills");
 
     const skills = await ctx.loadLibrary();
     // index library skills by their realpath for matching
@@ -90,6 +101,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           target: e.target,
           skill: e.skill ? e.skill.name : null,
           inLibrary: e.skill != null,
+          // aliased: the link resolves to a library skill under a DIFFERENT name
+          // (a name-keyed blind spot — see `skl where --problems`).
+          aliased: e.skill != null && e.skill.name !== e.link,
           domains: e.skill ? e.skill.domains : [],
         })),
       });
@@ -107,7 +121,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         const dom = e.skill.domains.length
           ? ` [${e.skill.domains.join(", ")}]`
           : "";
-        ctx.log(`  ${e.link}${dom} -> ${e.skill.name}`);
+        const alias = e.skill.name !== e.link ? "  ⚠ aliased (link name ≠ skill)" : "";
+        ctx.log(`  ${e.link}${dom} -> ${e.skill.name}${alias}`);
       } else {
         ctx.log(`  ${e.link} -> ${e.target} (not a library skill)`);
       }

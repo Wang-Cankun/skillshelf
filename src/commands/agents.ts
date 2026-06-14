@@ -9,12 +9,12 @@
 import type { Ctx } from "../types.ts";
 import { inventoryDeployments } from "../core/deployments.ts";
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
-import { computeAgentsReport, type DeployState } from "../core/agents.ts";
+import { computeAgentsReport, resolveReadTarget, type DeployState } from "../core/agents.ts";
 
 export const meta = {
   name: "agents",
   summary: "Show each skill's deployment state across known agents (claude, codex, …) and scopes",
-  usage: "skl agents [name] [--json]",
+  usage: "skl agents [name] [--agent <id>] [--project <dir>] [--json]",
 } as const;
 
 const GLYPH: Record<DeployState, string> = {
@@ -28,12 +28,19 @@ const GLYPH: Record<DeployState, string> = {
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
-    const json = argv.includes("--json");
-    const name = argv.find((a) => !a.startsWith("--")) ?? null;
+    const rt = resolveReadTarget(argv);
+    if ("error" in rt) {
+      ctx.error(`skl agents: ${rt.error}`);
+      ctx.error("usage: " + meta.usage);
+      return 1;
+    }
+    const json = rt.rest.includes("--json");
+    const name = rt.rest.find((a) => !a.startsWith("--")) ?? null;
 
     const lib = await ctx.loadLibrary();
-    // Same surface union as `skl where` so the agent matrix sees the same reality.
-    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths()];
+    // Same surface union as `skl where` (+ any --project surfaces for this call) so
+    // the agent matrix sees the same reality and can verify an ad-hoc project deploy.
+    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths(), ...rt.extraSurfaces];
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
     const agentsReport = computeAgentsReport(report);
 

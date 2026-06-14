@@ -137,6 +137,8 @@ function stateForSite(site: DeploymentSite): DeployStateName {
       return "copy";
     case "foreign-link":
       return "copy";
+    case "aliased":
+      return "drift";
     case "dead":
       return "dead";
     default:
