@@ -80,16 +80,28 @@ family).
    spread across its on-disk entry (`<library>/<name>` or `_retired/<name>`), the central
    `taxonomy.json`, and `shelf.lock.json`. Every removal/rename moves or drops all of
    them together and re-generates `INDEX.md`, because a hand-done partial is exactly what
-   an agent botches. This lives in `core/lifecycle.ts`.
+   an agent botches. This lives in `core/lifecycle.ts`. `rename` wraps the
+   frontmatter + taxonomy + lock re-keying so a thrown write **rolls the dir move back** —
+   all-or-nothing for the realistic IO/permission failure, rather than a half-renamed
+   skill with stranded tags.
 
 3. **Determinism over guessing — preserve "the tool never chooses for you."** `where
    --fix` auto-applies *only* deterministic, non-destructive remediations: remove a dead
-   link, dedupe a content-**identical** copy to a symlink. A drifted copy, a 2nd-source
-   (foreign link), or an untracked copy carries a real which-wins decision and stays
-   `manual` — reported with its suggested command, never auto-resolved. `retag` renames a
-   domain across the taxonomy but does not touch a frontmatter-declared domain (honest
-   `changed: []`). `rename` rekeys library metadata but never edits a LINKED dev repo's
-   `SKILL.md`.
+   link, dedupe a content-**identical** copy to a symlink. "Identical" means both the body
+   **and** the load-bearing frontmatter `description` match — a copy whose body matches but
+   whose description was customized is drift, not dedupe-able (replacing it would silently
+   discard the override). A drifted copy, a 2nd-source (foreign link), or an untracked copy
+   carries a real which-wins decision and stays `manual` — reported with its suggested
+   command, never auto-resolved. `retag` renames a domain across the taxonomy but does not
+   touch a frontmatter-declared domain (honest `changed: []`). `rename` rekeys library
+   metadata but never edits a LINKED dev repo's `SKILL.md`.
+
+4. **Name-keyed mutations are bounded to the library.** `rm`/`retire`/`unretire`/`rename`
+   take a `<name>` that becomes `join(libraryPath, name)` and then `rm`/`rename`. A single
+   choke point (`assertSafeName` in `locateEntry`) rejects a name with a path separator,
+   `..`, or NUL, so a crafted or agent-supplied name cannot escape the library to delete or
+   move something outside it — important precisely because these verbs are designed to be
+   driven by agents passing computed names.
 
 ## Consequences
 
@@ -108,6 +120,10 @@ family).
 - `where --fix` is powerful: it can mutate every scanned agent surface, so it is
   deterministic-only and `--dry-run`-previewable by design — but operators must still
   aim it deliberately.
+- `rename`'s dir-rollback covers a *thrown* write (IO/permission); a hard crash (power
+  loss) between the frontmatter rewrite and the taxonomy re-key can still strand tags
+  (name derives from frontmatter, tags key off the taxonomy). Truly atomic multi-file
+  re-keying would need a tolerant loader or a 2-phase write — deferred.
 - `rename` does not repoint external deploy symlinks (they go stale); `refresh` /
   re-`use` is the follow-up. A full transitive repoint is deferred.
 - Taxonomy verbs own `taxonomy.json` only; a domain declared in upstream frontmatter is
