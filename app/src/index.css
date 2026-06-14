@@ -1,0 +1,237 @@
+@import "tailwindcss";
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Design tokens — ported verbatim from Workbench.dc.html <style> (ADR-0008 §2).
+   Encoded as Tailwind v4 @theme CSS variables so utilities + components read the
+   same token set. Status hues + 12 domain hues live here as the single source.
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* surfaces */
+  --color-page: #fafafa;
+  --color-panel: #ffffff;
+  --color-border: #e7e7e9;
+  --color-border-subtle: #efeff1;
+  --color-border-faint: #f3f3f4;
+
+  /* text */
+  --color-ink: #18181b;
+  --color-sub: #71717a;
+  --color-faint: #9a9aa2;
+  --color-absent: #c7c7cc;
+
+  /* status */
+  --color-green: #15a34a;
+  --color-amber: #d97706;
+  --color-blue: #2563eb;
+  --color-red: #dc2626;
+  --color-gray: #8a8a92;
+
+  /* 12 domain hues */
+  --color-domain-green-card: #2563eb;
+  --color-domain-content: #0891b2;
+  --color-domain-business: #d97706;
+  --color-domain-sci-writing: #dc2626;
+  --color-domain-docs: #7c3aed;
+  --color-domain-meta: #15a34a;
+  --color-domain-philosophy: #db2777;
+  --color-domain-ops: #71717a;
+  --color-domain-bioinfo: #0d9488;
+  --color-domain-browser: #65a30d;
+  --color-domain-media: #9333ea;
+  --color-domain-_unclassified: #c7c7cc;
+
+  /* fonts */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* keyframes (mockup) */
+  --animate-livepulse: livepulse 2.2s ease-in-out infinite;
+  --animate-drawer-in: drawerIn 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
+  --animate-scrim-in: scrimIn 0.15s ease;
+  --animate-toast-in: toastIn 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes livepulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes drawerIn {
+  from {
+    transform: translateX(28px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes scrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes toastIn {
+  from {
+    transform: translate(-50%, 12px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: #fafafa;
+  color: #18181b;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  height: 100%;
+}
+
+/* scrollbars (mockup) */
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: #e0e0e4;
+  border-radius: 8px;
+  border: 3px solid #fafafa;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #cfcfd4;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* ── Rendered markdown (mockup .md-body) ─────────────────────────────────── */
+.md-body {
+  font-size: 13.5px;
+  line-height: 1.66;
+  color: #27272a;
+}
+.md-body h1 {
+  font-size: 21px;
+  font-weight: 680;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+.md-body h2 {
+  font-size: 16.5px;
+  font-weight: 650;
+  margin: 24px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #efeff1;
+}
+.md-body h3 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 18px 0 7px;
+}
+.md-body h4 {
+  font-size: 12.5px;
+  font-weight: 650;
+  margin: 14px 0 6px;
+  color: #3f3f46;
+}
+.md-body p {
+  margin: 0 0 12px;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.md-body li {
+  margin: 3px 0;
+}
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: #f4f4f5;
+  padding: 1.5px 5px;
+  border-radius: 5px;
+  color: #b4334e;
+}
+.md-body pre {
+  background: #fafafa;
+  border: 1px solid #efeff1;
+  border-radius: 9px;
+  padding: 12px 14px;
+  overflow: auto;
+  margin: 0 0 14px;
+}
+.md-body pre code {
+  background: none;
+  padding: 0;
+  color: #3f3f46;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.md-body blockquote {
+  margin: 0 0 12px;
+  padding: 6px 14px;
+  border-left: 3px solid #e4e4e7;
+  color: #71717a;
+  background: #fbfbfc;
+  border-radius: 0 8px 8px 0;
+}
+.md-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 14px;
+  font-size: 12.5px;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid #eaeaec;
+  padding: 6px 10px;
+  text-align: left;
+}
+.md-body th {
+  background: #fafafa;
+  font-weight: 600;
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid #eaeaec;
+  margin: 18px 0;
+}
+.md-body a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.md-body strong {
+  font-weight: 650;
+  color: #18181b;
+}

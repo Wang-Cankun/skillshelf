@@ -21,6 +21,10 @@ const ALLOWED_VERBS: &[&str] = &[
     "tag", "untag", "retag", "rename", "retire", "unretire", "rm",
     "use", "drop", "link", "roots", "outdated", "update", "refresh",
     "infer", "index", "new", "init",
+    // ADR-0008: multi-agent + drawer feeds. `agents`/`show` back the new
+    // `--json` loaders; `diff` backs a future near-dup affordance (deferred in
+    // the UI but kept allow-listed so it never fails silently at the bridge).
+    "agents", "diff",
 ];
 
 /// Resolve an absolute path to the `skl` binary, cached for the process
@@ -138,6 +142,7 @@ fn run_skl(args: Vec<String>) -> Result<SklResult, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![run_skl])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

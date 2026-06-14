@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "entries": {
+    "dbs-hook": {
+      "name": "dbs-hook",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-hook",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:35:28.929Z",
+      "localEdits": false,
+      "installedHash": "5160a84fb0b42bf917fa92557ad7de5b65072f97d89c6d0e5e09cc4c6da9587c"
+    },
+    "dbs-action": {
+      "name": "dbs-action",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-action",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:12.275Z",
+      "localEdits": false,
+      "installedHash": "66cc3600526e7b34aa99f7f034f5ab9c9561e500c13be191c5f392aa15561f38"
+    },
+    "dbs-agent-migration": {
+      "name": "dbs-agent-migration",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-agent-migration",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:13.039Z",
+      "localEdits": false,
+      "installedHash": "aa944fe59cc52126cf5ad99ebf8c74544369a91cc2708f62b0f72ada0453ac02"
+    },
+    "dbs-ai-check": {
+      "name": "dbs-ai-check",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-ai-check",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:13.784Z",
+      "localEdits": false,
+      "installedHash": "76554581c2d2b335580120f6a02ce66168239e6bfb3bf4b192012aa9bb14b1ac"
+    },
+    "dbs-benchmark": {
+      "name": "dbs-benchmark",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-benchmark",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:14.581Z",
+      "localEdits": false,
+      "installedHash": "3c85e5a95e6346cedd4ed25df3073e6ebe8ac7271240a8ecd4daa095e466c0c5"
+    },
+    "dbs-chatroom-austrian": {
+      "name": "dbs-chatroom-austrian",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-chatroom-austrian",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:15.350Z",
+      "localEdits": false,
+      "installedHash": "4a5f6bb1d7b5fc6bf88bceab809e3f490e2da3fecdb7c1b9bc6990d5ec19fd09"
+    },
+    "dbs-chatroom": {
+      "name": "dbs-chatroom",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-chatroom",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:17.230Z",
+      "localEdits": false,
+      "installedHash": "cf7efe8883c77ac9073938f90ec0c7920b7a880f71cbf77134ab5821a51ba6d1"
+    },
+    "dbs-content-system": {
+      "name": "dbs-content-system",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-content-system",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:18.151Z",
+      "localEdits": false,
+      "installedHash": "444ddf375ad3fb38000b87140c7aadd3fc11da87614756c8d30f66977cfa88f7"
+    },
+    "dbs-content": {
+      "name": "dbs-content",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-content",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:18.943Z",
+      "localEdits": false,
+      "installedHash": "7bbf1f62b20d6fc4505cd2e1695f7eae1bf542469af2e6e71298852226b5972a"
+    },
+    "dbs-decision": {
+      "name": "dbs-decision",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-decision",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:19.704Z",
+      "localEdits": false,
+      "installedHash": "b3f1834e64c5e9295a11656598d7b44ae33c541e7b4b529e5116e094937dfb45"
+    },
+    "dbs-deconstruct": {
+      "name": "dbs-deconstruct",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-deconstruct",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:20.654Z",
+      "localEdits": false,
+      "installedHash": "7313bef7b148f0f8d06eced7f8296e2b45a7d6fcd2357e0729141da876c2442d"
+    },
+    "dbs-diagnosis": {
+      "name": "dbs-diagnosis",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-diagnosis",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:21.432Z",
+      "localEdits": false,
+      "installedHash": "1d683975123766067657b348a2ea16b7572412d030e3f47445a46a45e4f9c568"
+    },
+    "dbs-goal": {
+      "name": "dbs-goal",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-goal",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:22.217Z",
+      "localEdits": false,
+      "installedHash": "682fb63c475717bd154024337f068111266202956d543b18d76272c801ca5412"
+    },
+    "dbs-good-question": {
+      "name": "dbs-good-question",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-good-question",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:22.967Z",
+      "localEdits": false,
+      "installedHash": "4a0b482909509ee5366a4a7ea205a4313b24213af1140c4ad5ee13685bd8c6e9"
+    },
+    "dbs-learning": {
+      "name": "dbs-learning",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-learning",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:24.022Z",
+      "localEdits": false,
+      "installedHash": "0c5b86e44b7a5d2672ae0dbcddc1161cd64965a8060370e26d7845980e2e0b23"
+    },
+    "dbs-report": {
+      "name": "dbs-report",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-report",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:24.816Z",
+      "localEdits": false,
+      "installedHash": "4bed9740702f38dbbf2469ee28a06b9a3b9f9328c9a5aaea95c0bc9cf04e8349"
+    },
+    "dbs-restore": {
+      "name": "dbs-restore",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-restore",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:25.566Z",
+      "localEdits": false,
+      "installedHash": "8758213efdcc0caf24c3eaf5b5825d4abcdbcf12925d3a63dbac9df85e8726ce"
+    },
+    "dbs-save": {
+      "name": "dbs-save",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-save",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:26.446Z",
+      "localEdits": false,
+      "installedHash": "2051299142d3b36a3768a58e8d0008ad1e38b5a1795f0521f9fbfe0642a0102e"
+    },
+    "dbs-slowisfast": {
+      "name": "dbs-slowisfast",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-slowisfast",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:27.320Z",
+      "localEdits": false,
+      "installedHash": "5ff94278b1e7090fc6996851d166c12b1555c22ea02d388fb0c6e262c6d3f145"
+    },
+    "dbs-xhs-title": {
+      "name": "dbs-xhs-title",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs-xhs-title",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:28.107Z",
+      "localEdits": false,
+      "installedHash": "6e6bd506bc93005b8c1552873312acf37e136bd43c1c7cbc43fecc82052848a3"
+    },
+    "dbs": {
+      "name": "dbs",
+      "source": "github:dontbesilent2025/dbskill@skills/dbs",
+      "ref": "a58f647ccdc74bbf6b3f5bf5f29b7a4b842d6534",
+      "channel": "github",
+      "installedAt": "2026-06-14T02:41:28.875Z",
+      "localEdits": false,
+      "installedHash": "df1a5bfacf2902d2eee400991fd89b903783d909a15f4d5dd849ab311492aba8"
+    }
+  }
+}
