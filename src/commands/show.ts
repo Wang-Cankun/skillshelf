@@ -10,7 +10,7 @@
 
 import { join, resolve, sep } from "node:path";
 import { readdir } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, realpathSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import type { Ctx, Skill } from "../types.ts";
 import { findByName, entryModeInfo } from "../core/library.ts";
@@ -81,11 +81,24 @@ async function walkRefFiles(
 function resolveBundledFile(skillDir: string, rel: string): string | null {
   const root = resolve(skillDir);
   const abs = resolve(root, rel);
-  if (abs !== root && !abs.startsWith(root + sep)) return null; // escape attempt
+  if (abs !== root && !abs.startsWith(root + sep)) return null; // lexical escape
   if (!existsSync(abs)) return null;
   const st = statSync(abs);
   if (!st.isFile()) return null;
   if (st.size > MAX_FILE_BYTES) return null;
+  // Symlink guard: a bundled file can be a symlink (third-party skills are
+  // untrusted) and the lexical check above is fooled by it (`statSync` follows
+  // links). Re-check the REAL paths — realpath BOTH, since the skill dir itself
+  // can sit under a symlinked component (e.g. macOS /var -> /private/var).
+  let realRoot: string;
+  let realAbs: string;
+  try {
+    realRoot = realpathSync(root);
+    realAbs = realpathSync(abs);
+  } catch {
+    return null;
+  }
+  if (realAbs !== realRoot && !realAbs.startsWith(realRoot + sep)) return null;
   return abs;
 }
 

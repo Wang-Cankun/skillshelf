@@ -3,7 +3,8 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { existsSync, symlinkSync, writeFileSync, mkdtempSync } from "node:fs";
 import { lstat, readlink } from "node:fs/promises";
 import * as show from "../src/commands/show.ts";
 import * as search from "../src/commands/search.ts";
@@ -76,6 +77,21 @@ describe("skl show", () => {
     const r = await runCmd(show, ["rnaseq-qc", "--file", "../../../etc/passwd"]);
     expect(r.code).toBe(1);
     expect(r.err).toContain("No readable file");
+  });
+
+  test("--file refuses a symlink that escapes the skill dir", async () => {
+    const tmp = await tempLibrary();
+    cleanups.push(tmp.cleanup);
+    // a secret outside the library, and a symlink to it inside a skill dir
+    const outside = join(mkdtempSync(join(tmpdir(), "skl-outside-")), "secret.md");
+    writeFileSync(outside, "TOP SECRET");
+    symlinkSync(outside, join(tmp.path, "rnaseq-qc", "leak.md"));
+    const r = await runCmd(show, ["rnaseq-qc", "--file", "leak.md"], {
+      library: tmp.path,
+    });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("No readable file");
+    expect(r.out).not.toContain("TOP SECRET"); // contents never dumped
   });
 });
 
