@@ -131,15 +131,17 @@ describe("skl ls", () => {
   test("--json emits origin + channel (the UI click-through gate contract)", async () => {
     const r = await runCmd(ls, ["--json"]);
     const rows = r.json[0] as any[];
-    // vendored github skill → real owner/repo origin + channel "github"
-    const vendored = rows.find((s) => s.name === "xhs-title");
-    expect(vendored.source).toBe("vendored");
-    expect(vendored.channel).toBe("github");
+    // a vendored github skill → real owner/repo origin + channel "github"
+    // (matched by SHAPE, not a fixture name, so fixture renames don't break it)
+    const vendored = rows.find(
+      (s) => s.source === "vendored" && s.channel === "github",
+    );
+    expect(vendored).toBeDefined();
     expect(vendored.origin).toMatch(/^[^/]+\/[^/]+$/); // owner/repo, no channel prefix, no @subpath
     expect(vendored.origin).not.toContain("@");
-    // local (hand-written) skill → no upstream → null origin/channel (no link)
-    const local = rows.find((s) => s.name === "rnaseq-qc");
-    expect(local.source).toBe("local");
+    // a local (hand-written) skill → no upstream → null origin/channel (no link)
+    const local = rows.find((s) => s.source === "local");
+    expect(local).toBeDefined();
     expect(local.origin).toBeNull();
     expect(local.channel).toBeNull();
   });
