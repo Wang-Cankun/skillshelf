@@ -13,7 +13,9 @@ import { useShow, useLibrary, useAgents } from "../state/queries";
 import { useCommands } from "../state/commands";
 import { effState } from "../lib/agents";
 import { stripFrontmatter } from "../lib/derive";
+import { allDomains } from "../lib/select";
 import { openInEditor, revealInFinder } from "../lib/shell";
+import { DomainMenu } from "./DomainMenu";
 import { DEPLOY_GLYPH, MONO } from "../lib/tokens";
 import type { AgentsReport, RefFile } from "../lib/types";
 import type { DrawerTab } from "../state/store";
@@ -42,7 +44,8 @@ export function DetailDrawer() {
   }, [dispatch]);
 
   const show = useShow(name, state.drawerFile).data;
-  const skill = useLibrary().data?.find((s) => s.name === name);
+  const library = useLibrary().data ?? [];
+  const skill = library.find((s) => s.name === name);
   const agentsReport = useAgents().data ?? EMPTY_AGENTS;
   const commands = useCommands();
 
@@ -319,12 +322,28 @@ export function DetailDrawer() {
               ))}
               <span style={{ flex: 1 }} />
               <button
+                disabled={!show?.body}
                 onClick={() => {
-                  try {
-                    void navigator.clipboard.writeText(show?.body ?? "");
-                  } catch {
-                    /* clipboard unavailable */
-                  }
+                  const body = show?.body ?? "";
+                  if (!body) return;
+                  // writeText rejects ASYNCHRONOUSLY (insecure ctx / denied), so
+                  // a sync try/catch never fires — handle the promise + surface.
+                  navigator.clipboard.writeText(body).then(
+                    () =>
+                      dispatch({
+                        type: "showToast",
+                        toast: {
+                          msg: `Copied ${state.drawerFile}`,
+                          cmd: `${state.drawerFile} → clipboard`,
+                          undo: null,
+                        },
+                      }),
+                    (err) =>
+                      dispatch({
+                        type: "setError",
+                        error: `copy failed: ${String(err)}`,
+                      }),
+                  );
                 }}
                 style={{
                   background: "#FFFFFF",
@@ -333,7 +352,8 @@ export function DetailDrawer() {
                   borderRadius: 6,
                   padding: "4px 10px",
                   fontSize: 11.5,
-                  cursor: "pointer",
+                  cursor: show?.body ? "pointer" : "default",
+                  opacity: show?.body ? 1 : 0.5,
                   marginRight: 2,
                 }}
               >
@@ -751,17 +771,12 @@ export function DetailDrawer() {
                     {d} ✕
                   </button>
                 ))}
-                <span
-                  style={{
-                    border: "1px dashed #D4D4D8",
-                    color: "#9A9AA2",
-                    borderRadius: 6,
-                    padding: "2px 8px",
-                    fontSize: 11.5,
-                  }}
-                >
-                  + add
-                </span>
+                <DomainMenu
+                  domains={allDomains(library)}
+                  exclude={domains}
+                  onPick={(d) => commands.tag([name], d)}
+                  variant="add-chip"
+                />
               </div>
             </div>
 

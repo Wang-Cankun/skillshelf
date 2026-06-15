@@ -8,12 +8,12 @@ import { useLibrary, useWhere, useScan, useStatus } from "./state/queries";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { MainPane } from "./components/MainPane";
-import { Inspector } from "./components/Inspector";
 import { HealthStrip } from "./components/HealthStrip";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { Toast } from "./components/Toast";
 import { RemoveModal } from "./components/RemoveModal";
 import { DetailDrawer } from "./components/DetailDrawer";
+import { BulkBar } from "./components/BulkBar";
 import { C } from "./lib/tokens";
 
 export default function App() {
@@ -47,6 +47,7 @@ export default function App() {
           style={{
             flex: 1,
             minWidth: 0,
+            minHeight: 0,
             display: "flex",
             flexDirection: "column",
             background: C.page,
@@ -92,7 +93,6 @@ export default function App() {
             <MainPane />
           )}
         </div>
-        <Inspector />
       </div>
       <HealthStrip />
 
@@ -100,6 +100,7 @@ export default function App() {
       <Toast />
       <RemoveModal />
       <DetailDrawer />
+      <BulkBar />
     </div>
   );
 }

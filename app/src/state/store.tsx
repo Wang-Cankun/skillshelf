@@ -1,6 +1,6 @@
 // UI + optimistic state for the Workbench (ADR-0008). A useReducer + context
 // (the deferred-Zustand decision in §0): view/filter/sort/group/selection/
-// matrix-mode/scope live here, as do the OPTIMISTIC overrides (deploy toggles,
+// matrix-mode/matrix-agent live here, as do the OPTIMISTIC overrides (deploy toggles,
 // retired, removed tags, hard-removed) that the command layer applies before a
 // real `skl` verb confirms — and rolls back on error. Server truth itself lives
 // in TanStack Query (queries.ts); selectors merge the two.
@@ -42,7 +42,9 @@ export interface State {
   group: GroupMode;
   selected: Record<string, boolean>;
   matrixMode: MatrixMode;
-  scope: string;
+  /** Deployment-grid agent (columns = locations). The agent axis is the sparse
+   *  one for most users, so it's a picker (default claude), not the columns. */
+  matrixAgent: string;
   dryRun: boolean;
 
   // optimistic overrides (rolled back on mutation error)
@@ -72,7 +74,7 @@ export const initialState: State = {
   group: "list",
   selected: {},
   matrixMode: "domain",
-  scope: "Global",
+  matrixAgent: "claude",
   dryRun: false,
   deployOverrides: {},
   retired: {},
@@ -95,9 +97,10 @@ export type Action =
   | { type: "toggleSortDir" }
   | { type: "setGroup"; group: GroupMode }
   | { type: "toggleSelect"; name: string }
+  | { type: "setSelectedMany"; names: string[]; value: boolean }
   | { type: "clearSelection" }
   | { type: "setMatrixMode"; mode: MatrixMode }
-  | { type: "setScope"; scope: string }
+  | { type: "setMatrixAgent"; agent: string }
   | { type: "toggleDryRun" }
   | { type: "setDeployOverride"; key: string; value: "on" | "off" }
   | { type: "clearDeployOverride"; key: string }
@@ -152,12 +155,20 @@ export function reducer(state: State, action: Action): State {
           !state.selected[action.name],
         ),
       };
+    case "setSelectedMany": {
+      const selected = { ...state.selected };
+      for (const n of action.names) {
+        if (action.value) selected[n] = true;
+        else delete selected[n];
+      }
+      return { ...state, selected };
+    }
     case "clearSelection":
       return { ...state, selected: {} };
     case "setMatrixMode":
       return { ...state, matrixMode: action.mode };
-    case "setScope":
-      return { ...state, scope: action.scope };
+    case "setMatrixAgent":
+      return { ...state, matrixAgent: action.agent };
     case "toggleDryRun":
       return { ...state, dryRun: !state.dryRun };
     case "setDeployOverride":

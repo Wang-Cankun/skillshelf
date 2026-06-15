@@ -19,7 +19,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/cairn",
     "retired": false,
     "mode": "linked",
-    "linkTarget": "/Users/wang.13246/Documents/GitHub/cairn/skill/cairn"
+    "linkTarget": "/Users/wang.13246/Documents/GitHub/cairn/skill/cairn",
+    "source": "local",
+    "modifiedAt": "2026-06-11T03:18:35.961Z",
+    "createdAt": "2026-06-11T03:18:35.961Z",
+    "deployCount": 1
   },
   {
     "name": "geo-submission",
@@ -31,7 +35,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/geo-submission",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-21T14:51:06.238Z",
+    "createdAt": "2026-05-21T14:51:06.234Z",
+    "deployCount": 0
   },
   {
     "name": "h5ad-perf-diagnosis",
@@ -43,7 +51,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/h5ad-perf-diagnosis",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-15T08:05:05.925Z",
+    "createdAt": "2026-05-15T08:05:05.919Z",
+    "deployCount": 0
   },
   {
     "name": "init-targets-project",
@@ -55,7 +67,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/init-targets-project",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-02-09T07:10:06.612Z",
+    "createdAt": "2026-02-09T07:10:06.612Z",
+    "deployCount": 0
   },
   {
     "name": "agent-browser",
@@ -67,7 +83,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/agent-browser",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-18T14:49:26.628Z",
+    "createdAt": "2026-01-18T14:49:26.628Z",
+    "deployCount": 0
   },
   {
     "name": "agent-reach",
@@ -80,7 +100,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/agent-reach",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T05:32:23.808Z",
+    "createdAt": "2026-06-13T05:32:23.808Z",
+    "deployCount": 1
   },
   {
     "name": "bb-browser",
@@ -92,7 +116,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/bb-browser",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-04-03T02:33:57.872Z",
+    "createdAt": "2026-04-03T02:33:57.872Z",
+    "deployCount": 0
   },
   {
     "name": "playwriter-mcp",
@@ -104,7 +132,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/playwriter-mcp",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-15T09:17:26.032Z",
+    "createdAt": "2026-01-15T09:17:26.032Z",
+    "deployCount": 0
   },
   {
     "name": "dbs",
@@ -116,7 +148,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:28.874Z",
+    "createdAt": "2026-06-14T02:41:28.874Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-action",
@@ -129,7 +165,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-action",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:12.275Z",
+    "createdAt": "2026-06-14T02:41:12.275Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-benchmark",
@@ -141,7 +181,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-benchmark",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:14.581Z",
+    "createdAt": "2026-06-14T02:41:14.581Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-chatroom",
@@ -154,7 +198,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-chatroom",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:17.230Z",
+    "createdAt": "2026-06-14T02:41:17.230Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-decision",
@@ -166,7 +214,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-decision",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:19.704Z",
+    "createdAt": "2026-06-14T02:41:19.704Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-diagnosis",
@@ -178,7 +230,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-diagnosis",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:21.432Z",
+    "createdAt": "2026-06-14T02:41:21.432Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-goal",
@@ -191,7 +247,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-goal",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:22.217Z",
+    "createdAt": "2026-06-14T02:41:22.216Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-good-question",
@@ -204,7 +264,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-good-question",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:22.966Z",
+    "createdAt": "2026-06-14T02:41:22.966Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-learning",
@@ -217,7 +281,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-learning",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:24.021Z",
+    "createdAt": "2026-06-14T02:41:24.021Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-report",
@@ -229,7 +297,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-report",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:24.816Z",
+    "createdAt": "2026-06-14T02:41:24.816Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-restore",
@@ -241,7 +313,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-restore",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:25.566Z",
+    "createdAt": "2026-06-14T02:41:25.566Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-save",
@@ -253,7 +329,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-save",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:26.445Z",
+    "createdAt": "2026-06-14T02:41:26.445Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-slowisfast",
@@ -265,7 +345,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-slowisfast",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:27.320Z",
+    "createdAt": "2026-06-14T02:41:27.320Z",
+    "deployCount": 0
   },
   {
     "name": "cognitive-hijack",
@@ -278,7 +362,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/cognitive-hijack",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.658Z",
+    "createdAt": "2026-05-22T17:34:49.658Z",
+    "deployCount": 2
   },
   {
     "name": "dbs-ai-check",
@@ -291,7 +379,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-ai-check",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:13.784Z",
+    "createdAt": "2026-06-14T02:41:13.784Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-content",
@@ -304,7 +396,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-content",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:18.943Z",
+    "createdAt": "2026-06-14T02:41:18.943Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-content-system",
@@ -317,7 +413,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-content-system",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:18.145Z",
+    "createdAt": "2026-06-14T02:41:18.145Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-hook",
@@ -330,7 +430,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-hook",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:35:28.929Z",
+    "createdAt": "2026-06-14T02:35:28.929Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-xhs-title",
@@ -343,7 +447,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-xhs-title",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:28.106Z",
+    "createdAt": "2026-06-14T02:41:28.106Z",
+    "deployCount": 1
   },
   {
     "name": "editorial-card-screenshot",
@@ -355,7 +463,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/editorial-card-screenshot",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.647Z",
+    "createdAt": "2026-05-22T17:34:49.647Z",
+    "deployCount": 0
   },
   {
     "name": "gpt-image",
@@ -368,7 +480,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/gpt-image",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-13T09:37:49.895Z",
+    "createdAt": "2026-05-13T09:37:49.895Z",
+    "deployCount": 0
   },
   {
     "name": "ob-deep-write",
@@ -381,7 +497,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/ob-deep-write",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.659Z",
+    "createdAt": "2026-05-22T17:34:49.659Z",
+    "deployCount": 2
   },
   {
     "name": "rednote-case-share",
@@ -394,7 +514,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/rednote-case-share",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.640Z",
+    "createdAt": "2026-05-22T17:34:49.639Z",
+    "deployCount": 2
   },
   {
     "name": "rednote-format",
@@ -406,7 +530,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/rednote-format",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.626Z",
+    "createdAt": "2026-05-22T17:34:49.626Z",
+    "deployCount": 2
   },
   {
     "name": "rednote-title",
@@ -418,7 +546,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/rednote-title",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.932Z",
+    "createdAt": "2026-05-22T17:34:47.932Z",
+    "deployCount": 2
   },
   {
     "name": "social-writing",
@@ -430,7 +562,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/social-writing",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.666Z",
+    "createdAt": "2026-05-22T17:34:49.666Z",
+    "deployCount": 2
   },
   {
     "name": "web-video-presentation",
@@ -442,7 +578,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/web-video-presentation",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-11T21:53:07.689Z",
+    "createdAt": "2026-06-11T21:53:07.683Z",
+    "deployCount": 0
   },
   {
     "name": "x-article-figure",
@@ -454,7 +594,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/x-article-figure",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.665Z",
+    "createdAt": "2026-05-22T17:34:49.665Z",
+    "deployCount": 2
   },
   {
     "name": "x-article-publisher",
@@ -466,7 +610,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/x-article-publisher",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.664Z",
+    "createdAt": "2026-05-22T17:34:49.664Z",
+    "deployCount": 2
   },
   {
     "name": "doc-coauthoring",
@@ -479,7 +627,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/doc-coauthoring",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T02:22:46.473Z",
+    "createdAt": "2026-06-13T02:22:46.473Z",
+    "deployCount": 1
   },
   {
     "name": "docx",
@@ -491,7 +643,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/docx",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-11T00:14:25.027Z",
+    "createdAt": "2026-01-11T00:14:25.027Z",
+    "deployCount": 1
   },
   {
     "name": "kami",
@@ -503,7 +659,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/kami",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-04-20T20:53:23.552Z",
+    "createdAt": "2026-04-20T20:53:23.181Z",
+    "deployCount": 0
   },
   {
     "name": "markitdown",
@@ -515,7 +675,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/markitdown",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-11T00:14:25.040Z",
+    "createdAt": "2026-01-11T00:14:25.039Z",
+    "deployCount": 0
   },
   {
     "name": "md-to-html",
@@ -527,7 +691,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/md-to-html",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-29T07:22:30.790Z",
+    "createdAt": "2026-01-29T07:22:30.790Z",
+    "deployCount": 0
   },
   {
     "name": "obsidian-bases",
@@ -539,7 +707,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/obsidian-bases",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.629Z",
+    "createdAt": "2026-05-22T17:34:49.629Z",
+    "deployCount": 2
   },
   {
     "name": "obsidian-markdown",
@@ -551,7 +723,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/obsidian-markdown",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.913Z",
+    "createdAt": "2026-05-22T17:34:47.913Z",
+    "deployCount": 2
   },
   {
     "name": "pdf",
@@ -563,7 +739,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/pdf",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-11T00:14:25.042Z",
+    "createdAt": "2026-01-11T00:14:25.041Z",
+    "deployCount": 1
   },
   {
     "name": "pptx",
@@ -575,7 +755,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/pptx",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-09T00:34:37.000Z",
+    "createdAt": "2026-05-09T00:34:37.000Z",
+    "deployCount": 0
   },
   {
     "name": "read",
@@ -587,7 +771,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/read",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-04-27T21:40:03.296Z",
+    "createdAt": "2026-04-27T21:40:02.805Z",
+    "deployCount": 1
   },
   {
     "name": "read-docx",
@@ -599,7 +787,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/read-docx",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T02:22:49.245Z",
+    "createdAt": "2026-06-13T02:22:49.245Z",
+    "deployCount": 1
   },
   {
     "name": "xlsx",
@@ -611,7 +803,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/xlsx",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-09T00:34:37.000Z",
+    "createdAt": "2026-05-09T00:34:37.000Z",
+    "deployCount": 0
   },
   {
     "name": "horizon",
@@ -623,7 +819,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.932Z",
+    "createdAt": "2026-05-22T17:34:47.932Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-aao",
@@ -635,7 +835,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-aao",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.914Z",
+    "createdAt": "2026-05-22T17:34:47.913Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-eb1a-awards",
@@ -647,7 +851,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-eb1a-awards",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.666Z",
+    "createdAt": "2026-05-22T17:34:49.666Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-eb1a-contributions",
@@ -659,7 +867,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-eb1a-contributions",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.877Z",
+    "createdAt": "2026-05-22T17:34:47.877Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-eb1a-final-merits",
@@ -671,7 +883,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-eb1a-final-merits",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.639Z",
+    "createdAt": "2026-05-22T17:34:49.639Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-eb1a-high-salary",
@@ -683,7 +899,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-eb1a-high-salary",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.668Z",
+    "createdAt": "2026-05-22T17:34:49.668Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-eb1a-judging",
@@ -695,7 +915,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-eb1a-judging",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.912Z",
+    "createdAt": "2026-05-22T17:34:47.911Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-eb1a-scholarly-articles",
@@ -707,7 +931,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-eb1a-scholarly-articles",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.931Z",
+    "createdAt": "2026-05-22T17:34:47.931Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-figure",
@@ -720,7 +948,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-figure",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.663Z",
+    "createdAt": "2026-05-22T17:34:49.663Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-intel",
@@ -733,7 +965,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-intel",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.628Z",
+    "createdAt": "2026-05-22T17:34:49.628Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-niw",
@@ -745,7 +981,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:02.857Z",
+    "createdAt": "2026-06-13T17:27:02.857Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-balancing",
@@ -757,7 +997,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-balancing",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:02.901Z",
+    "createdAt": "2026-06-13T17:27:02.901Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-cover-letter",
@@ -769,7 +1013,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-cover-letter",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:02.941Z",
+    "createdAt": "2026-06-13T17:27:02.940Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-evaluate",
@@ -781,7 +1029,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-evaluate",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:02.982Z",
+    "createdAt": "2026-06-13T17:27:02.982Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-field-projects",
@@ -793,7 +1045,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-field-projects",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.026Z",
+    "createdAt": "2026-06-13T17:27:03.026Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-national-importance",
@@ -805,7 +1061,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-national-importance",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.069Z",
+    "createdAt": "2026-06-13T17:27:03.069Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-peer-review",
@@ -817,7 +1077,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-peer-review",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.111Z",
+    "createdAt": "2026-06-13T17:27:03.111Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-proposed-endeavor",
@@ -829,7 +1093,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-proposed-endeavor",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.154Z",
+    "createdAt": "2026-06-13T17:27:03.153Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-publications",
@@ -841,7 +1109,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-publications",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.195Z",
+    "createdAt": "2026-06-13T17:27:03.195Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-qualifications",
@@ -853,7 +1125,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-qualifications",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.236Z",
+    "createdAt": "2026-06-13T17:27:03.235Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-recommendation-letter",
@@ -865,7 +1141,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-recommendation-letter",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.278Z",
+    "createdAt": "2026-06-13T17:27:03.278Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-review",
@@ -877,7 +1157,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-review",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.328Z",
+    "createdAt": "2026-06-13T17:27:03.327Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-rfe",
@@ -889,7 +1173,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-rfe",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.910Z",
+    "createdAt": "2026-05-22T17:34:47.910Z",
+    "deployCount": 2
   },
   {
     "name": "horizon-niw-style-guide",
@@ -901,7 +1189,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-style-guide",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.410Z",
+    "createdAt": "2026-06-13T17:27:03.410Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-niw-well-positioned",
@@ -913,7 +1205,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-niw-well-positioned",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T17:27:03.452Z",
+    "createdAt": "2026-06-13T17:27:03.452Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-whitepaper",
@@ -926,7 +1222,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-whitepaper",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.662Z",
+    "createdAt": "2026-05-22T17:34:49.662Z",
+    "deployCount": 2
   },
   {
     "name": "meeting-ai",
@@ -938,7 +1238,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/meeting-ai",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-11T00:26:49.124Z",
+    "createdAt": "2026-06-11T00:26:49.124Z",
+    "deployCount": 0
   },
   {
     "name": "transcribe",
@@ -950,7 +1254,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/transcribe",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-03-24T21:48:14.941Z",
+    "createdAt": "2026-03-24T21:48:14.940Z",
+    "deployCount": 1
   },
   {
     "name": "youtube-transcript",
@@ -962,7 +1270,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/youtube-transcript",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.667Z",
+    "createdAt": "2026-05-22T17:34:49.667Z",
+    "deployCount": 2
   },
   {
     "name": "cc-e2e-test",
@@ -974,7 +1286,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/cc-e2e-test",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-20T00:29:06.351Z",
+    "createdAt": "2026-01-20T00:29:06.351Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-agent-migration",
@@ -987,7 +1303,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-agent-migration",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:13.039Z",
+    "createdAt": "2026-06-14T02:41:13.039Z",
+    "deployCount": 0
   },
   {
     "name": "dbskill-upgrade",
@@ -1000,7 +1320,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbskill-upgrade",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.878Z",
+    "createdAt": "2026-05-22T17:34:47.878Z",
+    "deployCount": 1
   },
   {
     "name": "grill-me",
@@ -1013,7 +1337,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/grill-me",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-10T21:43:59.643Z",
+    "createdAt": "2026-05-10T21:39:52.064Z",
+    "deployCount": 1
   },
   {
     "name": "grill-with-docs",
@@ -1026,7 +1354,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/grill-with-docs",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-10T21:43:59.655Z",
+    "createdAt": "2026-05-10T21:39:52.056Z",
+    "deployCount": 1
   },
   {
     "name": "huashu-nuwa",
@@ -1039,7 +1371,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/huashu-nuwa",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.900Z",
+    "createdAt": "2026-05-22T17:34:47.900Z",
+    "deployCount": 0
   },
   {
     "name": "learn",
@@ -1052,7 +1388,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/learn",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-13T03:48:06.000Z",
+    "createdAt": "2026-05-13T03:48:06.000Z",
+    "deployCount": 1
   },
   {
     "name": "skill-creator",
@@ -1064,7 +1404,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/skill-creator",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-09T13:19:38.745Z",
+    "createdAt": "2026-05-09T13:19:21.560Z",
+    "deployCount": 1
   },
   {
     "name": "template-skill",
@@ -1076,7 +1420,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/template-skill",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T02:22:52.180Z",
+    "createdAt": "2026-06-13T02:22:52.180Z",
+    "deployCount": 0
   },
   {
     "name": "think",
@@ -1088,19 +1436,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/think",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
-  },
-  {
-    "name": "azure-cost-report",
-    "description": "Use when generating the monthly Azure cost + usage dashboard for the BMI subscription (or similar). Produces a single-page HTML report in docs/dashboards/azure-cost-{month}-{year}.html. Triggers on \"generate cost report\", \"make the month dashboard\", \"/azure-cost-report\", or a month argument.",
-    "primaryDomain": "ops",
-    "domains": [
-      "ops"
-    ],
-    "path": "/Users/wang.13246/.skillshelf/library/azure-cost-report",
-    "retired": false,
-    "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-13T03:48:06.000Z",
+    "createdAt": "2026-05-13T03:48:06.000Z",
+    "deployCount": 1
   },
   {
     "name": "backup-dotfiles",
@@ -1112,7 +1452,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/backup-dotfiles",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-03T19:24:01.092Z",
+    "createdAt": "2026-06-03T19:24:01.091Z",
+    "deployCount": 1
   },
   {
     "name": "diary",
@@ -1124,7 +1468,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/diary",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:49.662Z",
+    "createdAt": "2026-05-22T17:34:49.662Z",
+    "deployCount": 2
   },
   {
     "name": "optimizing-cloud-costs",
@@ -1136,7 +1484,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/optimizing-cloud-costs",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-04-11T23:32:48.364Z",
+    "createdAt": "2026-04-11T23:32:48.363Z",
+    "deployCount": 1
   },
   {
     "name": "translate-invoice",
@@ -1149,7 +1501,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/translate-invoice",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.878Z",
+    "createdAt": "2026-05-22T17:34:47.877Z",
+    "deployCount": 2
   },
   {
     "name": "behavior",
@@ -1161,7 +1517,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/behavior",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.876Z",
+    "createdAt": "2026-05-22T17:34:47.875Z",
+    "deployCount": 2
   },
   {
     "name": "chatroom-austrian",
@@ -1173,7 +1533,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/chatroom-austrian",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.910Z",
+    "createdAt": "2026-05-22T17:34:47.910Z",
+    "deployCount": 1
   },
   {
     "name": "dbs-chatroom-austrian",
@@ -1185,7 +1549,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-chatroom-austrian",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:15.350Z",
+    "createdAt": "2026-06-14T02:41:15.349Z",
+    "deployCount": 0
   },
   {
     "name": "dbs-deconstruct",
@@ -1198,7 +1566,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/dbs-deconstruct",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "vendored",
+    "modifiedAt": "2026-06-14T02:41:20.653Z",
+    "createdAt": "2026-06-14T02:41:20.653Z",
+    "deployCount": 1
   },
   {
     "name": "polanyi",
@@ -1210,7 +1582,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/polanyi",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.919Z",
+    "createdAt": "2026-05-22T17:34:47.919Z",
+    "deployCount": 2
   },
   {
     "name": "thinking-tools",
@@ -1223,7 +1599,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/thinking-tools",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-22T17:34:47.931Z",
+    "createdAt": "2026-05-22T17:34:47.931Z",
+    "deployCount": 2
   },
   {
     "name": "academic-writing",
@@ -1235,7 +1615,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/academic-writing",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-06-13T02:22:44.831Z",
+    "createdAt": "2026-06-13T02:22:44.831Z",
+    "deployCount": 1
   },
   {
     "name": "nature-academic-search",
@@ -1248,7 +1632,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-academic-search",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.831Z",
+    "createdAt": "2026-05-19T12:10:40.831Z",
+    "deployCount": 1
   },
   {
     "name": "nature-citation",
@@ -1260,7 +1648,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-citation",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.834Z",
+    "createdAt": "2026-05-19T12:10:40.834Z",
+    "deployCount": 1
   },
   {
     "name": "nature-data",
@@ -1273,7 +1665,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-data",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.835Z",
+    "createdAt": "2026-05-19T12:10:40.835Z",
+    "deployCount": 1
   },
   {
     "name": "nature-figure",
@@ -1285,7 +1681,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-figure",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.836Z",
+    "createdAt": "2026-05-19T12:10:40.836Z",
+    "deployCount": 1
   },
   {
     "name": "nature-paper2ppt",
@@ -1298,7 +1698,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-paper2ppt",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.913Z",
+    "createdAt": "2026-05-19T12:10:40.913Z",
+    "deployCount": 1
   },
   {
     "name": "nature-polishing",
@@ -1310,7 +1714,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-polishing",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.913Z",
+    "createdAt": "2026-05-19T12:10:40.913Z",
+    "deployCount": 1
   },
   {
     "name": "nature-reader",
@@ -1322,7 +1730,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-reader",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.914Z",
+    "createdAt": "2026-05-19T12:10:40.914Z",
+    "deployCount": 1
   },
   {
     "name": "nature-response",
@@ -1334,7 +1746,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-response",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.915Z",
+    "createdAt": "2026-05-19T12:10:40.915Z",
+    "deployCount": 1
   },
   {
     "name": "nature-writing",
@@ -1346,7 +1762,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/nature-writing",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-19T12:10:40.917Z",
+    "createdAt": "2026-05-19T12:10:40.917Z",
+    "deployCount": 1
   },
   {
     "name": "sanity-check",
@@ -1359,7 +1779,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/sanity-check",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-08T22:05:49.813Z",
+    "createdAt": "2026-05-08T22:05:49.813Z",
+    "deployCount": 1
   },
   {
     "name": "supp-table-audit",
@@ -1372,7 +1796,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/supp-table-audit",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-14T08:07:30.869Z",
+    "createdAt": "2026-05-14T08:07:30.869Z",
+    "deployCount": 0
   },
   {
     "name": "zot-cite",
@@ -1385,7 +1813,25 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/zot-cite",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-13T14:56:00.423Z",
+    "createdAt": "2026-05-13T14:56:00.422Z",
+    "deployCount": 0
+  },
+  {
+    "name": "azure-cost-report",
+    "description": "Use when generating the monthly Azure cost + usage dashboard for the BMI subscription (or similar). Produces a single-page HTML report in docs/dashboards/azure-cost-{month}-{year}.html. Triggers on \"generate cost report\", \"make the month dashboard\", \"/azure-cost-report\", or a month argument.",
+    "primaryDomain": null,
+    "domains": [],
+    "path": "/Users/wang.13246/.skillshelf/library/azure-cost-report",
+    "retired": false,
+    "mode": "owned",
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-04-13T06:05:09.627Z",
+    "createdAt": "2026-04-13T06:05:09.626Z",
+    "deployCount": 1
   },
   {
     "name": "horizon-build",
@@ -1395,7 +1841,11 @@ export const realLibrary: Skill[] = [
     "path": "/Users/wang.13246/.skillshelf/library/horizon-build",
     "retired": false,
     "mode": "owned",
-    "linkTarget": null
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-05-29T15:33:07.256Z",
+    "createdAt": "2026-05-29T15:33:07.256Z",
+    "deployCount": 2
   }
 ];
 

@@ -15,8 +15,10 @@ import type {
   DeploymentSite,
 } from "./types";
 
-// Registry seeds (mockup AGENTS). `installed` is overridden at runtime if the
-// real feed knows better; these are the v1 defaults.
+// Registry seeds — the agents this user actually deploys to: Claude Code,
+// Codex, and Pi. `installed` is overridden at runtime if the real feed knows
+// better; these are the defaults. (To add more agents, append here AND extend
+// the inferHome regex below + the Rust agent surface set.)
 export const AGENT_SEEDS: AgentInfo[] = [
   {
     id: "claude",
@@ -35,28 +37,12 @@ export const AGENT_SEEDS: AgentInfo[] = [
     installed: true,
   },
   {
-    id: "cursor",
-    name: "Cursor",
-    short: "Cursor",
-    global: "~/.cursor/skills",
-    projConvention: ".cursor/skills",
+    id: "pi",
+    name: "Pi",
+    short: "Pi",
+    global: "~/.pi/skills",
+    projConvention: ".pi/skills",
     installed: true,
-  },
-  {
-    id: "opencode",
-    name: "OpenCode",
-    short: "OpenCode",
-    global: "~/.opencode/skills",
-    projConvention: ".opencode/skills",
-    installed: true,
-  },
-  {
-    id: "gemini",
-    name: "Gemini",
-    short: "Gemini",
-    global: "~/.gemini/skills",
-    projConvention: ".gemini/skills",
-    installed: false,
   },
 ];
 
@@ -91,7 +77,7 @@ export function agentIdForSurface(surface: string): string | null {
 function inferHome(surfaces: string[]): string | null {
   const parents: string[] = [];
   for (const s of surfaces) {
-    const m = s.match(/^(.*)\/\.(claude|codex|cursor|opencode|gemini)\/skills?$/);
+    const m = s.match(/^(.*)\/\.(claude|codex|pi)\/skills?$/);
     if (m) parents.push(m[1]);
   }
   if (!parents.length) return null;
@@ -201,6 +187,50 @@ export function deriveAgentsReport(where: DeploymentReport): AgentsReport {
   ];
 
   return { agents, scopes, deployments };
+}
+
+/**
+ * Count of non-absent deployment sites per scope. With `agentId`, counts only
+ * that agent's deployments (the deployment grid fixes one agent on the columns);
+ * without it, counts across all agents. Drives the location-column count badges.
+ */
+export function scopeDeployCounts(
+  report: AgentsReport,
+  agentId?: string,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const sc of report.scopes) counts[sc] = 0;
+  for (const byAgent of Object.values(report.deployments)) {
+    const deps = agentId
+      ? byAgent[agentId]
+        ? [byAgent[agentId]]
+        : []
+      : Object.values(byAgent);
+    for (const dep of deps) {
+      if (dep.g && dep.g !== "absent")
+        counts.Global = (counts.Global ?? 0) + 1;
+      if (dep.p)
+        for (const [sc, st] of Object.entries(dep.p))
+          if (st && st !== "absent") counts[sc] = (counts[sc] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/** Total non-absent deployment sites per agent (global + all projects). Drives
+ *  the deployment-grid agent picker badges (so an empty agent reads as 0). */
+export function agentDeployCounts(report: AgentsReport): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const a of report.agents) counts[a.id] = 0;
+  for (const byAgent of Object.values(report.deployments)) {
+    for (const [id, dep] of Object.entries(byAgent)) {
+      let n = 0;
+      if (dep.g && dep.g !== "absent") n++;
+      if (dep.p) for (const st of Object.values(dep.p)) if (st !== "absent") n++;
+      counts[id] = (counts[id] ?? 0) + n;
+    }
+  }
+  return counts;
 }
 
 /** Base deployment state for a (skill, agent, scope) from an AgentsReport. */

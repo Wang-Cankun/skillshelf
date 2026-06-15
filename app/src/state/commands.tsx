@@ -15,9 +15,12 @@ import { runAction, cmdEcho } from "../lib/skl";
 import { useStore } from "./store";
 import { qk } from "./queries";
 
-// Defense-in-depth: the only verbs this layer may dispatch. Anything else is a
-// programming error and is refused before a process is spawned (the Rust shell
-// enforces the same set; this catches it earlier with a clear message).
+// Defense-in-depth: the only verbs this MUTATION layer may dispatch through
+// run()/runInverse(). This is intentionally a SUBSET of the Rust ALLOWED_VERBS
+// (lib.rs) — read-only loaders (ls/show/agents/…) go straight through invokeJson
+// and never touch run(), so they don't appear here. The Rust list is the full
+// authority and must remain a superset of this set; anything routed through
+// run() that isn't here is a programming error, refused before a process spawns.
 const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where"]);
 
 export function deployKey(skill: string, agentId: string, scope: string) {
@@ -82,6 +85,29 @@ export function useCommands() {
     [dispatch, invalidate],
   );
 
+  // Run one or more INVERSE verbs (the Undo path). Unlike the forward `run`,
+  // these have already been optimistically reverted in the reducer, so on
+  // failure we must surface the error AND re-invalidate so the UI re-syncs to
+  // real disk truth instead of trusting the rollback (matches the forward
+  // contract — previously these were fire-and-forget and could silently diverge).
+  const runInverse = useCallback(
+    async (vectors: string[][], keys: QueryKey[]) => {
+      const failures: string[] = [];
+      for (const v of vectors) {
+        const res = await runAction(v);
+        if (!res.ok)
+          failures.push(`${cmdEcho(v)}: ${res.stderr.trim() || "failed"}`);
+      }
+      await invalidate(keys);
+      if (failures.length)
+        dispatch({
+          type: "setError",
+          error: `undo failed — ${failures.join("; ")}`,
+        });
+    },
+    [dispatch, invalidate],
+  );
+
   // ── Link / Unlink an agent (drawer AGENTS rail + matrix) ────────────────
   const deploy = useCallback(
     async (skill: string, agentId: string, scope: string, on: boolean) => {
@@ -108,9 +134,8 @@ export function useCommands() {
           agentId,
           ...scopeFlags(scope),
         ];
-        void runAction(inv);
         dispatch({ type: "hideToast" });
-        void invalidate([qk.agents, qk.where, qk.library]);
+        void runInverse([inv], [qk.agents, qk.where, qk.library]);
       };
       await run(args, {
         rollback,
@@ -152,9 +177,11 @@ export function useCommands() {
       await invalidate([qk.library, qk.where, qk.agents]);
       const undo = () => {
         rollback();
-        for (const name of names) void runAction(["unretire", name]);
         dispatch({ type: "hideToast" });
-        void invalidate([qk.library, qk.where, qk.agents]);
+        void runInverse(
+          names.map((name) => ["unretire", name]),
+          [qk.library, qk.where, qk.agents],
+        );
       };
       dispatch({
         type: "showToast",
@@ -176,9 +203,8 @@ export function useCommands() {
         dispatch({ type: "removeRemovedTag", name, domain });
       const undo = () => {
         rollback();
-        void runAction(["tag", name, domain]);
         dispatch({ type: "hideToast" });
-        void invalidate([qk.library]);
+        void runInverse([["tag", name, domain]], [qk.library]);
       };
       await run(["untag", name, domain], {
         rollback,
@@ -211,9 +237,11 @@ export function useCommands() {
       }
       await invalidate([qk.library]);
       const undo = () => {
-        for (const name of names) void runAction(["untag", name, domain]);
         dispatch({ type: "hideToast" });
-        void invalidate([qk.library]);
+        void runInverse(
+          names.map((name) => ["untag", name, domain]),
+          [qk.library],
+        );
       };
       dispatch({
         type: "showToast",

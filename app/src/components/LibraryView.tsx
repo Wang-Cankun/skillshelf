@@ -3,10 +3,8 @@
 // sticky bulk bar. ADR-0007: the bulk bar offers only Tag (needs a domain) and
 // Retire — Export/Update from upstream are intentionally dropped.
 
-import { useMemo } from "react";
 import { useStore } from "../state/store";
 import { useLibrary } from "../state/queries";
-import { useCommands } from "../state/commands";
 import { libraryView } from "../lib/select";
 import { MONO } from "../lib/tokens";
 
@@ -20,7 +18,6 @@ const headStyle: React.CSSProperties = {
 export function LibraryView() {
   const { state, dispatch } = useStore();
   const skills = useLibrary().data ?? [];
-  const commands = useCommands();
 
   const view = libraryView(skills, {
     filter: state.filter,
@@ -32,21 +29,12 @@ export function LibraryView() {
     removedHard: state.removedHard,
   });
 
-  const selectedNames = Object.keys(state.selected).filter(
-    (k) => state.selected[k],
-  );
-  const showBulk = selectedNames.length > 0;
-
-  const domainOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const s of skills) for (const d of s.domains) set.add(d);
-    return [...set].sort();
-  }, [skills]);
-
-  const bulkEcho = useMemo(() => {
-    const names = selectedNames.length > 2 ? "<names…>" : selectedNames.join(" ");
-    return `skl tag ${names} <domain>`;
-  }, [selectedNames]);
+  // Select-all operates on the CURRENTLY VISIBLE rows (post filter/search), so
+  // it never silently selects skills the user can't see.
+  const visibleNames = view.buckets.flatMap((b) => b.rows.map((r) => r.name));
+  const allSelected =
+    visibleNames.length > 0 && visibleNames.every((n) => state.selected[n]);
+  const someSelected = visibleNames.some((n) => state.selected[n]);
 
   return (
     <div style={{ padding: "14px 16px" }}>
@@ -69,7 +57,32 @@ export function LibraryView() {
             background: "#FBFBFC",
           }}
         >
-          <span style={{ ...headStyle, width: 22 }} />
+          <button
+            onClick={() =>
+              dispatch({
+                type: "setSelectedMany",
+                names: visibleNames,
+                value: !allSelected,
+              })
+            }
+            disabled={visibleNames.length === 0}
+            aria-label={allSelected ? "deselect all" : "select all"}
+            aria-pressed={allSelected}
+            title={allSelected ? "Deselect all" : `Select all ${visibleNames.length}`}
+            style={{
+              width: 22,
+              fontSize: 14,
+              lineHeight: 1,
+              color: allSelected || someSelected ? "#2563EB" : "#C7C7CC",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: visibleNames.length ? "pointer" : "default",
+              textAlign: "left",
+            }}
+          >
+            {allSelected ? "☑" : someSelected ? "▣" : "☐"}
+          </button>
           <span style={{ ...headStyle, width: 158 }}>SKILL</span>
           <span style={{ ...headStyle, width: 128 }}>DOMAINS</span>
           <span style={{ ...headStyle, width: 150 }}>SOURCE</span>
@@ -223,103 +236,6 @@ export function LibraryView() {
           </div>
         ))}
       </div>
-
-      {showBulk ? (
-        <div
-          style={{
-            position: "sticky",
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 11,
-            marginTop: 12,
-            padding: "10px 14px",
-            background: "#18181B",
-            borderRadius: 11,
-            color: "#FFFFFF",
-            fontSize: 12.5,
-            boxShadow: "0 8px 26px rgba(0,0,0,0.20)",
-          }}
-        >
-          <span style={{ fontWeight: 600 }}>
-            ▸ {selectedNames.length} selected
-          </span>
-          <div
-            style={{
-              display: "flex",
-              gap: 7,
-              marginLeft: 4,
-              alignItems: "center",
-            }}
-          >
-            <select
-              aria-label="bulk tag domain"
-              value=""
-              onChange={(e) => {
-                const domain = e.target.value;
-                if (domain) {
-                  commands.tag(selectedNames, domain);
-                  dispatch({ type: "clearSelection" });
-                }
-              }}
-              style={{
-                background: "#2C2C30",
-                color: "#FFFFFF",
-                border: "1px solid #3C3C40",
-                borderRadius: 7,
-                padding: "5px 11px",
-                fontSize: 12,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              <option value="">Tag…</option>
-              {domainOptions.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => {
-                commands.retire(selectedNames);
-                dispatch({ type: "clearSelection" });
-              }}
-              style={{
-                background: "#2C2C30",
-                color: "#FFFFFF",
-                border: "1px solid #3C3C40",
-                borderRadius: 7,
-                padding: "5px 11px",
-                fontSize: 12,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              Retire
-            </button>
-            <span
-              style={{ fontFamily: MONO, fontSize: 11, color: "#9A9AA2" }}
-            >
-              {bulkEcho}
-            </span>
-          </div>
-          <span style={{ flex: 1 }} />
-          <button
-            onClick={() => dispatch({ type: "clearSelection" })}
-            style={{
-              cursor: "pointer",
-              color: "#9A9AA2",
-              fontSize: 12,
-              background: "none",
-              border: "none",
-              fontFamily: "inherit",
-            }}
-          >
-            ⌫ clear
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -1,15 +1,22 @@
-// Matrix tab (ADR-0008, mockup lines 232-267; renderVals 709-749). A skill ×
-// (domain|agent) grid in a white card. Two leading columns persist in both
-// modes: a sticky SKILL name (opens the drawer) and a SOURCE column. Cells are
-// display-only here — toggling deployments lives in the drawer AGENTS rail.
+// Matrix tab. Two grids over the library, toggled in the toolbar:
+//   • Domain      — skill × domain (● primary / ◦ also-tagged).
+//   • Deployments — skill × LOCATION (Global + each project) for the picked
+//                   agent; cell = deployment state. Columns are the axis that
+//                   actually varies; the agent is a picker (it's the sparse one).
+// Two leading columns persist in both: a sticky SKILL name (opens the drawer)
+// and a SOURCE column. Cells are display-only — link/unlink lives in the drawer.
 
 import { useStore } from "../state/store";
 import { useLibrary, useAgents } from "../state/queries";
-import { effState } from "../lib/agents";
+import { effState, scopeDeployCounts } from "../lib/agents";
+import { allDomains } from "../lib/select";
 import { DEPLOY_GLYPH, MONO } from "../lib/tokens";
-import type { AgentsReport } from "../lib/types";
+import type { AgentsReport, Skill } from "../lib/types";
 
-const DOM_COLS = [
+// Preferred column order (matches the design's hue ordering). The actual column
+// SET is derived from the live library so a domain outside this list (e.g.
+// global-core) still gets a column instead of silently-invisible dots.
+const DOM_ORDER = [
   "green-card",
   "content",
   "business",
@@ -22,6 +29,13 @@ const DOM_COLS = [
   "browser",
   "media",
 ];
+
+function domainColumns(skills: Skill[]): string[] {
+  const present = new Set(allDomains(skills));
+  const ordered = DOM_ORDER.filter((d) => present.has(d));
+  const extra = [...present].filter((d) => !DOM_ORDER.includes(d)).sort();
+  return [...ordered, ...extra];
+}
 
 const thBase: React.CSSProperties = {
   textAlign: "center",
@@ -47,12 +61,16 @@ export function MatrixView() {
     (s) => !s.retired && !state.removedHard[s.name],
   );
   const agentsReport = useAgents().data ?? EMPTY_AGENTS;
-  const isAgent = state.matrixMode === "agent";
+  const isDeploy = state.matrixMode === "agent";
 
-  const cols = isAgent ? agentsReport.agents.map((a) => a.id) : DOM_COLS;
-  const colLabels = isAgent
-    ? agentsReport.agents.map((a) => a.short)
-    : DOM_COLS;
+  // Deployment grid: columns = LOCATIONS (Global + each project), rows = skills,
+  // cells = deployment state for the picked agent (state.matrixAgent). Domain
+  // grid: columns = domains. (The agent axis is sparse, so it's a picker.)
+  const domCols = domainColumns(skills);
+  const cols = isDeploy ? agentsReport.scopes : domCols;
+  const scopeCounts = isDeploy
+    ? scopeDeployCounts(agentsReport, state.matrixAgent)
+    : {};
 
   return (
     <div style={{ padding: "14px 16px" }}>
@@ -100,28 +118,40 @@ export function MatrixView() {
               >
                 SOURCE
               </th>
-              {cols.map((col, i) => {
-                const installed = isAgent
-                  ? agentsReport.agents[i]?.installed
-                  : true;
-                return (
-                  <th
-                    key={col}
-                    style={{
-                      ...thBase,
-                      color: installed ? "#9A9AA2" : "#CFCFD4",
-                    }}
-                  >
-                    {colLabels[i]}
-                  </th>
-                );
-              })}
+              {cols.map((col) => (
+                <th key={col} style={{ ...thBase, color: "#9A9AA2" }}>
+                  {isDeploy ? (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <span>{col}</span>
+                      <span
+                        style={{
+                          fontFamily: MONO,
+                          fontSize: 9,
+                          fontWeight: 500,
+                          color: "#B6B6BC",
+                        }}
+                      >
+                        {scopeCounts[col] ?? 0}
+                      </span>
+                    </span>
+                  ) : (
+                    col
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {skills.map((skill) => {
               const isVendor = skill.source === "vendored";
-              const untagged = !isAgent && skill.domains.length === 0;
+              const untagged = !isDeploy && skill.domains.length === 0;
               return (
                 <tr
                   key={skill.name}
@@ -176,14 +206,14 @@ export function MatrixView() {
                       {isVendor ? "dbskill" : "local"}
                     </span>
                   </td>
-                  {cols.map((col, i) => {
-                    if (isAgent) {
+                  {cols.map((col) => {
+                    if (isDeploy) {
                       const st = effState(
                         agentsReport,
                         state.deployOverrides,
                         skill.name,
-                        agentsReport.agents[i].id,
-                        state.scope,
+                        state.matrixAgent,
+                        col,
                       );
                       const g = DEPLOY_GLYPH[st];
                       return (
@@ -262,7 +292,7 @@ export function MatrixView() {
         >
           LEGEND
         </span>
-        {isAgent ? (
+        {isDeploy ? (
           <>
             <LegendChip glyph="✓" label="linked" color="#15A34A" weight={700} />
             <LegendChip glyph="⊙" label="source" color="#71717A" weight={500} />
