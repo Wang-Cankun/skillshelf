@@ -52,7 +52,7 @@ The library is a *shelf*, and an entry comes in two modes ([ADR-0004](adr/0004-o
   third-party downloads (`skl add`) and your own skills adopted with `skl import`, plus skills
   you've stabilized. `skl update` tracks an OWNED skill's upstream.
 - **LINKED** — `library/<name>` is a *symlink to an external dev repo* that stays canonical. The
-  right mode for skills you actively develop in their own git (e.g. `cairn`, skillshelf itself):
+  right mode for skills you actively develop in their own git (e.g. `claim-log`, skillshelf itself):
   editing the repo is editing the deployed skill, with zero drift and no copy to keep in sync.
   Register one with `skl link --from <dev-repo>`.
 - **Mode is derived from reality, never stored.** `entryMode(library, name)` resolves the realpath
@@ -305,7 +305,7 @@ documented as overridable via `--model` / `*_MODEL`).
 `response_format: {type: "json_object"}` (strict JSON requested; falls back to
 brace-extraction if the model wraps JSON in prose or fences).
 
-**Deterministic error behavior** (no network call):
+**Deterministic error behaviour** (no network call):
 
 - No resolvable key →
   `missing API key. Set SKILLSHELF_LLM_API_KEY (or OPENAI_API_KEY) in the environment or a
@@ -379,12 +379,12 @@ the live roots it documented and their layouts:
 |---|---|---|
 | `~/.claude/skills/` | `name/SKILL.md` | main collection |
 | `~/Dropbox/Obsidian/.agents/skills/` | `name/SKILL.md` | `.agents` bridge fmt; CloudStorage/Dropbox is an alias of the same vault (realpath-dedupe) |
-| `/Volumes/Extreme/Project/BioGuider-writing/skills/` | `name/SKILL.md` | external drive, writing skills |
-| `~/Documents/GitHub/nature-skills/skills/` | `skills/name/SKILL.md` | nature-* writing/figure set |
+| `/Volumes/External/Project/manuscripts/skills/` | `name/SKILL.md` | external drive, writing skills |
+| `~/Documents/GitHub/writing-skills/skills/` | `skills/name/SKILL.md` | nature-* writing/figure set |
 | `~/Documents/GitHub/everything-claude-code/skills/` | `skills/name/SKILL.md` | coding skills |
-| `~/Documents/GitHub/BMI_infra/.claude/skills/` | `+ .agents` mirror | cloud-cost |
-| `~/Documents/GitHub/sskind/.claude/skills/` | has `_retired/` | bioinfo, plus `_retired` subdir |
-| `~/Documents/GitHub/cairn/skill/` | `skill/name/SKILL.md` | analysis claims |
+| `~/Documents/GitHub/infra-repo/.claude/skills/` | `+ .agents` mirror | cloud-cost |
+| `~/Documents/GitHub/analysis-repo/.claude/skills/` | has `_retired/` | bioinfo, plus `_retired` subdir |
+| `~/Documents/GitHub/claim-log/skill/` | `skill/name/SKILL.md` | claim log |
 
 Persisted scan roots live in `config.json` (machine-local, absolute paths). Each entry may be
 a bare path string or an annotated `{path, layout?, notes?}` object; `layout`/`notes` are

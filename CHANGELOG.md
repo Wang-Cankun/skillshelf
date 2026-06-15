@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contents (path-escape-guarded), and `show --json` enumerates the full reference-file tree, so the
   drawer's file panel browses references/scripts (with syntax highlighting), not just `SKILL.md`.
 - **Repo-wide `skl add` — one repo, one clone** ([ADR-0006](./docs/adr/0006-repo-wide-add.md)).
-  A single GitHub repo often ships many skills; installing all 21 of `dontbesilent2025/dbskill`
+  A single GitHub repo often ships many skills; installing all 21 of `anthropics/skills`
   forced a hand-rolled `gh api trees` + per-skill loop that **re-cloned the repo 21 times** — the
   same "agent writes ad-hoc code = missing primitive" signal behind ADR-0005. `skl add` now installs
   a whole repo, or a chosen subset, from a **single clone**:

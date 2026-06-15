@@ -116,10 +116,10 @@ describe("frontmatter round-trip via serialize", () => {
 
 describe("source parsing (add/update/outdated core)", () => {
   test("github: shorthand with subpath", () => {
-    const p = parseSource("github:dontbesilent2025/dbskill/skills/xhs-title");
+    const p = parseSource("github:anthropics/skills/skills/headline-picker");
     expect(p.channel).toBe("github");
-    expect(p.source).toBe("github:dontbesilent2025/dbskill");
-    expect(p.subpath).toBe("skills/xhs-title");
+    expect(p.source).toBe("github:anthropics/skills");
+    expect(p.subpath).toBe("skills/headline-picker");
   });
 
   test("https github url normalizes", () => {
@@ -136,9 +136,9 @@ describe("source parsing (add/update/outdated core)", () => {
   });
 
   test("parseStoredSource round-trips an @subpath lock source", () => {
-    const p = parseStoredSource("github:dontbesilent2025/dbskill@skills/xhs-title");
+    const p = parseStoredSource("github:anthropics/skills@skills/headline-picker");
     expect(p.channel).toBe("github");
-    expect(p.source).toBe("github:dontbesilent2025/dbskill");
-    expect(p.subpath).toBe("skills/xhs-title");
+    expect(p.source).toBe("github:anthropics/skills");
+    expect(p.subpath).toBe("skills/headline-picker");
   });
 });

@@ -7,7 +7,7 @@ import { hashContent } from "./crawl.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import type { Skill } from "../types.ts";
 
-const SKILL_BODY = "---\nname: cairn\ndescription: a test skill\n---\n\nbody text\n";
+const SKILL_BODY = "---\nname: claim-log\ndescription: a test skill\n---\n\nbody text\n";
 
 /** Write a minimal skill dir (SKILL.md) and return its path. */
 async function makeSkillDir(parent: string, name: string, body = SKILL_BODY): Promise<string> {
@@ -48,12 +48,12 @@ describe("inventoryDeployments — linked-source recognition", () => {
   test("linked source (library entry symlinks AT the surface dir) is clean `source`, not a redundant copy", async () => {
     // External dev-repo source dir with SKILL.md.
     const ext = join(tmp, "ext");
-    const srcDir = await makeSkillDir(ext, "cairn");
+    const srcDir = await makeSkillDir(ext, "claim-log");
 
-    // Library where library/cairn is a SYMLINK to the external source dir.
+    // Library where library/claim-log is a SYMLINK to the external source dir.
     const library = join(tmp, "library");
     await mkdir(library, { recursive: true });
-    await symlink(srcDir, join(library, "cairn"));
+    await symlink(srcDir, join(library, "claim-log"));
 
     // Surface that contains the same external source dir.
     const surface = ext;
@@ -61,35 +61,35 @@ describe("inventoryDeployments — linked-source recognition", () => {
     const report = await inventoryDeployments(
       [surface],
       library,
-      [libSkill("cairn", join(library, "cairn"))],
+      [libSkill("claim-log", join(library, "claim-log"))],
     );
 
-    const site = report.sites.find((s) => s.name === "cairn");
+    const site = report.sites.find((s) => s.name === "claim-log");
     expect(site).toBeDefined();
     expect(site!.kind).toBe("source");
     expect(site!.drift).toBe(false);
-    expect(report.problems.some((s) => s.name === "cairn")).toBe(false);
+    expect(report.problems.some((s) => s.name === "claim-log")).toBe(false);
   });
 
   test("genuine redundant copy (library entry is a real copy, not a symlink) is still flagged `copy`", async () => {
-    // Library with a REAL copy of cairn (not a symlink).
+    // Library with a REAL copy of claim-log (not a symlink).
     const library = join(tmp, "library");
-    const libEntry = await makeSkillDir(library, "cairn");
+    const libEntry = await makeSkillDir(library, "claim-log");
 
     // A different real dir with the same skill name on a surface.
     const surfaceRoot = join(tmp, "surface");
-    await makeSkillDir(surfaceRoot, "cairn");
+    await makeSkillDir(surfaceRoot, "claim-log");
 
     const report = await inventoryDeployments(
       [surfaceRoot],
       library,
-      [libSkill("cairn", libEntry)],
+      [libSkill("claim-log", libEntry)],
     );
 
-    const site = report.sites.find((s) => s.name === "cairn");
+    const site = report.sites.find((s) => s.name === "claim-log");
     expect(site).toBeDefined();
     expect(site!.kind).toBe("copy");
-    expect(report.problems.some((s) => s.name === "cairn")).toBe(true);
+    expect(report.problems.some((s) => s.name === "claim-log")).toBe(true);
   });
 });
 
@@ -126,22 +126,22 @@ describe("inventoryDeployments — aliased links (link-name ≠ library skill)",
   });
 
   test("deploying a LINK-SHELVED library skill is `linked`, not a 2nd-source foreign-link", async () => {
-    // External dev repo holds the real skill; library/cairn link-shelves to it.
+    // External dev repo holds the real skill; library/claim-log link-shelves to it.
     const ext = join(tmp, "ext");
-    const extSkill = await makeSkillDir(ext, "cairn");
+    const extSkill = await makeSkillDir(ext, "claim-log");
     const library = join(tmp, "library");
     await mkdir(library, { recursive: true });
-    await symlink(extSkill, join(library, "cairn")); // library/cairn -> ext/cairn
-    const lib = [libSkill("cairn", join(library, "cairn"))];
+    await symlink(extSkill, join(library, "claim-log")); // library/claim-log -> ext/claim-log
+    const lib = [libSkill("claim-log", join(library, "claim-log"))];
 
     // A deployment symlink into the library entry (which itself shelves out).
     const surface = join(tmp, "surface");
     await mkdir(surface, { recursive: true });
-    await symlink(join(library, "cairn"), join(surface, "cairn"));
+    await symlink(join(library, "claim-log"), join(surface, "claim-log"));
 
     const report = await inventoryDeployments([surface], library, lib);
-    const site = report.sites.find((s) => s.name === "cairn");
+    const site = report.sites.find((s) => s.name === "claim-log");
     expect(site!.kind).toBe("linked"); // not "foreign-link"
-    expect(report.problems.some((s) => s.name === "cairn")).toBe(false);
+    expect(report.problems.some((s) => s.name === "claim-log")).toBe(false);
   });
 });

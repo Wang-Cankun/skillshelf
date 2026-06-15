@@ -1,13 +1,12 @@
 ---
-name: wittgenstein-deconstruct
+name: concept-deconstruct
 description: >-
-  Deconstruct a vague concept to its atomic meaning using Wittgenstein's
-  language-game method plus Austrian-economics framing. Use when a business or
+  Deconstruct a vague term to its concrete usage. Use when a business or
   philosophical term is fuzzy and needs to be pinned down before reasoning with it.
 domains: [philosophy]
 ---
 
-# Wittgenstein deconstruct
+# concept-deconstruct
 
 Pin a fuzzy term to its use, not its dictionary gloss.
 

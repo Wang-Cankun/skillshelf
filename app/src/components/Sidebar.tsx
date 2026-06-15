@@ -1,5 +1,5 @@
 // Sidebar (234px) — ADR-0008 §3, mockup lines 74-116 + renderVals 657-684.
-// Three sections (Smart Views · By Domain · Provenance) plus the pinned dbskill
+// Three sections (Smart Views · By Domain · Provenance) plus the pinned skills
 // card. Self-contained: reads aggregates from the real library, the inbox count
 // from deriveInbox, and active state from the store. Filters dispatch through
 // the store using the FROZEN Filter contract (source value = "vendored"/"local").

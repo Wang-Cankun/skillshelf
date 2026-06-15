@@ -19,12 +19,12 @@ describe("core against fixtures", () => {
     expect(mirror?.name).toBe("commit-push");
     expect(mirror?.primaryDomain).toBe("coding");
 
-    const thirdParty = findByName(lib, "xhs-title");
+    const thirdParty = findByName(lib, "headline-picker");
     expect(thirdParty?.source?.source).toBe(
-      "github:dontbesilent2025/dbskill@skills/xhs-title",
+      "github:anthropics/skills@skills/headline-picker",
     );
-    // overlay added green-card domain
-    expect(thirdParty?.domains).toContain("green-card");
+    // overlay added portfolio domain
+    expect(thirdParty?.domains).toContain("portfolio");
 
     const qc = findByName(lib, "rnaseq-qc");
     expect(qc?.refFiles.length).toBe(1);
@@ -59,10 +59,10 @@ describe("core against fixtures", () => {
     expect(bio.skills.map((s) => s.name)).toContain("rnaseq-qc");
     expect(bio.skills.some((s) => s.retired)).toBe(false);
 
-    const gc = await resolveBundle(lib, "green-card");
+    const gc = await resolveBundle(lib, "portfolio");
     const names = gc.skills.map((s) => s.name);
-    expect(names).toContain("eb1a-evidence");
-    expect(names).toContain("xhs-title"); // via overlay union
+    expect(names).toContain("evidence-map");
+    expect(names).toContain("headline-picker"); // via overlay union
   });
 
   test("search ranks name match high", async () => {

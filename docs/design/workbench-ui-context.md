@@ -72,12 +72,12 @@ This is the "I don't know what I don't know" → "here's the list, knock it out"
 ```
  Needs attention (12)                            [ ⚙ dry-run ]  [ Fix all safe (5) ]
  ───────────────────────────────────────────────────────────────────────────────────
- ⚠ DRIFT      rnaseq-qc        library ✦ vs sskind/.claude        +12 −3   [Diff] [Resolve▾]
- ⚠ DRIFT      dbs-decision     library ✦ vs Obsidian/.agents      +4  −1   [Diff] [Resolve▾]
- ◆ UNTRACKED  xhs-title        ~/.codex/skills (not in library)            [Import] [Ignore]
- □ REDUNDANT  agent-reach      meeting-ai-web/.claude (identical)          [Dedupe→link] ✓auto
- ✗ DEAD LINK  old-figure       nature-skills/.claude → (missing)           [Prune] ✓auto
- 🏷 UNTAGGED  cairn            in library, no domains                       [Tag▾]
+ ⚠ DRIFT      rnaseq-qc        library ✦ vs analysis-repo/.claude        +12 −3   [Diff] [Resolve▾]
+ ⚠ DRIFT      note-decision    library ✦ vs Obsidian/.agents      +4  −1   [Diff] [Resolve▾]
+ ◆ UNTRACKED  headline-picker  ~/.codex/skills (not in library)            [Import] [Ignore]
+ □ REDUNDANT  web-search       webapp/.claude (identical)          [Dedupe→link] ✓auto
+ ✗ DEAD LINK  old-figure       writing-skills/.claude → (missing)           [Prune] ✓auto
+ 🏷 UNTAGGED  claim-log        in library, no domains                       [Tag▾]
  ───────────────────────────────────────────────────────────────────────────────────
    ✓auto = safe one-click (dead links, identical copies).  Drift/untracked need your call.
 ```
@@ -92,14 +92,14 @@ This is what a graph fundamentally can't do — scan a column to see "everything
 scan a row to see "everywhere rnaseq-qc lives", spot drift as a ⚠ in a sea of ✓.
 
 ```
- Skill ▾          Dom        │ Library │ .claude │ .codex │ Obsidian │ sskind │ nature │ …
+ Skill ▾          Dom        │ Library │ .claude │ .codex │ Obsidian │ analysis-repo │ nature │ …
  ────────────────────────────┼─────────┼─────────┼────────┼──────────┼────────┼────────┼──
- rnaseq-qc        bioinfo    │   ●     │   ✓     │   ·    │    ✓     │   ⚠    │   ·    │   ← drift in sskind
- agent-reach      browser    │   ●     │   ✓     │   □    │    ·     │   ·    │   ·    │
- dbs-decision     business   │   ●     │   ✓     │   ·    │    ⚠     │   ·    │   ·    │
- xhs-title        —          │   –     │   ·     │   ◆    │    ·     │   ·    │   ·    │   ← untracked, not owned
- cairn            (untagged) │   ●     │   ·     │   ·    │    ·     │   ·    │   ⊙    │
- backup-dotfiles  ops        │   ●     │   ✓     │   ·    │    ·     │   ·    │   ·    │
+ rnaseq-qc        bioinfo    │   ●     │   ✓     │   ·    │    ✓     │   ⚠    │   ·    │   ← drift in analysis-repo
+ web-search       browser    │   ●     │   ✓     │   □    │    ·     │   ·    │   ·    │
+ note-decision    business   │   ●     │   ✓     │   ·    │    ⚠     │   ·    │   ·    │
+ headline-picker  —          │   –     │   ·     │   ◆    │    ·     │   ·    │   ·    │   ← untracked, not owned
+ claim-log        (untagged) │   ●     │   ·     │   ·    │    ·     │   ·    │   ⊙    │
+ config-backup    ops        │   ●     │   ✓     │   ·    │    ·     │   ·    │   ·    │
  ────────────────────────────┴─────────┴─────────┴────────┴──────────┴────────┴────────┴──
  CELL LEGEND  ● owned  ◧ linked-mode  ✓ clean link  ⊙ source  ⚠ drift  □ redundant copy
               ◆ untracked copy  ✗ dead  · absent  – not in library
@@ -120,9 +120,9 @@ From `skl ls --json`. The "do I already have one?" surface. Sortable, multi-sele
  ☑  Skill            Domains            Mode    Deploys  Description
  ──────────────────────────────────────────────────────────────────────────────────────
  ☑  rnaseq-qc        bioinfo · meta     owned     3      QC gate for RNA-seq count matrices
- ☐  agent-reach      browser · media    owned     1      Research/search across 13 platforms
- ☑  dbs-decision     business           owned     2      Decision framework for …
- ☐  cairn            (none) 🏷           owned     1      Analysis claims verifier
+ ☐  web-search       browser · media    owned     1      Search across many platforms
+ ☑  note-decision    business           owned     2      Decision framework for …
+ ☐  claim-log        (none) 🏷           owned     1      Claim log
  ──────────────────────────────────────────────────────────────────────────────────────
  ▸ 2 selected   [ Tag▾ ]  [ Link into project▾ ]  [ Retire ]  [ Export ]   ⌫ clear
 ```
@@ -140,12 +140,12 @@ From `skl ls --json`. The "do I already have one?" surface. Sortable, multi-sele
 
  Deployed at 3 sites
    ✓ linked     ~/.claude/skills/rnaseq-qc
-   ⚠ drift      sskind/.claude/skills/rnaseq-qc        (+12 −3)   [Diff]
+   ⚠ drift      analysis-repo/.claude/skills/rnaseq-qc        (+12 −3)   [Diff]
    ✓ identical  Obsidian/.agents/skills/rnaseq-qc
  Linked into:  my-analysis · lab
 
- Resolve drift:  ( ) keep library   ( ) keep sskind copy        [Apply]
-   $ skl import rnaseq-qc --from …/sskind --force        ← command echo
+ Resolve drift:  ( ) keep library   ( ) keep analysis-repo copy        [Apply]
+   $ skl import rnaseq-qc --from …/analysis-repo --force        ← command echo
  ─────────────────────────────────────────────────────────────────────────
  [ Edit SKILL.md ]   [ Open folder ]   [ Retire ]   [ Drop from project▾ ]
 ```
@@ -186,10 +186,10 @@ All `skl` commands emit `--json`. Full payloads + TS types are in
 - **`taxonomy.json`** — skill → domain tags (the Domain column + tag filters).
 
 Real data to make mockups true (see also constellation doc §4): **113 skills**; domains
-`bioinfo, business, philosophy, content, ops, browser, meta, sci-writing, media`; the `dbs-*`
+`bioinfo, business, philosophy, content, ops, browser, meta, sci-writing, media`; the `note-*`
 family; **9 locations** incl. `~/.claude/skills` (48), `~/Dropbox/Obsidian/.agents/skills` (31,
-bridge fmt), `/Volumes/Extreme/.../skills` (12, ext drive), `nature-skills` (18), `sskind`
-(bioinfo + `_retired/`), `cairn/skill` (9); cross-agent surfaces `.claude .codex .cursor
+bridge fmt), `/Volumes/External/.../skills` (12, ext drive), `writing-skills` (18), `analysis-repo`
+(bioinfo + `_retired/`), `claim-log/skill` (9); cross-agent surfaces `.claude .codex .cursor
 .opencode`; the Dropbox/CloudStorage alias is realpath-collapsed.
 
 ## 8. What to generate first

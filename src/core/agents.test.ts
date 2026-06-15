@@ -49,8 +49,8 @@ describe("scopeForSurface", () => {
     expect(scopeForSurface("/home/u/.claude/skills", "claude", HOME)).toBe("Global");
   });
   test("project name when enclosed in a project dir", () => {
-    expect(scopeForSurface("/work/BMI_infra/.claude/skills", "claude", HOME)).toBe("BMI_infra");
-    expect(scopeForSurface("/a/b/meeting-ai-web/.codex/skills", "codex", HOME)).toBe("meeting-ai-web");
+    expect(scopeForSurface("/work/infra-repo/.claude/skills", "claude", HOME)).toBe("infra-repo");
+    expect(scopeForSurface("/a/b/webapp/.codex/skills", "codex", HOME)).toBe("webapp");
   });
 });
 
@@ -82,15 +82,15 @@ describe("resolveReadTarget", () => {
     expect(r.extraSurfaces).toEqual(["/tmp/p/.codex/skills"]);
   });
   test("leaves the command's own flags + positionals in `rest`", () => {
-    const r = resolveReadTarget(["cairn", "--problems", "--json", "--project", "/tmp/p"], HOME, "/cwd");
+    const r = resolveReadTarget(["claim-log", "--problems", "--json", "--project", "/tmp/p"], HOME, "/cwd");
     if ("error" in r) throw new Error(r.error);
-    expect(r.rest).toEqual(["cairn", "--problems", "--json"]);
+    expect(r.rest).toEqual(["claim-log", "--problems", "--json"]);
   });
   test("relative --project resolves under cwd; no --project = no surfaces", () => {
     const rel = resolveReadTarget(["--project", "sub"], HOME, "/cwd/proj");
     if ("error" in rel) throw new Error(rel.error);
     expect(rel.projectDir).toBe("/cwd/proj/sub");
-    const none = resolveReadTarget(["cairn"], HOME, "/cwd");
+    const none = resolveReadTarget(["claim-log"], HOME, "/cwd");
     if ("error" in none) throw new Error(none.error);
     expect(none.extraSurfaces).toEqual([]);
   });

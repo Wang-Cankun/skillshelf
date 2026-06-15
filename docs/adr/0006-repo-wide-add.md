@@ -6,7 +6,7 @@ Date: 2026-06-13
 
 Accepted (implemented). Built on skillshelf's own fetch path (`core/fetch.ts:discoverSkills` +
 `fetchRepo`; `commands/add.ts`), informed by a dogfood test against
-`github.com/dontbesilent2025/dbskill` (21 skills) and a source study of
+`github.com/anthropics/skills` (21 skills) and a source study of
 [`vercel-labs/skills`](https://github.com/vercel-labs/skills). A multi-agent adversarial review
 (5 independent lenses + 2-skeptic verification) over the implementation diff hardened it before
 acceptance — see **Security hardening (from adversarial review)** below.
@@ -15,8 +15,8 @@ acceptance — see **Security hardening (from adversarial review)** below.
 
 ### The trigger: a real multi-skill `add` forced a pile of ad-hoc code
 
-Adopting the **dbs** skill suite (21 skills under `skills/dbs-*/SKILL.md` in one GitHub repo,
-`dontbesilent2025/dbskill`) exposed that `skl add` installs **exactly one** skill per call
+Adopting the **note-kit** skill suite (21 skills under `skills/note-*/SKILL.md` in one GitHub repo,
+`anthropics/skills`) exposed that `skl add` installs **exactly one** skill per call
 (`github:owner/repo[/path]`). To track all 21 with provenance (so `skl outdated`/`update` keep
 them synced), the agent was forced to hand-write — the same "agent writes ad-hoc code = missing
 primitive" signal that drove [ADR-0005](0005-inverse-and-edit-verbs.md):
@@ -32,7 +32,7 @@ Worse, the only non-loop alternative — calling `skl add` 21 times — **re-clo
 21 times** (each `add` clones into its own staging). The right shape is **clone once, copy N**.
 
 The user's stated baseline is the ecosystem-standard one-liner
-`npx -y skills add dontbesilent2025/dbskill -g --all` (vercel-labs/skills) — which does exactly
+`npx -y skills add anthropics/skills -g --all` (vercel-labs/skills) — which does exactly
 this. skillshelf has no equivalent.
 
 ### Source study: how `vercel-labs/skills` does repo-wide install
@@ -87,7 +87,7 @@ to kill.
 Extend `skl add` to install **a whole repo or a selected subset in one clone**, on skillshelf's
 **own** fetch path (no `npx` dependency), keeping `add` strictly a librarian (no agent-dir writes).
 
-### 1. New CLI surface (additive — single-skill behavior unchanged)
+### 1. New CLI surface (additive — single-skill behaviour unchanged)
 
 ```
 skl add <src> [--all] [--skill <name[,name…]>] [--list] [--dry-run]
@@ -95,7 +95,7 @@ skl add <src> [--all] [--skill <name[,name…]>] [--list] [--dry-run]
 ```
 
 - **bare repo `github:owner/repo`** → discover every skill in the repo (convention walk). If exactly
-  one, install it (today's behavior). If several and neither `--all`/`--skill`/`--list` given →
+  one, install it (today's behaviour). If several and neither `--all`/`--skill`/`--list` given →
   **error listing them** and pointing at `--all`/`--skill`/`--list` (never silently pick one).
 - **`--list`** → print discovered skills (name · description · repo subpath · already-in-library?)
   and exit 0. No clone-side writes. The first-class replacement for the `gh api trees` + parse hack.
@@ -143,7 +143,7 @@ For each discovered skill, classify against the current library before writing:
   an existing OWNED copy to tracked).
 - **differs** — body differs → would overwrite local content; **requires `--force`** and is reported
   as such (don't clobber silently). This is exactly the `gh api contents | base64 -d | diff` check
-  the agent did by hand for all 21 dbs skills.
+  the agent did by hand for all 21 note-kit skills.
 Report counts + per-skill verdict in human and `--json` form. Without `--force`, a `differs` skill
 in an `--all` run is **skipped with a warning**, not overwritten.
 

@@ -52,7 +52,7 @@ state that nothing was tracking**, e.g.:
   (`agents-sdk`, `cloudflare`, `wrangler`, `web-perf`, …) — independent copies that can silently
   drift from any canonical version;
 - a **dead symlink** (`diagnose`) in `~/.claude/skills`;
-- **14 `horizon-niw*` skills symlinked to a *second source*** (`Obsidian/Case/tools/...`) rather
+- **14 `report-*` skills symlinked to a *second source*** (`Obsidian/notes/tools/...`) rather
   than the library — two sources of truth for the same skill;
 - assorted **stray real copies** (`infocard-skills`, `omc-learned`).
 
@@ -148,7 +148,7 @@ a 70-agent registry.**
 
 - `skl where` now maps deployments across **every agent on the machine**, surfacing untracked
   copies, drift, second sources, and dead links that were previously invisible (it immediately
-  exposed the Codex/Cursor cloudflare copies and the `horizon-niw` second source).
+  exposed the Codex/Cursor cloudflare copies and the `report-*` second source).
 - The surface convention is **borrowed, not invented**, keeping skillshelf interoperable with
   `vercel-labs/skills` and anything else that reads/writes the same `<agent>/skills` dirs.
 - A clear division of labor crystallizes: the ecosystem CLI *installs* from registries; skillshelf

@@ -40,14 +40,14 @@ describe("skl show", () => {
   });
 
   test("--json carries body + refFiles + provenance", async () => {
-    const r = await runCmd(show, ["xhs-title", "--json"]);
+    const r = await runCmd(show, ["headline-picker", "--json"]);
     expect(r.code).toBe(0);
     const j = r.json[0] as any;
-    expect(j.name).toBe("xhs-title");
+    expect(j.name).toBe("headline-picker");
     expect(typeof j.body).toBe("string");
-    expect(j.body).toContain("RED title");
-    expect(j.domains).toContain("green-card"); // taxonomy merged
-    expect(j.source.source).toContain("dbskill");
+    expect(j.body).toContain("headline formulas");
+    expect(j.domains).toContain("portfolio"); // taxonomy merged
+    expect(j.source.source).toContain("skills");
   });
 
   test("unknown skill exits non-zero with a hint", async () => {

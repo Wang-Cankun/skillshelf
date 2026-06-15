@@ -125,9 +125,9 @@ describe("applyTaxonomy (pure merge)", () => {
 
   test("an untagged skill gains primaryDomain = first taxonomy domain", () => {
     const skill = baseSkill({ domains: [], primaryDomain: null });
-    const tax: Taxonomy = { version: 1, skills: { demo: ["writing", "green-card"] } };
+    const tax: Taxonomy = { version: 1, skills: { demo: ["writing", "portfolio"] } };
     const merged = applyTaxonomy(skill, tax);
-    expect(merged.domains).toEqual(["writing", "green-card"]);
+    expect(merged.domains).toEqual(["writing", "portfolio"]);
     expect(merged.primaryDomain).toBe("writing");
   });
 
