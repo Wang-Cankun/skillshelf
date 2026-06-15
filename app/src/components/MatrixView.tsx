@@ -12,6 +12,7 @@ import { effState, scopeDeployCounts } from "../lib/agents";
 import { allDomains } from "../lib/select";
 import { DEPLOY_GLYPH, MONO } from "../lib/tokens";
 import type { AgentsReport, Skill } from "../lib/types";
+import { SourceCell } from "./SourceCell";
 
 // Preferred column order (matches the design's hue ordering). The actual column
 // SET is derived from the live library so a domain outside this list (e.g.
@@ -150,7 +151,6 @@ export function MatrixView() {
           </thead>
           <tbody>
             {skills.map((skill) => {
-              const isVendor = skill.source === "vendored";
               const untagged = !isDeploy && skill.domains.length === 0;
               return (
                 <tr
@@ -196,15 +196,7 @@ export function MatrixView() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    <span
-                      style={
-                        isVendor
-                          ? { color: "#2563EB", fontFamily: MONO, fontSize: 10.5 }
-                          : { color: "#9A9AA2", fontSize: 11 }
-                      }
-                    >
-                      {isVendor ? "dbskill" : "local"}
-                    </span>
+                    <SourceCell skill={skill} variant="matrix" />
                   </td>
                   {cols.map((col) => {
                     if (isDeploy) {

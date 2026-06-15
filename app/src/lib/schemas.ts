@@ -19,6 +19,8 @@ export const SkillSchema = z
     mode: z.enum(["owned", "linked"]),
     linkTarget: z.string().nullable(),
     source: z.enum(["vendored", "local"]).optional(),
+    origin: z.string().nullable().optional(),
+    channel: z.string().nullable().optional(),
     modifiedAt: z.string().nullable().optional(),
     createdAt: z.string().nullable().optional(),
     deployCount: z.number().optional(),
@@ -74,6 +76,31 @@ export const StatusReportSchema = z
     unmanaged: z.array(z.unknown()),
     bundles: z.array(z.unknown()),
     linked: z.array(z.unknown()),
+  })
+  .passthrough();
+
+// `outdated --json` (ADR-0009). `diverged` is only emitted on the non-empty
+// branch, so it's optional; status must accept the full five-value enum even
+// though a given run may only exhibit a subset.
+export const OutdatedRowSchema = z
+  .object({
+    name: z.string(),
+    channel: z.string().nullable().optional(),
+    source: z.string().optional(),
+    installedRef: z.string(),
+    latestRef: z.string().nullable(),
+    status: z.enum(["stale", "current", "unknown", "linked", "diverged"]),
+    note: z.string(),
+  })
+  .passthrough();
+
+export const OutdatedSchema = z
+  .object({
+    ok: z.boolean(),
+    checked: z.number(),
+    stale: z.number(),
+    diverged: z.number().optional(),
+    rows: z.array(OutdatedRowSchema),
   })
   .passthrough();
 

@@ -4,10 +4,12 @@
 // lifecycle). Every fact is backed by the live `skl show`/`skl agents` feeds;
 // the Explanation tab is an honest "coming soon" placeholder (ADR-0007).
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
+import hljs from "highlight.js/lib/common";
+import "highlight.js/styles/github.css";
 import { useStore } from "../state/store";
 import { useShow, useLibrary, useAgents } from "../state/queries";
 import { useCommands } from "../state/commands";
@@ -57,6 +59,10 @@ export function DetailDrawer() {
     (d) => !removedTags.includes(d),
   );
   const refFiles = show?.refFiles ?? DEFAULT_FILES;
+  // Only SKILL.md (and other markdown) gets prose rendering; code / data files
+  // are shown verbatim so the navigator can preview anything in the dir.
+  const isMd = state.drawerFile.toLowerCase().endsWith(".md");
+  const fileLabel = state.drawerFile.split("/").pop() ?? state.drawerFile;
 
   return (
     <>
@@ -148,11 +154,14 @@ export function DetailDrawer() {
           <span style={{ flex: 1 }} />
           <button
             onClick={() =>
-              void openInEditor(skill ? `${skill.path}/SKILL.md` : undefined)
+              void openInEditor(
+                skill ? `${skill.path}/${state.drawerFile}` : undefined,
+              )
             }
             style={hdrBtn}
+            title={`Edit ${state.drawerFile}`}
           >
-            Edit SKILL.md
+            Edit {fileLabel}
           </button>
           <button
             onClick={() => void revealInFinder(skill?.path)}
@@ -371,7 +380,7 @@ export function DetailDrawer() {
               {state.drawerTab === "rendered" &&
                 (!show?.body ? (
                   <div style={{ color: "#9A9AA2", fontSize: 13 }}>Loading…</div>
-                ) : (
+                ) : isMd ? (
                   <div className="md-body" style={{ maxWidth: 760 }}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -380,6 +389,10 @@ export function DetailDrawer() {
                       {stripFrontmatter(show.body)}
                     </ReactMarkdown>
                   </div>
+                ) : (
+                  // Non-markdown (code, data, plain text): preview verbatim
+                  // with syntax highlighting — markdown rendering would mangle it.
+                  <CodeView code={show.body} file={state.drawerFile} />
                 ))}
               {state.drawerTab === "raw" && (
                 <pre
@@ -847,6 +860,90 @@ const lifeBtn: React.CSSProperties = {
   cursor: "pointer",
   fontFamily: "inherit",
 };
+
+// File extension → highlight.js language. Unmapped extensions render plain
+// (no auto-detect — predictable beats clever for lockfiles / unknown text).
+const EXT_LANG: Record<string, string> = {
+  ts: "typescript",
+  tsx: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  json: "json",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cc: "cpp",
+  hpp: "cpp",
+  cs: "csharp",
+  sh: "bash",
+  bash: "bash",
+  zsh: "bash",
+  fish: "bash",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "ini",
+  ini: "ini",
+  css: "css",
+  scss: "scss",
+  less: "less",
+  html: "xml",
+  xml: "xml",
+  svg: "xml",
+  sql: "sql",
+  php: "php",
+  swift: "swift",
+  kt: "kotlin",
+  lua: "lua",
+  r: "r",
+  pl: "perl",
+  dockerfile: "dockerfile",
+  makefile: "makefile",
+};
+
+function CodeView({ code, file }: { code: string; file: string }) {
+  const base = file.split("/").pop() ?? file;
+  const ext = (base.includes(".") ? base.split(".").pop()! : base).toLowerCase();
+  const lang = EXT_LANG[ext];
+  const html = useMemo(() => {
+    if (!lang || !hljs.getLanguage(lang)) return null;
+    try {
+      return hljs.highlight(code, { language: lang }).value;
+    } catch {
+      return null;
+    }
+  }, [code, lang]);
+  const preStyle: React.CSSProperties = {
+    fontFamily: MONO,
+    fontSize: 11.5,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    color: "#3F3F46",
+    lineHeight: 1.6,
+    margin: 0,
+    background: "transparent",
+  };
+  if (html) {
+    return (
+      <pre style={preStyle}>
+        <code
+          className="hljs"
+          style={{ background: "transparent", padding: 0 }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </pre>
+    );
+  }
+  return <pre style={preStyle}>{code}</pre>;
+}
 
 function ProvRow({
   label,

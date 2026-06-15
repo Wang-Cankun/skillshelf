@@ -3,7 +3,8 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { existsSync, symlinkSync, writeFileSync, mkdtempSync } from "node:fs";
 import { lstat, readlink } from "node:fs/promises";
 import * as show from "../src/commands/show.ts";
 import * as search from "../src/commands/search.ts";
@@ -54,6 +55,44 @@ describe("skl show", () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain("skl search");
   });
+
+  test("--file opens a bundled reference file's CONTENTS", async () => {
+    const r = await runCmd(show, ["rnaseq-qc", "--file", "reference/thresholds.md"]);
+    expect(r.code).toBe(0);
+    // the contents that the plain `show` deliberately withholds
+    expect(r.out).toContain("rRNA contamination");
+  });
+
+  test("--json refFiles enumerates nested files (recursive tree)", async () => {
+    const r = await runCmd(show, ["rnaseq-qc", "--json"]);
+    expect(r.code).toBe(0);
+    const j = r.json[0] as any;
+    expect(j.file).toBe("SKILL.md");
+    const refs: string[] = j.refFiles;
+    expect(refs.some((p) => p.endsWith("/reference"))).toBe(true); // dir node
+    expect(refs.some((p) => p.endsWith("/reference/thresholds.md"))).toBe(true);
+  });
+
+  test("--file refuses to escape the skill directory", async () => {
+    const r = await runCmd(show, ["rnaseq-qc", "--file", "../../../etc/passwd"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("No readable file");
+  });
+
+  test("--file refuses a symlink that escapes the skill dir", async () => {
+    const tmp = await tempLibrary();
+    cleanups.push(tmp.cleanup);
+    // a secret outside the library, and a symlink to it inside a skill dir
+    const outside = join(mkdtempSync(join(tmpdir(), "skl-outside-")), "secret.md");
+    writeFileSync(outside, "TOP SECRET");
+    symlinkSync(outside, join(tmp.path, "rnaseq-qc", "leak.md"));
+    const r = await runCmd(show, ["rnaseq-qc", "--file", "leak.md"], {
+      library: tmp.path,
+    });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("No readable file");
+    expect(r.out).not.toContain("TOP SECRET"); // contents never dumped
+  });
 });
 
 describe("skl search", () => {
@@ -87,6 +126,22 @@ describe("skl ls", () => {
     const j = r.json[0] as any;
     expect(j.bundle).toBe("bioinfo");
     expect(j.skills.map((s: any) => s.name)).toContain("nature-figure");
+  });
+
+  test("--json emits origin + channel (the UI click-through gate contract)", async () => {
+    const r = await runCmd(ls, ["--json"]);
+    const rows = r.json[0] as any[];
+    // vendored github skill → real owner/repo origin + channel "github"
+    const vendored = rows.find((s) => s.name === "xhs-title");
+    expect(vendored.source).toBe("vendored");
+    expect(vendored.channel).toBe("github");
+    expect(vendored.origin).toMatch(/^[^/]+\/[^/]+$/); // owner/repo, no channel prefix, no @subpath
+    expect(vendored.origin).not.toContain("@");
+    // local (hand-written) skill → no upstream → null origin/channel (no link)
+    const local = rows.find((s) => s.name === "rnaseq-qc");
+    expect(local.source).toBe("local");
+    expect(local.origin).toBeNull();
+    expect(local.channel).toBeNull();
   });
 });
 

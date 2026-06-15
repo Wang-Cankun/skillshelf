@@ -7,9 +7,10 @@
 // keystroke. As stable module-scope components reading the store/queries
 // directly, their inputs keep focus across re-renders.
 
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "../state/store";
 import type { View, SortKey, GroupMode } from "../state/store";
-import { useLibrary, useWhere, useAgents } from "../state/queries";
+import { useLibrary, useWhere, useAgents, useOutdated } from "../state/queries";
 import { useCommands } from "../state/commands";
 import { libraryView, filterLabel, allDomains } from "../lib/select";
 import { deriveInbox } from "../lib/derive";
@@ -324,6 +325,71 @@ function MatrixToolbar() {
 function LibraryToolbar() {
   const { state, dispatch } = useStore();
   const skills = useLibrary().data ?? [];
+  const commands = useCommands();
+  // Update-awareness (ADR-0009): MANUAL outdated check. `oq.data` is undefined
+  // until the user clicks "Check updates" (the query is enabled:false), so
+  // badges + the "Update all stale" affordance only appear post-check.
+  const oq = useOutdated();
+  const staleNames = (oq.data?.rows ?? [])
+    .filter((r) => r.status === "stale")
+    .map((r) => r.name);
+
+  // Transient button feedback: Check updates → Checking… → (No updates / Check
+  // failed) → back to original. `outcome` is set when a check finishes and
+  // auto-clears after a beat; while fetching the label always reads "Checking…".
+  const [outcome, setOutcome] = useState<null | "none" | "error">(null);
+  const wasFetching = useRef(false);
+  useEffect(() => {
+    if (!wasFetching.current && oq.isFetching) setOutcome(null); // new check began
+    if (wasFetching.current && !oq.isFetching) {
+      // a check just finished — report its result
+      if (oq.isError) setOutcome("error");
+      else {
+        const updates = (oq.data?.stale ?? 0) + (oq.data?.diverged ?? 0);
+        setOutcome(updates === 0 ? "none" : null); // updates>0 → badges speak
+      }
+    }
+    wasFetching.current = oq.isFetching;
+  }, [oq.isFetching, oq.isError, oq.data]);
+  useEffect(() => {
+    if (outcome === null) return;
+    const t = setTimeout(() => setOutcome(null), 2500);
+    return () => clearTimeout(t);
+  }, [outcome]);
+  const checkLabel = oq.isFetching
+    ? "Checking…"
+    : outcome === "none"
+      ? "No updates"
+      : outcome === "error"
+        ? "Check failed"
+        : "Check updates";
+  const checkColor =
+    outcome === "none" ? "#15803D" : outcome === "error" ? "#DC2626" : "#3F3F46";
+  // Bulk "Update all stale": run sequentially (parallel git pulls would thrash),
+  // silent per-item (no toast spam), with progress on the button + one summary.
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  const runBulkUpdate = () => {
+    if (bulk || staleNames.length === 0) return;
+    // Snapshot the names: each update() patches the outdated cache, so the
+    // derived `staleNames` shrinks mid-loop — iterate the captured list.
+    const names = [...staleNames];
+    void (async () => {
+      setBulk({ done: 0, total: names.length });
+      for (let i = 0; i < names.length; i++) {
+        await commands.update(names[i]!, { silent: true });
+        setBulk({ done: i + 1, total: names.length });
+      }
+      setBulk(null);
+      dispatch({
+        type: "showToast",
+        toast: {
+          msg: `Updated ${names.length} skill${names.length > 1 ? "s" : ""}`,
+          cmd: `skl update ×${names.length}`,
+          undo: null,
+        },
+      });
+    })();
+  };
   const libCount = libraryView(skills, {
     filter: state.filter,
     search: state.search,
@@ -410,6 +476,49 @@ function LibraryToolbar() {
         </div>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: "#9A9AA2" }}>{libCount} skills</span>
+        {/* update-awareness (ADR-0009): manual outdated check + bulk update.
+            Pills match the Inbox toolbar (⚙ Dry-run / Auto-fix). */}
+        <button
+          onClick={() => void oq.refetch()}
+          disabled={oq.isFetching}
+          title="Check upstream for newer versions of vendored skills"
+          style={{
+            background: "#FFFFFF",
+            border: "1px solid #E2E2E5",
+            borderRadius: 7,
+            padding: "5px 12px",
+            fontSize: 12.5,
+            fontWeight: 550,
+            cursor: oq.isFetching ? "default" : "pointer",
+            color: checkColor,
+            fontFamily: "inherit",
+            transition: "color 120ms",
+          }}
+        >
+          {checkLabel}
+        </button>
+        {staleNames.length > 0 || bulk ? (
+          <button
+            onClick={runBulkUpdate}
+            disabled={!!bulk}
+            title="Update every stale skill (diverged rows are excluded)"
+            style={{
+              background: "#18181B",
+              border: "1px solid #18181B",
+              borderRadius: 7,
+              padding: "5px 12px",
+              fontSize: 12.5,
+              fontWeight: 550,
+              cursor: bulk ? "default" : "pointer",
+              color: "#FFFFFF",
+              fontFamily: "inherit",
+            }}
+          >
+            {bulk
+              ? `Updating ${bulk.done}/${bulk.total}…`
+              : `Update all stale (${staleNames.length})`}
+          </button>
+        ) : null}
       </div>
       {/* row 2 — sort + view */}
       <div

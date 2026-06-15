@@ -2,7 +2,7 @@
 // run a command module in-process, and run the real CLI as a subprocess.
 
 import { join } from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { loadContext } from "../src/config.ts";
 import type { Ctx, CommandModule } from "../src/types.ts";
@@ -93,7 +93,7 @@ export async function runCli(
 export async function tempLibrary(): Promise<{ path: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "skl-lib-"));
   const path = join(dir, "library");
-  await Bun.$`cp -R ${FIXTURE_LIBRARY} ${path}`.quiet();
+  await cp(FIXTURE_LIBRARY, path, { recursive: true });
   return { path, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 

@@ -14,6 +14,7 @@ import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { runAction, cmdEcho } from "../lib/skl";
 import { useStore } from "./store";
 import { qk } from "./queries";
+import type { OutdatedReport } from "../lib/types";
 
 // Defense-in-depth: the only verbs this MUTATION layer may dispatch through
 // run()/runInverse(). This is intentionally a SUBSET of the Rust ALLOWED_VERBS
@@ -21,7 +22,7 @@ import { qk } from "./queries";
 // and never touch run(), so they don't appear here. The Rust list is the full
 // authority and must remain a superset of this set; anything routed through
 // run() that isn't here is a programming error, refused before a process spawns.
-const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where"]);
+const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update"]);
 
 export function deployKey(skill: string, agentId: string, scope: string) {
   return `${skill}|${agentId}|${scope}`;
@@ -287,5 +288,44 @@ export function useCommands() {
     });
   }, [run, state.dryRun]);
 
-  return { deploy, retire, untag, tag, hardRemove, autoFix };
+  // ── Update a vendored skill from upstream (ADR-0009) — NOT invertible ────
+  // Callers gate this to status==="stale"|"diverged" github rows only (the
+  // badge logic in LibraryView/MatrixView; never linked/local). `skl update`
+  // re-pulls the upstream body, preserving domain tags (taxonomy.json). It is
+  // not cleanly reversible, so there is no Undo.
+  const update = useCallback(
+    async (name: string, opts?: { silent?: boolean }): Promise<boolean> => {
+      const ok = await run(["update", name], {
+        rollback: () => {},
+        // qk.outdated is a MANUAL (enabled:false) query — invalidating it would
+        // NOT refetch, so the badge would never clear. We patch its cache below.
+        invalidate: [qk.library, qk.where, qk.agents],
+        toast: opts?.silent ? undefined : { msg: `Updated ${name}`, undo: null },
+      });
+      if (ok) {
+        // The skill is now re-pinned to upstream HEAD → mark its outdated row
+        // "current" so the ↑/⚠ badge clears immediately (no re-check needed).
+        qc.setQueryData<OutdatedReport>(qk.outdated, (prev) =>
+          prev
+            ? {
+                ...prev,
+                rows: prev.rows.map((r) =>
+                  r.name === name ? { ...r, status: "current" as const } : r,
+                ),
+                stale: prev.rows.filter(
+                  (r) => r.name !== name && r.status === "stale",
+                ).length,
+                diverged: prev.rows.filter(
+                  (r) => r.name !== name && r.status === "diverged",
+                ).length,
+              }
+            : prev,
+        );
+      }
+      return ok;
+    },
+    [run, qc],
+  );
+
+  return { deploy, retire, untag, tag, hardRemove, autoFix, update };
 }

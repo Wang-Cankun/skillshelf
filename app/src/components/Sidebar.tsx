@@ -165,7 +165,7 @@ export function Sidebar() {
   const provRows: ProvRow[] = [
     {
       glyph: "◆",
-      label: "Vendored (dbskill)",
+      label: "Vendored",
       count: agg.vendored,
       color: C.blue,
       filter: vendoredFilter,
@@ -314,8 +314,33 @@ export function Sidebar() {
             lineHeight: 1.5,
           }}
         >
-          <span style={{ color: "#2563EB" }}>◆</span> dbskill
-          <br />@a58f647 · pinned
+          {(() => {
+            const origins = [
+              ...new Set(
+                skills
+                  .filter((s) => s.source === "vendored")
+                  .map((s) => s.origin)
+                  .filter((o): o is string => !!o),
+              ),
+            ].sort();
+            if (origins.length === 0)
+              return <span>no vendored sources</span>;
+            if (origins.length === 1)
+              return (
+                <>
+                  <span style={{ color: "#2563EB" }}>◆</span> {origins[0]}
+                </>
+              );
+            return (
+              <>
+                <span style={{ color: "#2563EB" }}>◆</span> {origins.length}{" "}
+                sources
+                <br />
+                {origins.slice(0, 3).join(" · ")}
+                {origins.length > 3 ? " …" : ""}
+              </>
+            );
+          })()}
         </div>
       </div>
     </aside>

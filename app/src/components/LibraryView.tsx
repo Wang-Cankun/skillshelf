@@ -7,6 +7,7 @@ import { useStore } from "../state/store";
 import { useLibrary } from "../state/queries";
 import { libraryView } from "../lib/select";
 import { MONO } from "../lib/tokens";
+import { SourceCell } from "./SourceCell";
 
 const headStyle: React.CSSProperties = {
   fontSize: 10.5,
@@ -85,7 +86,7 @@ export function LibraryView() {
           </button>
           <span style={{ ...headStyle, width: 158 }}>SKILL</span>
           <span style={{ ...headStyle, width: 128 }}>DOMAINS</span>
-          <span style={{ ...headStyle, width: 150 }}>SOURCE</span>
+          <span style={{ ...headStyle, width: 220, flexShrink: 0 }}>SOURCE</span>
           <span style={{ ...headStyle, width: 96 }}>MODIFIED</span>
           <span style={{ ...headStyle, width: 64, textAlign: "center" }}>
             DEPLOYS
@@ -118,7 +119,6 @@ export function LibraryView() {
             ) : null}
             {bucket.rows.map((skill) => {
               const checked = !!state.selected[skill.name];
-              const isVendor = skill.source === "vendored";
               return (
                 <div
                   key={skill.name}
@@ -176,25 +176,16 @@ export function LibraryView() {
                   >
                     {skill.domains.join(" · ") || "(untagged)"}
                   </span>
-                  <span style={{ width: 150 }}>
-                    {isVendor ? (
-                      <span
-                        style={{
-                          color: "#2563EB",
-                          fontFamily: MONO,
-                          fontSize: 11,
-                          background: "#EFF4FE",
-                          borderRadius: 5,
-                          padding: "2px 7px",
-                        }}
-                      >
-                        dbskill
-                      </span>
-                    ) : (
-                      <span style={{ color: "#9A9AA2", fontSize: 11.5 }}>
-                        local
-                      </span>
-                    )}
+                  <span
+                    style={{
+                      width: 220,
+                      flexShrink: 0,
+                      overflow: "hidden",
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <SourceCell skill={skill} variant="library" />
                   </span>
                   <span
                     style={{

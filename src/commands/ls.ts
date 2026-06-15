@@ -2,7 +2,7 @@
 // bundle (tag query). Excludes retired by default; `--all` includes them.
 
 import { statSync } from "node:fs";
-import type { Ctx, Skill } from "../types.ts";
+import type { Ctx, Skill, Provenance } from "../types.ts";
 import { activeSkills, entryModeInfo } from "../core/library.ts";
 import { resolveBundle } from "../core/bundle.ts";
 import { inventoryDeployments } from "../core/deployments.ts";
@@ -94,13 +94,30 @@ function toJson(
       mode,
       linkTarget,
       // ADR-0008 §7.1 additions: a string source (UI maps "vendored"/"local"),
+      // a human origin label (the real upstream, NOT a hard-coded channel),
       // stat timestamps, and the count of clean deployment sites.
       source: s.source ? "vendored" : "local",
+      origin: originLabel(s.source),
+      channel: s.source ? s.source.channel : null,
       modifiedAt,
       createdAt,
       deployCount: deployCounts.get(s.name) ?? 0,
     };
   });
+}
+
+/**
+ * Short, human display of a vendored skill's real upstream origin, e.g.
+ * "jimliu/baoyu-skills" from "github:jimliu/baoyu-skills@skills/baoyu-translate".
+ * Null for hand-written (local) skills. Replaces the UI's old hard-coded
+ * "dbskill" label so the table tells the truth about where a skill came from.
+ */
+function originLabel(prov: Provenance | null): string | null {
+  if (!prov) return null;
+  const stripped = prov.source.replace(/@.*$/, ""); // drop @subpath
+  const colon = stripped.indexOf(":");
+  const repo = colon >= 0 ? stripped.slice(colon + 1) : stripped; // drop channel:
+  return repo || prov.channel || "vendored";
 }
 
 /** Count clean (`linked`) deployment sites per skill across all surfaces. */
