@@ -10,6 +10,9 @@ import type {
   RefFile,
   Frontmatter,
   SkillSource,
+  OutdatedReport,
+  OutdatedRow,
+  OutdatedStatus,
 } from "./types";
 import { SEV_MAP, type InboxSeverity } from "./tokens";
 import lockJson from "./data/shelf.lock.json";
@@ -36,6 +39,18 @@ const LOCK = lockJson as {
 };
 
 const lockEntry = (name: string): LockEntry | undefined => LOCK.entries[name];
+
+/**
+ * Short, human upstream origin from a lockfile `source` string, e.g.
+ * "jimliu/baoyu-skills" from "github:jimliu/baoyu-skills@skills/baoyu-translate".
+ * Mirrors `originLabel` in the CLI's ls.ts so browser + Tauri agree.
+ */
+export function originLabel(source: string): string {
+  const stripped = source.replace(/@.*$/, ""); // drop @subpath
+  const colon = stripped.indexOf(":");
+  const repo = colon >= 0 ? stripped.slice(colon + 1) : stripped; // drop channel:
+  return repo || "vendored";
+}
 
 const shortHash = (h: string) =>
   h ? `${h.slice(0, 8)}…${h.slice(-4)}` : "";
@@ -65,10 +80,43 @@ export function augmentLibrary(
     return {
       ...s,
       source: s.source ?? source,
+      origin: s.origin ?? (le ? originLabel(le.source) : null),
+      channel: s.channel ?? (le ? le.channel : null),
       modifiedAt: s.modifiedAt ?? (le ? le.installedAt : null),
       deployCount: s.deployCount ?? deployCount(where, s.name),
     };
   });
+}
+
+// ── outdated --json (browser/dev fallback) ─────────────────────────────────
+// We CANNOT hit GitHub from the browser, so every upstream-tracked row is
+// honestly reported "current" — except two clearly-labelled DEMO/FIXTURE rows
+// below, which exist only so the badge UI is exercisable in dev. These are NOT
+// real network truth; the Tauri path runs the real `skl outdated --json`.
+const DEMO_STALE = new Set(["dbs-hook"]); // demo: pretend upstream moved ahead
+const DEMO_DIVERGED = new Set(["dbs-action"]); // demo: pretend local edits diverged
+export function deriveOutdated(skills: Skill[]): OutdatedReport {
+  const rows: OutdatedRow[] = [];
+  for (const s of skills) {
+    const le = lockEntry(s.name);
+    if (!le) continue; // local/linked → no upstream-tracked row
+    let status: OutdatedStatus = "current";
+    if (DEMO_STALE.has(s.name)) status = "stale";
+    else if (DEMO_DIVERGED.has(s.name)) status = "diverged";
+    rows.push({
+      name: s.name,
+      channel: le.channel,
+      source: le.source,
+      installedRef: le.ref,
+      latestRef: le.ref,
+      status,
+      note: "(demo fixture)",
+    });
+  }
+  rows.sort((a, b) => (a.name < b.name ? -1 : 1));
+  const stale = rows.filter((r) => r.status === "stale").length;
+  const diverged = rows.filter((r) => r.status === "diverged").length;
+  return { ok: true, checked: rows.length, stale, diverged, rows };
 }
 
 // ── show --json (browser fallback) ─────────────────────────────────────────
@@ -295,7 +343,12 @@ export function normalizeShow(raw: unknown, name: string): ShowReport {
     frontmatter = parseFrontmatter(body, fallbackFm);
   }
 
+  // `skl show --json` lists reference files but omits SKILL.md itself (it IS the
+  // body). The navigator needs it as the explicit entry point, pinned first.
   const refFiles = normalizeRefFiles(r.refFiles, skillPath);
+  const withSkillMd = refFiles.some((f) => f.path === "SKILL.md")
+    ? refFiles
+    : [{ path: "SKILL.md", kind: "md" as const, depth: 0 }, ...refFiles];
   const prov =
     r.prov && typeof r.prov === "object"
       ? (r.prov as ShowReport["prov"])
@@ -305,9 +358,7 @@ export function normalizeShow(raw: unknown, name: string): ShowReport {
     name,
     body,
     frontmatter,
-    refFiles: refFiles.length
-      ? refFiles
-      : [{ path: "SKILL.md", kind: "md", depth: 0 }],
+    refFiles: withSkillMd,
     prov,
   };
 }

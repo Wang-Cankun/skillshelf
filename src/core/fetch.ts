@@ -651,10 +651,16 @@ export async function latestGithubRef(parsed: ParsedSource): Promise<RefResult> 
     return { ok: false, error: `not a github source: ${parsed.source}` };
   }
 
-  // Prefer gh api: gives the latest commit touching the subpath if one is set.
+  // Resolve the repo's default-branch HEAD — the SAME ref `update` records
+  // (cloneToStaging does `git clone --depth 1` + `rev-parse HEAD`). We must
+  // match it so `outdated` and `update` agree on "latest": a per-subpath check
+  // (gh api `commits?path=`) is NOT used because that param does PREFIX matching
+  // — `path=skills/dbs` also matches `skills/dbs-content-system`, so a sibling's
+  // commit would falsely flag `dbs` as stale forever (the body never changes, so
+  // `update` reports "uptodate" and the badge could never clear). Prefer `gh api`
+  // (token auth → works for private repos), fall back to `git ls-remote HEAD`.
   if (await hasBinary("gh")) {
-    const path = parsed.subpath ? `&path=${encodeURIComponent(parsed.subpath)}` : "";
-    const endpoint = `repos/${parsed.owner}/${parsed.repo}/commits?per_page=1${path}`;
+    const endpoint = `repos/${parsed.owner}/${parsed.repo}/commits?per_page=1`;
     const r = await run(["gh", "api", endpoint, "--jq", ".[0].sha"]);
     if (r.ok) {
       const sha = r.stdout.trim();
@@ -662,7 +668,7 @@ export async function latestGithubRef(parsed: ParsedSource): Promise<RefResult> 
     }
   }
 
-  // Fallback: ls-remote default HEAD (repo-level, not subpath-aware).
+  // Fallback: ls-remote default HEAD.
   if (await hasBinary("git")) {
     const url = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
     const r = await run(["git", "ls-remote", url, "HEAD"]);

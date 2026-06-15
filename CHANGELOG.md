@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Update-aware SOURCE column in the desktop app** ([ADR-0009](./docs/adr/0009-update-aware-source-column.md)).
+  The Library SOURCE column now tells the truth and acts on it: it shows each vendored skill's real
+  upstream `owner/repo` (parsed from the lockfile `source`, surfaced via new `origin`/`channel` fields
+  on `skl ls --json`) instead of a hard-coded `dbskill` label, with click-through to the GitHub repo.
+  A manual **Check updates** button runs `skl outdated --json` (tolerating its exit-2 "stale exists"
+  signal) and paints a per-row `↑` (stale) / `⚠` (diverged) badge beside the origin; clicking updates
+  the skill (`skl update`, tag-preserving) with the badge clearing optimistically, plus an **Update all
+  stale (N)** bulk action. The update affordance is Library-only and never offered on linked/local
+  rows (ADR-0004 safety). Badges and check are opt-in (no auto network on launch).
+- **Skill-preview file navigator** — `skl show <name> [--file <relpath>]` opens any bundled file's
+  contents (path-escape-guarded), and `show --json` enumerates the full reference-file tree, so the
+  drawer's file panel browses references/scripts (with syntax highlighting), not just `SKILL.md`.
 - **Repo-wide `skl add` — one repo, one clone** ([ADR-0006](./docs/adr/0006-repo-wide-add.md)).
   A single GitHub repo often ships many skills; installing all 21 of `dontbesilent2025/dbskill`
   forced a hand-rolled `gh api trees` + per-skill loop that **re-cloned the repo 21 times** — the
@@ -82,6 +94,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a crafted or agent-supplied name can no longer escape the library to delete/move outside it.
 
 ### Fixed
+- `skl outdated` no longer reports false `stale` for monorepo skills with name-prefix siblings. It
+  used `gh api commits?path=<subpath>`, whose `path` filter is a **prefix** match — so a commit to
+  `skills/dbs-content-system` falsely flagged `skills/dbs` as stale forever (the body never changed,
+  so `skl update` reported `uptodate` and the badge could never clear). It now resolves the repo's
+  default-branch HEAD, matching the ref `skl update` records, so the two agree.
 - `where --fix` no longer auto-dedupes a deployed copy whose body matches but whose (load-bearing)
   `description` was customized — a description difference now counts as drift and stays `manual`.
 - `skl rm` no longer deletes a live skill without `--force` when an `active` + `_retired` twin exists.

@@ -15,6 +15,10 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   clobber it. Effective skill = upstream + overlay.
 - **Global core** — the small set of universal skills symlinked permanently into
   `~/.claude/skills` so they always auto-trigger.
+- **Provenance** — a vendored skill's recorded upstream (`origin` = `owner/repo`, `channel`,
+  `ref`, `installedHash`) in `shelf.lock.json`. The app's update-aware SOURCE column surfaces
+  it: click-through to the repo root + a manual "Check updates" → `↑` stale / `⚠` diverged
+  badges beside the name; linked/local entries are never updated (ADR-0004, ADR-0009).
 
 ## Migration nouns
 

@@ -17,6 +17,7 @@ import type {
   StatusReport,
   AgentsReport,
   ShowReport,
+  OutdatedReport,
 } from "./types";
 import {
   LibrarySchema,
@@ -25,10 +26,12 @@ import {
   StatusReportSchema,
   AgentsReportSchema,
   RawShowSchema,
+  OutdatedSchema,
 } from "./schemas";
 import { realLibrary, realWhere, realScan, realStatus } from "./fixtures";
-import { augmentLibrary, deriveShow, normalizeShow } from "./derive";
+import { augmentLibrary, deriveShow, normalizeShow, deriveOutdated } from "./derive";
 import { deriveAgentsReport } from "./agents";
+import { visibleAgents } from "./prefs";
 import type { ZodType } from "zod";
 
 export const IS_TAURI =
@@ -97,10 +100,44 @@ export async function loadStatus(): Promise<StatusReport> {
   return realStatus;
 }
 
+export async function loadOutdated(): Promise<OutdatedReport> {
+  if (IS_TAURI) {
+    // `skl outdated --json` EXITS 2 when stale/diverged skills exist — a CI
+    // signal, NOT a failure (the JSON payload is still on stdout). invokeJson
+    // throws on any non-zero exit, so it can't be used here: with ~20 stale
+    // skills the check would always "fail". Parse stdout directly and only
+    // treat a genuinely empty/unparseable stdout (exit 1) as an error.
+    const { invoke } = await import("@tauri-apps/api/core");
+    const result = await invoke<SklResult>("run_skl", {
+      args: ["outdated", "--json"],
+    });
+    let raw: unknown;
+    try {
+      raw = JSON.parse(result.stdout);
+    } catch {
+      throw new Error(
+        result.stderr.trim() || "skl outdated --json produced no JSON",
+      );
+    }
+    const parsed = OutdatedSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `unexpected shape from skl outdated --json: ${parsed.error.message}`,
+      );
+    }
+    return parsed.data;
+  }
+  // browser: HONEST fixture-derived fallback (no GitHub access here).
+  return deriveOutdated(augmentLibrary(realLibrary, realWhere));
+}
+
 export async function loadAgents(): Promise<AgentsReport> {
-  if (IS_TAURI) return invokeJson(["agents", "--json"], AgentsReportSchema);
-  // browser: reconstruct the agents report from the real `where` feed.
-  return deriveAgentsReport(realWhere);
+  const report = IS_TAURI
+    ? await invokeJson(["agents", "--json"], AgentsReportSchema)
+    : // browser: reconstruct the agents report from the real `where` feed.
+      deriveAgentsReport(realWhere);
+  // UI display filter (prefs.ts) — hide agents this install doesn't use.
+  return { ...report, agents: visibleAgents(report.agents) };
 }
 
 export async function loadShow(

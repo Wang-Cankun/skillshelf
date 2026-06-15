@@ -17,6 +17,10 @@ export interface Skill {
   // ── ADR-0008 §7.1 additions to `ls --json` (optional: real skl emits them
   //    once shipped; fixtures derive them) ──────────────────────────────────
   source?: SkillSource;
+  /** Real upstream origin for vendored skills, e.g. "jimliu/baoyu-skills"; null for local. */
+  origin?: string | null;
+  /** Provenance transport/registry kind, e.g. "github" / "local"; gates the SOURCE click-through. */
+  channel?: string | null;
   modifiedAt?: string | null;
   createdAt?: string | null;
   deployCount?: number;
@@ -36,6 +40,31 @@ export interface DeploymentReport {
   surfaces: string[];
   sites: DeploymentSite[];
   problems: DeploymentSite[];
+}
+
+// ── `outdated --json` (ADR-0009): update-aware SOURCE column (a FACT layer —
+//    hash/ref compare). One row per upstream-TRACKED skill. ───────────────────
+export type OutdatedStatus =
+  | "stale"
+  | "current"
+  | "unknown"
+  | "linked"
+  | "diverged";
+export interface OutdatedRow {
+  name: string;
+  channel?: string | null;
+  source?: string;
+  installedRef: string;
+  latestRef: string | null;
+  status: OutdatedStatus;
+  note: string;
+}
+export interface OutdatedReport {
+  ok: boolean;
+  checked: number;
+  stale: number;
+  diverged?: number;
+  rows: OutdatedRow[];
 }
 
 export interface ScanPerRoot {
