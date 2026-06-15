@@ -1,0 +1,219 @@
+{
+  "skill_name": "skl",
+  "aggregate": {
+    "with_skill": {
+      "pass": 10,
+      "total": 10,
+      "rate": 1.0
+    },
+    "baseline": {
+      "pass": 10,
+      "total": 10,
+      "rate": 1.0
+    }
+  },
+  "runs": [
+    {
+      "eval_id": "A",
+      "name": "install-and-deploy",
+      "variant": "with_skill",
+      "sandbox": "/tmp/skl-eval/iter1/A-with_skill",
+      "commands": [
+        "skl add /tmp/skl-eval/iter1/A-with_skill/sources/pdf-extract --json",
+        "skl import pdf-extract --from /tmp/skl-eval/iter1/A-with_skill/sources/pdf-extract --copy --json",
+        "skl use pdf-extract --json",
+        "skl status --json"
+      ],
+      "summary": "The source was a local directory, so after `skl add` failed (it expects a git source), I adopted it into the library with `skl import --copy`, then deployed it active in the project via `skl use` (run from the project dir) and confirmed the symlink with `skl status`.",
+      "assertions": [
+        {
+          "text": "pdf-extract is in the library",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/A-with_skill/library/pdf-extract/SKILL.md"
+        },
+        {
+          "text": "pdf-extract is symlinked into the project",
+          "passed": true,
+          "evidence": "/tmp/skl-eval/iter1/A-with_skill/project/.claude/skills/pdf-extract -> /private/tmp/skl-eval/iter1/A-with_skill/library/pdf-extract"
+        },
+        {
+          "text": "project has no drifting real copy",
+          "passed": true,
+          "evidence": "deploy is a symlink (or absent)"
+        }
+      ],
+      "pass": 3,
+      "total": 3
+    },
+    {
+      "eval_id": "A",
+      "name": "install-and-deploy",
+      "variant": "baseline",
+      "sandbox": "/tmp/skl-eval/iter1/A-baseline",
+      "commands": [
+        "import pdf-extract --from /tmp/skl-eval/iter1/A-baseline/sources/pdf-extract",
+        "use pdf-extract"
+      ],
+      "summary": "Adopted the local source skill into the library with `skl import` (move + symlink-back), then deployed it into the project's .claude/skills with `skl use`, verifying the link with `skl status`.",
+      "assertions": [
+        {
+          "text": "pdf-extract is in the library",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/A-baseline/library/pdf-extract/SKILL.md"
+        },
+        {
+          "text": "pdf-extract is symlinked into the project",
+          "passed": true,
+          "evidence": "/tmp/skl-eval/iter1/A-baseline/project/.claude/skills/pdf-extract -> /private/tmp/skl-eval/iter1/A-baseline/library/pdf-extract"
+        },
+        {
+          "text": "project has no drifting real copy",
+          "passed": true,
+          "evidence": "deploy is a symlink (or absent)"
+        }
+      ],
+      "pass": 3,
+      "total": 3
+    },
+    {
+      "eval_id": "B",
+      "name": "migrate-scattered",
+      "variant": "with_skill",
+      "sandbox": "/tmp/skl-eval/iter1/B-with_skill",
+      "commands": [
+        "skl scan --add-root /tmp/skl-eval/iter1/B-with_skill/rootA --json",
+        "skl scan --add-root /tmp/skl-eval/iter1/B-with_skill/rootB --json",
+        "skl scan --json",
+        "skl import commit-helper --from /tmp/skl-eval/iter1/B-with_skill/rootA/commit-helper --json",
+        "skl import xhs-title --from /tmp/skl-eval/iter1/B-with_skill/rootB/xhs-title --json",
+        "skl import rnaseq-qc --from /tmp/skl-eval/iter1/B-with_skill/rootA/rnaseq-qc --json",
+        "skl scan --json",
+        "skl import rnaseq-qc --from /tmp/skl-eval/iter1/B-with_skill/rootB/rnaseq-qc --force --json",
+        "skl scan --json",
+        "skl ls --json"
+      ],
+      "summary": "Registered both roots and ran a read-only `skl scan` first to surface duplicates \u2014 revealing `rnaseq-qc` as a drifted duplicate across rootA/rootB (the other two skills unique) \u2014 then imported the three keepers (rnaseq-qc canonical from rootA), resolved the rootB drift loser with --force, and verified a clean library with zero duplicate/drift groups.",
+      "assertions": [
+        {
+          "text": "commit-helper adopted into library",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/B-with_skill/library/commit-helper"
+        },
+        {
+          "text": "xhs-title adopted into library",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/B-with_skill/library/xhs-title"
+        },
+        {
+          "text": "rnaseq-qc adopted (one canonical copy)",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/B-with_skill/library/rnaseq-qc"
+        },
+        {
+          "text": "library consolidated (>=3 skills)",
+          "passed": true,
+          "evidence": "3 skills present"
+        }
+      ],
+      "pass": 4,
+      "total": 4
+    },
+    {
+      "eval_id": "B",
+      "name": "migrate-scattered",
+      "variant": "baseline",
+      "sandbox": "/tmp/skl-eval/iter1/B-baseline",
+      "commands": [
+        "scan /tmp/skl-eval/iter1/B-baseline/rootA /tmp/skl-eval/iter1/B-baseline/rootB",
+        "import commit-helper --from /tmp/skl-eval/iter1/B-baseline/rootA/commit-helper",
+        "import rnaseq-qc --from /tmp/skl-eval/iter1/B-baseline/rootA/rnaseq-qc",
+        "import xhs-title --from /tmp/skl-eval/iter1/B-baseline/rootB/xhs-title",
+        "ls"
+      ],
+      "summary": "I ran a read-only `skl scan` over both roots first to surface duplicates/drift (revealing rnaseq-qc existed in both roots with drifted bodies), then imported the three unique skills into the library, choosing rootA's \"Original body\" rnaseq-qc as canonical and skipping the drifted rootB copy.",
+      "assertions": [
+        {
+          "text": "commit-helper adopted into library",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/B-baseline/library/commit-helper"
+        },
+        {
+          "text": "xhs-title adopted into library",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/B-baseline/library/xhs-title"
+        },
+        {
+          "text": "rnaseq-qc adopted (one canonical copy)",
+          "passed": true,
+          "evidence": "found /tmp/skl-eval/iter1/B-baseline/library/rnaseq-qc"
+        },
+        {
+          "text": "library consolidated (>=3 skills)",
+          "passed": true,
+          "evidence": "3 skills present"
+        }
+      ],
+      "pass": 4,
+      "total": 4
+    },
+    {
+      "eval_id": "C",
+      "name": "develop-as-linked",
+      "variant": "with_skill",
+      "sandbox": "/tmp/skl-eval/iter1/C-with_skill",
+      "commands": [
+        "skl link --from /tmp/skl-eval/iter1/C-with_skill/dev/cairn --json",
+        "skl ls --json"
+      ],
+      "summary": "Registered cairn as a LINKED library entry (symlink to its dev git repo) via `skl link --from`, so the repo stays canonical and the library never holds a drifting copy.",
+      "assertions": [
+        {
+          "text": "cairn is LINKED to the dev repo",
+          "passed": true,
+          "evidence": "library/cairn -> /private/tmp/skl-eval/iter1/C-with_skill/dev/cairn"
+        },
+        {
+          "text": "library/cairn is a symlink (not an owned copy)",
+          "passed": true,
+          "evidence": "/tmp/skl-eval/iter1/C-with_skill/dev/cairn"
+        },
+        {
+          "text": "dev repo left intact",
+          "passed": true,
+          "evidence": "dev repo SKILL.md present"
+        }
+      ],
+      "pass": 3,
+      "total": 3
+    },
+    {
+      "eval_id": "C",
+      "name": "develop-as-linked",
+      "variant": "baseline",
+      "sandbox": "/tmp/skl-eval/iter1/C-baseline",
+      "commands": [
+        "link cairn --from /tmp/skl-eval/iter1/C-baseline/dev/cairn"
+      ],
+      "summary": "Used `skl link --from` to shelve the existing cairn dev git repo into the library as a symlink (not a copy), so edits made in the repo stay in sync with the library and never drift.",
+      "assertions": [
+        {
+          "text": "cairn is LINKED to the dev repo",
+          "passed": true,
+          "evidence": "library/cairn -> /private/tmp/skl-eval/iter1/C-baseline/dev/cairn"
+        },
+        {
+          "text": "library/cairn is a symlink (not an owned copy)",
+          "passed": true,
+          "evidence": "/tmp/skl-eval/iter1/C-baseline/dev/cairn"
+        },
+        {
+          "text": "dev repo left intact",
+          "passed": true,
+          "evidence": "dev repo SKILL.md present"
+        }
+      ],
+      "pass": 3,
+      "total": 3
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "skill_name": "skl",
+  "note": "Behavioral evals: each subagent gets an isolated skillshelf sandbox (HOME redirected, SKILLSHELF_LIBRARY set) built by evals/setup_fixture.sh, performs the task by driving the real skl binary, and is graded on the sandbox end-state by evals/check.sh. The point is to test whether the agent picks the right skl verbs and respects the safety rules.",
+  "evals": [
+    {
+      "id": "A",
+      "name": "install-and-deploy",
+      "prompt": "I've got a skill sitting at <SBX>/sources/pdf-extract (it has a SKILL.md). Get it into my skillshelf library and make it active in the project at <SBX>/project so the agent there can use it. Use the skl CLI.",
+      "tests_rule": "add/import fills the library; use deploys it — two separate steps; deploy is a symlink not a copy.",
+      "assertions": [
+        {"text": "pdf-extract is in the library", "kind": "endstate"},
+        {"text": "pdf-extract is symlinked into the project", "kind": "endstate"},
+        {"text": "project has no drifting real copy", "kind": "endstate"}
+      ]
+    },
+    {
+      "id": "B",
+      "name": "migrate-scattered",
+      "prompt": "My skills are scattered across <SBX>/rootA and <SBX>/rootB and I think some are duplicated. Consolidate them into my skillshelf library. Look before you leap — I want to know what's duplicated before anything moves. Use the skl CLI.",
+      "tests_rule": "scan (read-only) before import; adopt the unique skills; surface the rnaseq-qc drift instead of silently picking.",
+      "assertions": [
+        {"text": "commit-helper adopted into library", "kind": "endstate"},
+        {"text": "xhs-title adopted into library", "kind": "endstate"},
+        {"text": "rnaseq-qc adopted (one canonical copy)", "kind": "endstate"},
+        {"text": "library consolidated (>=3 skills)", "kind": "endstate"}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "develop-as-linked",
+      "prompt": "I actively develop the 'cairn' skill in its own git repo at <SBX>/dev/cairn and I keep editing it there. I want it available in my skillshelf library, but I do NOT want a copy that drifts out of sync with the repo. Set it up the right way with the skl CLI.",
+      "tests_rule": "link --from (LINKED entry: library symlinks to the dev repo) — NOT an owned copy that drifts.",
+      "assertions": [
+        {"text": "cairn is LINKED to the dev repo", "kind": "endstate"},
+        {"text": "library/cairn is a symlink (not an owned copy)", "kind": "endstate"},
+        {"text": "dev repo left intact", "kind": "endstate"}
+      ]
+    }
+  ]
+}

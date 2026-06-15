@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>skl skill — how it was built & tested</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--fg:#e6edf3;--mut:#8b949e;--ok:#3fb950;--no:#f85149;--accent:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px}
+h1{font-size:30px;margin:0 0 4px}h2{font-size:22px;margin:40px 0 12px;border-bottom:1px solid var(--bd);padding-bottom:6px}
+h3{font-size:18px;margin:0 0 6px}h4{font-size:14px;margin:0 0 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.lede{color:var(--mut);font-size:17px}
+.scorebar{display:flex;gap:16px;margin:24px 0}
+.score{flex:1;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:18px}
+.score .n{font-size:38px;font-weight:700}.score.win .n{color:var(--ok)}.score.base .n{color:var(--mut)}
+.score .l{color:var(--mut);font-size:13px}
+.bars{height:10px;background:#21262d;border-radius:6px;overflow:hidden;margin-top:10px}.bars i{display:block;height:100%}
+.win .bars i{background:var(--ok)}.base .bars i{background:#6e7681}
+.diagram{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:18px;white-space:pre;overflow:auto;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c9d1d9}
+.evalcard{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:20px;margin:16px 0}
+.prompt{background:#0d1117;border-left:3px solid var(--accent);padding:8px 12px;border-radius:4px;color:#c9d1d9;font-size:14px}
+.rule{color:var(--mut);font-size:13.5px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+@media(max-width:720px){.cols{grid-template-columns:1fr}.scorebar{flex-direction:column}}
+.col{background:#0d1117;border:1px solid var(--bd);border-radius:10px;padding:14px}
+.pill{font-size:12px;padding:2px 8px;border-radius:20px;vertical-align:middle}
+.pill.pass{background:rgba(63,185,80,.15);color:var(--ok)}.pill.partial{background:rgba(210,153,34,.15);color:#d29922}.pill.fail{background:rgba(248,81,73,.15);color:var(--no)}
+.cmds{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cmds code{background:#161b22;border:1px solid var(--bd);border-radius:6px;padding:2px 8px;font:12px ui-monospace,Menlo,monospace;color:#79c0ff}
+.asserts{list-style:none;padding:0;margin:0}
+.asserts li{padding:6px 0;border-bottom:1px solid #21262d;font-size:13.5px}
+.asserts li span{font-weight:700;margin-right:6px}.asserts li.ok span{color:var(--ok)}.asserts li.no span{color:var(--no)}
+.ev{color:var(--mut);font-size:12px;margin-left:18px;font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+.summary{color:var(--mut);font-size:13px;font-style:italic;margin:10px 0 0}
+.muted{color:var(--mut)}
+.finding{background:rgba(210,153,34,.08);border:1px solid #9e6a03;border-left:4px solid #d29922;border-radius:10px;padding:16px 18px;margin:8px 0 24px;font-size:14px;color:#e6edf3}
+.finding b{color:#e3b341}
+.gp{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:4px 20px;margin:16px 0}
+.gp li{margin:14px 0}.gp b{color:var(--accent)}
+code.inline{background:#161b22;border:1px solid var(--bd);border-radius:4px;padding:1px 6px;font:12.5px ui-monospace,Menlo,monospace;color:#79c0ff}
+</style></head><body><div class="wrap">
+
+<h1>The <code class="inline">skl</code> skill — built & tested</h1>
+<p class="lede">A skill that teaches Claude to drive the <b>skillshelf</b> CLI for skill management — and a behavioral test harness that proves it helps, by running the real CLI in isolated sandboxes.</p>
+
+<div class="scorebar">
+  <div class="score win"><div class="n">100%</div><div class="l">With the skill &nbsp;·&nbsp; 10/10 assertions passed</div><div class="bars"><i style="width:100%"></i></div></div>
+  <div class="score base"><div class="n">100%</div><div class="l">Baseline, no skill &nbsp;·&nbsp; 10/10 assertions passed</div><div class="bars"><i style="width:100%"></i></div></div>
+</div>
+
+<div class="finding">
+<b>The honest headline: the skill did not beat the baseline on these tasks — and that is the most useful thing the harness told us.</b>
+A strong model (Opus) plus skillshelf's own good <code class="inline">--help</code> already reaches the right end-state on all three tasks without any skill. That is a <b>null result</b>, and a real eval has to be willing to report one. It means: (1) these tasks aren't hard enough to <i>discriminate</i> the skill's value, and (2) the skill's actual payoff lives where end-state grading can't see it — <b>reliable triggering</b> (getting the model to reach for <code class="inline">skl</code> and the right verb at all, with zero exploration) and <b>token cost</b> (the baseline agents had to spend turns reading <code class="inline">skl --help</code>; the skilled ones didn't). The next iteration should add tasks where the naive path actually fails — e.g. the LINKED-entry update trap — and measure triggering separately with the description optimizer.
+</div>
+
+<h2>How the harness works</h2>
+<p>Each test spawns two subagents on the same task — one that <b>reads the skill first</b>, one with <b>no skill</b> (it only has <code class="inline">skl --help</code>). Both run the <i>real</i> <code class="inline">skl</code> binary, but inside a throwaway sandbox so the user's real library is never touched. Grading is done <b>independently</b> afterward by inspecting the sandbox's end-state on disk — the agent's self-report is never trusted.</p>
+<div class="diagram">  setup_fixture.sh  ──build──▶  /tmp/skl-eval/&lt;eval&gt;-&lt;variant&gt;/
+                                  ├─ home/        ← HOME redirected here (real ~/.skillshelf untouched)
+                                  ├─ library/     ← SKILLSHELF_LIBRARY
+                                  ├─ project/ rootA/ dev/ ...   ← task fixtures
+                                  │
+   subagent ─drives─▶ skl import / use / scan / link ...
+                                  │
+   check.sh  ──inspect end-state──▶  [{text, passed, evidence}]   ← authoritative grade
+</div>
+<p class="muted">Why isolate by redirecting <code class="inline">HOME</code>: <code class="inline">skl init</code> writes <code class="inline">~/.skillshelf/config.json</code> and symlinks the global core into <code class="inline">~/.claude/skills</code>. Pointing <code class="inline">HOME</code> at the sandbox makes all of that land inside the throwaway dir — full isolation, zero risk to the real setup.</p>
+
+<h2>Results per task</h2>
+<section class="evalcard">
+          <h3>Eval A: install-and-deploy</h3>
+          <p class="prompt">I&#x27;ve got a skill sitting at &amp;lt;sandbox&amp;gt;/sources/pdf-extract (it has a SKILL.md). Get it into my skillshelf library and make it active in the project at &amp;lt;sandbox&amp;gt;/project so the agent there can use it. Use the skl CLI.</p>
+          <p class="rule"><b>What it tests:</b> add/import fills the library; use deploys it — two separate steps; deploy is a symlink not a copy.</p>
+          <div class="cols"><div class="col">
+              <h4>With skill <span class="pill pass">3/3</span></h4>
+              <div class="cmds"><code>skl add /tmp/skl-eval/iter1/A-with_skill/sources/pdf-extract --json</code><code>skl import pdf-extract --from /tmp/skl-eval/iter1/A-with_skill/sources/pdf-extract --copy --json</code><code>skl use pdf-extract --json</code><code>skl status --json</code></div>
+              <ul class="asserts"><li class="ok"><span>✓</span> pdf-extract is in the library<div class="ev">found /tmp/skl-eval/iter1/A-with_skill/library/pdf-extract/SKILL.md</div></li><li class="ok"><span>✓</span> pdf-extract is symlinked into the project<div class="ev">/tmp/skl-eval/iter1/A-with_skill/project/.claude/skills/pdf-extract -&gt; /private/tmp/skl-eval/iter1/A-with_skill/library/pdf-extract</div></li><li class="ok"><span>✓</span> project has no drifting real copy<div class="ev">deploy is a symlink (or absent)</div></li></ul>
+              <p class="summary">The source was a local directory, so after `skl add` failed (it expects a git source), I adopted it into the library with `skl import --copy`, then deployed it active in the project via `skl use` (run from the project dir) and confirmed the symlink with `skl status`.</p>
+            </div><div class="col">
+              <h4>Baseline (no skill) <span class="pill pass">3/3</span></h4>
+              <div class="cmds"><code>skl import pdf-extract --from /tmp/skl-eval/iter1/A-baseline/sources/pdf-extract</code><code>skl use pdf-extract</code></div>
+              <ul class="asserts"><li class="ok"><span>✓</span> pdf-extract is in the library<div class="ev">found /tmp/skl-eval/iter1/A-baseline/library/pdf-extract/SKILL.md</div></li><li class="ok"><span>✓</span> pdf-extract is symlinked into the project<div class="ev">/tmp/skl-eval/iter1/A-baseline/project/.claude/skills/pdf-extract -&gt; /private/tmp/skl-eval/iter1/A-baseline/library/pdf-extract</div></li><li class="ok"><span>✓</span> project has no drifting real copy<div class="ev">deploy is a symlink (or absent)</div></li></ul>
+              <p class="summary">Adopted the local source skill into the library with `skl import` (move + symlink-back), then deployed it into the project&#x27;s .claude/skills with `skl use`, verifying the link with `skl status`.</p>
+            </div></div>
+        </section><section class="evalcard">
+          <h3>Eval B: migrate-scattered</h3>
+          <p class="prompt">My skills are scattered across &amp;lt;sandbox&amp;gt;/rootA and &amp;lt;sandbox&amp;gt;/rootB and I think some are duplicated. Consolidate them into my skillshelf library. Look before you leap — I want to know what&#x27;s duplicated before anything moves. Use the skl CLI.</p>
+          <p class="rule"><b>What it tests:</b> scan (read-only) before import; adopt the unique skills; surface the rnaseq-qc drift instead of silently picking.</p>
+          <div class="cols"><div class="col">
+              <h4>With skill <span class="pill pass">4/4</span></h4>
+              <div class="cmds"><code>skl scan --add-root /tmp/skl-eval/iter1/B-with_skill/rootA --json</code><code>skl scan --add-root /tmp/skl-eval/iter1/B-with_skill/rootB --json</code><code>skl scan --json</code><code>skl import commit-helper --from /tmp/skl-eval/iter1/B-with_skill/rootA/commit-helper --json</code><code>skl import xhs-title --from /tmp/skl-eval/iter1/B-with_skill/rootB/xhs-title --json</code><code>skl import rnaseq-qc --from /tmp/skl-eval/iter1/B-with_skill/rootA/rnaseq-qc --json</code><code>skl scan --json</code><code>skl import rnaseq-qc --from /tmp/skl-eval/iter1/B-with_skill/rootB/rnaseq-qc --force --json</code><code>skl scan --json</code><code>skl ls --json</code></div>
+              <ul class="asserts"><li class="ok"><span>✓</span> commit-helper adopted into library<div class="ev">found /tmp/skl-eval/iter1/B-with_skill/library/commit-helper</div></li><li class="ok"><span>✓</span> xhs-title adopted into library<div class="ev">found /tmp/skl-eval/iter1/B-with_skill/library/xhs-title</div></li><li class="ok"><span>✓</span> rnaseq-qc adopted (one canonical copy)<div class="ev">found /tmp/skl-eval/iter1/B-with_skill/library/rnaseq-qc</div></li><li class="ok"><span>✓</span> library consolidated (&gt;=3 skills)<div class="ev">3 skills present</div></li></ul>
+              <p class="summary">Registered both roots and ran a read-only `skl scan` first to surface duplicates — revealing `rnaseq-qc` as a drifted duplicate across rootA/rootB (the other two skills unique) — then imported the three keepers (rnaseq-qc canonical from rootA), resolved the rootB drift loser with --force, and verified a clean library with zero duplicate/drift groups.</p>
+            </div><div class="col">
+              <h4>Baseline (no skill) <span class="pill pass">4/4</span></h4>
+              <div class="cmds"><code>skl scan /tmp/skl-eval/iter1/B-baseline/rootA /tmp/skl-eval/iter1/B-baseline/rootB</code><code>skl import commit-helper --from /tmp/skl-eval/iter1/B-baseline/rootA/commit-helper</code><code>skl import rnaseq-qc --from /tmp/skl-eval/iter1/B-baseline/rootA/rnaseq-qc</code><code>skl import xhs-title --from /tmp/skl-eval/iter1/B-baseline/rootB/xhs-title</code><code>skl ls</code></div>
+              <ul class="asserts"><li class="ok"><span>✓</span> commit-helper adopted into library<div class="ev">found /tmp/skl-eval/iter1/B-baseline/library/commit-helper</div></li><li class="ok"><span>✓</span> xhs-title adopted into library<div class="ev">found /tmp/skl-eval/iter1/B-baseline/library/xhs-title</div></li><li class="ok"><span>✓</span> rnaseq-qc adopted (one canonical copy)<div class="ev">found /tmp/skl-eval/iter1/B-baseline/library/rnaseq-qc</div></li><li class="ok"><span>✓</span> library consolidated (&gt;=3 skills)<div class="ev">3 skills present</div></li></ul>
+              <p class="summary">I ran a read-only `skl scan` over both roots first to surface duplicates/drift (revealing rnaseq-qc existed in both roots with drifted bodies), then imported the three unique skills into the library, choosing rootA&#x27;s &quot;Original body&quot; rnaseq-qc as canonical and skipping the drifted rootB copy.</p>
+            </div></div>
+        </section><section class="evalcard">
+          <h3>Eval C: develop-as-linked</h3>
+          <p class="prompt">I actively develop the &#x27;cairn&#x27; skill in its own git repo at &amp;lt;sandbox&amp;gt;/dev/cairn and I keep editing it there. I want it available in my skillshelf library, but I do NOT want a copy that drifts out of sync with the repo. Set it up the right way with the skl CLI.</p>
+          <p class="rule"><b>What it tests:</b> link --from (LINKED entry: library symlinks to the dev repo) — NOT an owned copy that drifts.</p>
+          <div class="cols"><div class="col">
+              <h4>With skill <span class="pill pass">3/3</span></h4>
+              <div class="cmds"><code>skl link --from /tmp/skl-eval/iter1/C-with_skill/dev/cairn --json</code><code>skl ls --json</code></div>
+              <ul class="asserts"><li class="ok"><span>✓</span> cairn is LINKED to the dev repo<div class="ev">library/cairn -&gt; /private/tmp/skl-eval/iter1/C-with_skill/dev/cairn</div></li><li class="ok"><span>✓</span> library/cairn is a symlink (not an owned copy)<div class="ev">/tmp/skl-eval/iter1/C-with_skill/dev/cairn</div></li><li class="ok"><span>✓</span> dev repo left intact<div class="ev">dev repo SKILL.md present</div></li></ul>
+              <p class="summary">Registered cairn as a LINKED library entry (symlink to its dev git repo) via `skl link --from`, so the repo stays canonical and the library never holds a drifting copy.</p>
+            </div><div class="col">
+              <h4>Baseline (no skill) <span class="pill pass">3/3</span></h4>
+              <div class="cmds"><code>skl link cairn --from /tmp/skl-eval/iter1/C-baseline/dev/cairn</code></div>
+              <ul class="asserts"><li class="ok"><span>✓</span> cairn is LINKED to the dev repo<div class="ev">library/cairn -&gt; /private/tmp/skl-eval/iter1/C-baseline/dev/cairn</div></li><li class="ok"><span>✓</span> library/cairn is a symlink (not an owned copy)<div class="ev">/tmp/skl-eval/iter1/C-baseline/dev/cairn</div></li><li class="ok"><span>✓</span> dev repo left intact<div class="ev">dev repo SKILL.md present</div></li></ul>
+              <p class="summary">Used `skl link --from` to shelve the existing cairn dev git repo into the library as a symlink (not a copy), so edits made in the repo stay in sync with the library and never drift.</p>
+            </div></div>
+        </section>
+
+<h2>Good practices (what this demonstrates)</h2>
+<ul class="gp">
+<li><b>Test behavior, not prose.</b> For a CLI-driver skill the right question isn't "does the text read well" — it's "does the agent run the right commands and reach the right end-state." So the harness grades the <i>filesystem after the fact</i>, not the agent's words.</li>
+<li><b>Always run a baseline.</b> A skill that scores 100% means nothing if the model already scored 100% without it. The with-skill vs no-skill gap is the only number that shows the skill earns its place in the context window.</li>
+<li><b>Isolate side-effecting tests.</b> The CLI mutates real dirs. Redirecting <code class="inline">HOME</code> + <code class="inline">SKILLSHELF_LIBRARY</code> into a sandbox lets the test exercise the genuine binary with zero blast radius. Each run gets a fresh sandbox so they can't contaminate each other.</li>
+<li><b>Grade independently of the worker.</b> The subagent that does the task never grades itself. A separate deterministic script re-derives pass/fail from disk, so a confidently-wrong agent can't mark its own homework green.</li>
+<li><b>Pick tasks that target the skill's risky claims.</b> Each eval aims at one safety rule the skill teaches — the two-step <code class="inline">add</code>≠<code class="inline">use</code>, scan-before-import, and LINKED-not-copied. That's where a naive agent fails and the skill should win.</li>
+<li><b>Parallel fan-out, deterministic grading.</b> The 6 runs fan out concurrently via a workflow (fast, independent), then collapse to one deterministic grading pass (reproducible). Orchestration handles the slow part; a plain script owns the verdict.</li>
+<li><b>Be willing to ship a null result.</b> This run found <i>no</i> end-state gap between skill and baseline. The temptation is to quietly tune the eval until the skill "wins" — that's how you fool yourself. The honest read is more useful: easy tasks + a strong model don't discriminate, so the skill's value must be proven elsewhere (triggering, token cost) or with harder tasks. An eval you can't fail is decoration.</li>
+</ul>
+
+</div></body></html>
