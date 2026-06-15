@@ -77,7 +77,7 @@ async function findSidecars(libraryPath: string): Promise<string[]> {
   const entries = await readdir(libraryPath, { withFileTypes: true });
   for (const e of entries) {
     // Follow symlinked skill dirs too (some library skills are symlinks to an
-    // external source dir, e.g. `library/cairn` -> a GitHub checkout). isDirectory()
+    // external source dir, e.g. `library/claim-log` -> a GitHub checkout). isDirectory()
     // is false for a symlink, so we must also accept isSymbolicLink().
     if (!e.isDirectory() && !e.isSymbolicLink()) continue;
     // Resolve via the under-home library path (NOT the symlink target) so backup

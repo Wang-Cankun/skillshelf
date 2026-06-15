@@ -13,7 +13,7 @@ imports. Implements the substance of [ADR-0003](0003-agent-agnostic-surfaces.md)
 
 ### The problem: dev skills drift when copied
 
-A skill lives in one place *really* (the developer's repo: `~/Documents/GitHub/cairn`,
+A skill lives in one place *really* (the developer's repo: `~/Documents/GitHub/claim-log`,
 `~/Documents/GitHub/skl`, etc.), and the library *also* wants a copy of it. Before this ADR,
 the only path was to import a copy into the library and keep it in sync manually — or leave it
 in the dev repo and symlink the library entry back to it, creating two competing mental models
@@ -28,7 +28,7 @@ When you import-as-copy and try to update it later, the library tool has no upst
 
 ### Evidence: the bookshelf model
 
-The verb is "shelf a skill," not "own a skill." For skills you actively develop (cairn, skl
+The verb is "shelf a skill," not "own a skill." For skills you actively develop (claim-log, skl
 itself, new tools you're building), the library should *reference* the real copy, not own it.
 For third-party skills, downloads, and stabilized/archived skills, the library should *own* a
 copy so it is self-contained and can be audited / updated / frozen independently.
@@ -89,7 +89,7 @@ local dev repo actively developed by you → LINKED.**
    - **LINKED** — the library entry is a symlink to an external directory (a dev repo's canonical
      source). The dev repo is canonical; the library shelves a reference for discoverability,
      bundling, and cross-agent deployment mapping. For:
-     - Your own actively-developed skills (cairn, skl, new tools you are building).
+     - Your own actively-developed skills (claim-log, skl, new tools you are building).
      - Any skill you clone freshly on each machine (the real copy lives in a git repo).
      - Implemented as a symlink whose realpath is *outside* the library.
 
@@ -108,7 +108,7 @@ local dev repo actively developed by you → LINKED.**
    - **Copy + `import --force` on edit:** Requires you to remember to re-import after every
      significant edit. Impossible to enforce. Drift is probabilistic, not prevented.
    - **Move dev repo + symlink back (aka `import --from <dev-repo>` default):** This is import's
-     current behavior — move the dev repo's skill into the library, then symlink the dev repo
+     current behaviour — move the dev repo's skill into the library, then symlink the dev repo
      location back to the library copy. This guts the dev repo's git history (the repo's actual
      files become a symlink, so git tracks the symlink, not the files). A publishable dev repo
      cannot have its skills as symlinks; you would need to "un-symlink" before pushing, breaking
@@ -179,7 +179,7 @@ local dev repo actively developed by you → LINKED.**
 
 **Negative / cost**
 
-- **LINKED entries require the dev repo.** If you remove `~/Documents/GitHub/cairn`, the library
+- **LINKED entries require the dev repo.** If you remove `~/Documents/GitHub/claim-log`, the library
   symlink becomes dead. Mitigated: dev repos are cloned where you work (they are not ephemeral
   like a cloud-synced file). If you need a skill on a machine without the repo, `skl import
   <name> --force` promotes LINKED → OWNED.
@@ -212,8 +212,8 @@ its same-named library entry's realpath is "source" (the canonical dev-repo sour
 points to — clean); any other real directory is "copy" (drift-prone). This is computed from
 reality on every `skl where` run, requiring no stored metadata.
 
-For a LINKED library entry, the library side is a symlink to e.g. `~/Documents/GitHub/cairn`. When
-`skl where` scans that dev-repo dir, its realpath matches `realpath(library/cairn)`, so the
+For a LINKED library entry, the library side is a symlink to e.g. `~/Documents/GitHub/claim-log`. When
+`skl where` scans that dev-repo dir, its realpath matches `realpath(library/claim-log)`, so the
 classifier returns "source" — a clean entry, excluded from problems — rather than mistaking the
 canonical source for a stray redundant copy.
 

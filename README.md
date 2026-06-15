@@ -85,7 +85,7 @@ skl scan                       # report every candidate + duplicate/drift group
 # 2. Adopt the ones you want, one at a time. Each import moves the skill into the
 #    library and leaves a symlink behind so old paths keep resolving.
 skl import rnaseq-qc --from ~/.claude/skills/rnaseq-qc
-skl import xhs-title --from ~/notes/.agents/skills/xhs-title
+skl import headline-picker --from ~/notes/.agents/skills/headline-picker
 
 #    For a skill living inside a project repo, copy instead of move (no symlink left behind):
 skl import deploy-check --from ~/projects/web/.claude/skills/deploy-check --copy
@@ -95,7 +95,7 @@ skl import rnaseq-qc --from ~/projects/lab/.claude/skills/rnaseq-qc --force
 
 #    For a skill you actively develop in its own git repo, shelve a LINK instead of a copy —
 #    the repo stays canonical and edits show up live, no drift, no re-sync (ADR-0004):
-skl link --from ~/Documents/GitHub/cairn/skill/cairn
+skl link --from ~/Documents/GitHub/claim-log/skill/claim-log
 
 # 3. Tag the now-populated library in one pass. Domain is tags, not folders, so this
 #    runs AFTER import with no reorg — no skill ever has to move because a tag changed.
@@ -126,7 +126,7 @@ skillshelf separates *owning* a skill from *loading* it.
 - **Owned vs linked entries** ([ADR-0004](./docs/adr/0004-owned-vs-linked-entries.md)) — the
   library is a *bookshelf*: an entry either **owns** its bytes (a real copy; the library is
   canonical — for downloads and stabilized skills) or is **linked** (a symlink to an external dev
-  repo that stays canonical — for skills you actively develop in their own git, e.g. `cairn`).
+  repo that stays canonical — for skills you actively develop in their own git, e.g. `claim-log`).
   `skl link --from <dev-repo>` registers a linked entry; `skl where` shows it as a clean
   `✓ source`; `skl update` / `outdated` skip linked entries so they never pull upstream into your
   dev repo. The mode is derived from the filesystem (a symlink resolving outside the library),

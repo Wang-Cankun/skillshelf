@@ -18,7 +18,7 @@ import { SourceCell } from "./SourceCell";
 // SET is derived from the live library so a domain outside this list (e.g.
 // global-core) still gets a column instead of silently-invisible dots.
 const DOM_ORDER = [
-  "green-card",
+  "portfolio",
   "content",
   "business",
   "sci-writing",

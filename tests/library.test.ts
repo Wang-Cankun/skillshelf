@@ -40,21 +40,21 @@ describe("library load + taxonomy + provenance", () => {
     expect(activeSkills(lib).length).toBe(11);
   });
 
-  test("taxonomy merge unions domains onto upstream (xhs-title gains green-card)", async () => {
+  test("taxonomy merge unions domains onto upstream (headline-picker gains portfolio)", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
-    const xhs = findByName(lib, "xhs-title")!;
-    // upstream frontmatter domains: writing, marketing — taxonomy adds green-card
+    const xhs = findByName(lib, "headline-picker")!;
+    // upstream frontmatter domains: writing, marketing — taxonomy adds portfolio
     expect(xhs.domains).toContain("writing");
     expect(xhs.domains).toContain("marketing");
-    expect(xhs.domains).toContain("green-card");
+    expect(xhs.domains).toContain("portfolio");
     // primary stays the upstream primary (writing), not the taxonomy tag
     expect(xhs.primaryDomain).toBe("writing");
   });
 
-  test("provenance attached from lockfile for xhs-title; hand-written skills have none", async () => {
+  test("provenance attached from lockfile for headline-picker; hand-written skills have none", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
-    const xhs = findByName(lib, "xhs-title")!;
-    expect(xhs.source?.source).toBe("github:dontbesilent2025/dbskill@skills/xhs-title");
+    const xhs = findByName(lib, "headline-picker")!;
+    expect(xhs.source?.source).toBe("github:anthropics/skills@skills/headline-picker");
     expect(xhs.source?.channel).toBe("github");
     expect(findByName(lib, "rnaseq-qc")!.source).toBeNull();
   });
@@ -116,12 +116,12 @@ describe("bundles = tag queries", () => {
     expect(bio.skills.every((s) => !s.retired)).toBe(true);
   });
 
-  test("green-card bundle pulls xhs-title in via taxonomy-unioned domain", async () => {
+  test("portfolio bundle pulls headline-picker in via taxonomy-unioned domain", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
-    const gc = await resolveBundle(lib, "green-card");
+    const gc = await resolveBundle(lib, "portfolio");
     const names = gc.skills.map((s) => s.name);
-    expect(names).toContain("eb1a-evidence");
-    expect(names).toContain("xhs-title");
+    expect(names).toContain("evidence-map");
+    expect(names).toContain("headline-picker");
   });
 
   // ADR-0002 drops the separate `bundles` concept entirely (it was a provably
@@ -146,7 +146,7 @@ describe("bundles = tag queries", () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     const names = (await listBundles(lib)).map((b) => b.name);
     expect(names).toContain("bioinfo");
-    expect(names).toContain("green-card");
+    expect(names).toContain("portfolio");
     // ADR-0002: bundles are domain tags only; "personal-brand" (an old sidecar
     // bundle, never a domain) no longer exists as a bundle.
     expect(names).not.toContain("personal-brand");
@@ -182,7 +182,7 @@ describe("dedupe drift classification", () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
     const names = findDuplicates(lib).map((g) => g.name);
     expect(names).not.toContain("rnaseq-qc");
-    expect(names).not.toContain("eb1a-evidence");
+    expect(names).not.toContain("evidence-map");
   });
 });
 
@@ -195,10 +195,10 @@ describe("search + index", () => {
 
   test("search matches on description + domain tokens", async () => {
     const lib = await loadLibrary(FIXTURE_LIBRARY);
-    const r = searchSkills(lib, "uscis");
-    expect(r.map((s) => s.name)).toContain("eb1a-evidence");
+    const r = searchSkills(lib, "checklist");
+    expect(r.map((s) => s.name)).toContain("evidence-map");
     const byDomain = searchSkills(lib, "philosophy");
-    expect(byDomain.map((s) => s.name)).toContain("wittgenstein-deconstruct");
+    expect(byDomain.map((s) => s.name)).toContain("concept-deconstruct");
   });
 
   test("listDomains is sorted + unique", async () => {
@@ -206,7 +206,7 @@ describe("search + index", () => {
     const ds = listDomains(lib);
     expect(ds).toEqual([...new Set(ds)].sort());
     expect(ds).toContain("bioinfo");
-    expect(ds).toContain("green-card");
+    expect(ds).toContain("portfolio");
   });
 
   test("generateIndex groups by domain, lists retired section, deterministic with fixed ts", async () => {
@@ -218,7 +218,7 @@ describe("search + index", () => {
     expect(md).toContain("old-deseq-helper");
     expect(md).toContain("FIXED-TS");
     // third-party provenance annotated
-    expect(md).toContain("[github:dontbesilent2025/dbskill@skills/xhs-title]");
+    expect(md).toContain("[github:anthropics/skills@skills/headline-picker]");
     // stable across two runs with same ts
     expect(generateIndex(lib, { generatedAt: "FIXED-TS" })).toBe(md);
   });

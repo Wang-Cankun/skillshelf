@@ -23,10 +23,10 @@ describe("entryMode — owned vs linked (ADR-0004)", () => {
   });
 
   test("a symlink resolving OUTSIDE the library is LINKED", async () => {
-    const dev = join(tmp, "dev", "cairn");
+    const dev = join(tmp, "dev", "claim-log");
     await mkdir(dev, { recursive: true });
-    await symlink(dev, join(library, "cairn"));
-    expect(entryMode(library, "cairn")).toBe("linked");
+    await symlink(dev, join(library, "claim-log"));
+    expect(entryMode(library, "claim-log")).toBe("linked");
   });
 
   test("a symlink resolving INSIDE the library is OWNED", async () => {

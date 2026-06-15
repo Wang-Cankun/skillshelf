@@ -24,7 +24,7 @@ export const MONO = "ui-monospace,'SF Mono',Menlo,monospace";
 
 // 12 domain hues (mockup domData order = sidebar order, by count desc).
 export const DOMAIN_HUES: Record<string, string> = {
-  "green-card": "#2563EB",
+  "portfolio": "#2563EB",
   content: "#0891B2",
   business: "#D97706",
   "sci-writing": "#DC2626",

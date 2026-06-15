@@ -597,10 +597,10 @@ describe("primaryDomain after import (tags, not folders)", () => {
     // Record domains centrally in <library>/taxonomy.json; primaryDomain becomes
     // domains[0] (ADR-0002: central taxonomy, not a per-skill sidecar).
     const { setDomainsForName } = await import("../src/core/taxonomy.ts");
-    await setDomainsForName(library, "untagged", ["writing", "green-card"]);
+    await setDomainsForName(library, "untagged", ["writing", "portfolio"]);
     const lib1 = await loadLibrary(library);
     const s1 = findByName(lib1, "untagged")!;
-    expect(s1.domains).toEqual(["writing", "green-card"]);
+    expect(s1.domains).toEqual(["writing", "portfolio"]);
     expect(s1.primaryDomain).toBe("writing");
   });
 });

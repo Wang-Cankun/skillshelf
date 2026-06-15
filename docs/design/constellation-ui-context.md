@@ -89,17 +89,17 @@ Example:
     "/Users/me/.claude/skills",
     "/Users/me/.codex/skills",
     "/Users/me/Dropbox/Obsidian/.agents/skills",
-    "/Users/me/Documents/GitHub/sskind/.claude/skills"
+    "/Users/me/Documents/GitHub/analysis-repo/.claude/skills"
   ],
   "sites": [
     { "name": "rnaseq-qc", "surface": "/Users/me/.claude/skills", "path": "/Users/me/.claude/skills/rnaseq-qc", "kind": "linked", "target": "/Users/me/.skillshelf/library/rnaseq-qc", "inLibrary": true, "drift": false },
-    { "name": "rnaseq-qc", "surface": "/Users/me/Documents/GitHub/sskind/.claude/skills", "path": "/Users/me/Documents/GitHub/sskind/.claude/skills/rnaseq-qc", "kind": "copy", "target": null, "inLibrary": true, "drift": true },
-    { "name": "agent-reach", "surface": "/Users/me/.claude/skills", "path": "/Users/me/.claude/skills/agent-reach", "kind": "linked", "target": "/Users/me/.skillshelf/library/agent-reach", "inLibrary": true, "drift": false },
-    { "name": "xhs-title", "surface": "/Users/me/.codex/skills", "path": "/Users/me/.codex/skills/xhs-title", "kind": "copy", "target": null, "inLibrary": false, "drift": false }
+    { "name": "rnaseq-qc", "surface": "/Users/me/Documents/GitHub/analysis-repo/.claude/skills", "path": "/Users/me/Documents/GitHub/analysis-repo/.claude/skills/rnaseq-qc", "kind": "copy", "target": null, "inLibrary": true, "drift": true },
+    { "name": "web-search", "surface": "/Users/me/.claude/skills", "path": "/Users/me/.claude/skills/web-search", "kind": "linked", "target": "/Users/me/.skillshelf/library/web-search", "inLibrary": true, "drift": false },
+    { "name": "headline-picker", "surface": "/Users/me/.codex/skills", "path": "/Users/me/.codex/skills/headline-picker", "kind": "copy", "target": null, "inLibrary": false, "drift": false }
   ],
   "problems": [
-    { "name": "rnaseq-qc", "surface": "/Users/me/Documents/GitHub/sskind/.claude/skills", "path": "/Users/me/Documents/GitHub/sskind/.claude/skills/rnaseq-qc", "kind": "copy", "target": null, "inLibrary": true, "drift": true },
-    { "name": "xhs-title", "surface": "/Users/me/.codex/skills", "path": "/Users/me/.codex/skills/xhs-title", "kind": "copy", "target": null, "inLibrary": false, "drift": false }
+    { "name": "rnaseq-qc", "surface": "/Users/me/Documents/GitHub/analysis-repo/.claude/skills", "path": "/Users/me/Documents/GitHub/analysis-repo/.claude/skills/rnaseq-qc", "kind": "copy", "target": null, "inLibrary": true, "drift": true },
+    { "name": "headline-picker", "surface": "/Users/me/.codex/skills", "path": "/Users/me/.codex/skills/headline-picker", "kind": "copy", "target": null, "inLibrary": false, "drift": false }
   ]
 }
 ```
@@ -109,7 +109,7 @@ Example:
 ```json
 [
   { "name": "rnaseq-qc", "description": "QC gate for RNA-seq count matrices", "primaryDomain": "bioinfo", "domains": ["bioinfo", "meta"], "path": "/Users/me/.skillshelf/library/rnaseq-qc", "retired": false, "mode": "owned", "linkTarget": null },
-  { "name": "agent-reach", "description": "Research/search across 13 platforms", "primaryDomain": "browser", "domains": ["browser", "media"], "path": "/Users/me/.skillshelf/library/agent-reach", "retired": false, "mode": "owned", "linkTarget": null }
+  { "name": "web-search", "description": "Search across many platforms", "primaryDomain": "browser", "domains": ["browser", "media"], "path": "/Users/me/.skillshelf/library/web-search", "retired": false, "mode": "owned", "linkTarget": null }
 ]
 ```
 
@@ -125,12 +125,12 @@ Example:
   ],
   "dedupedRoots": ["/Users/me/Library/CloudStorage/Dropbox/Obsidian/.agents/skills"],
   "newCandidates": [
-    { "name": "xhs-title", "description": "...", "path": "/Users/me/.codex/skills/xhs-title", "root": "/Users/me/.codex/skills", "retired": false, "mirror": false, "imported": false }
+    { "name": "headline-picker", "description": "...", "path": "/Users/me/.codex/skills/headline-picker", "root": "/Users/me/.codex/skills", "retired": false, "mirror": false, "imported": false }
   ],
   "duplicateGroups": [
     { "name": "rnaseq-qc", "kind": "drift", "identical": false,
       "canonical": "/Users/me/.skillshelf/library/rnaseq-qc",
-      "divergent": ["/Users/me/Documents/GitHub/sskind/.claude/skills/rnaseq-qc"],
+      "divergent": ["/Users/me/Documents/GitHub/analysis-repo/.claude/skills/rnaseq-qc"],
       "duplicates": [], "locations": ["...","..."],
       "recommendation": "drift — 2 copies of \"rnaseq-qc\" differ; review and pick a canonical copy" }
   ]
@@ -144,7 +144,7 @@ Example:
   "projectRoot": "/Users/me/projects/my-analysis",
   "linkedCount": 5,
   "unmanaged": [{ "name": "old-thing", "inLibrary": false }],
-  "bundles": [{ "name": "bioinfo", "skills": ["rnaseq-qc", "cairn"] }],
+  "bundles": [{ "name": "bioinfo", "skills": ["rnaseq-qc", "claim-log"] }],
   "linked": [{ "link": "rnaseq-qc", "target": "/Users/me/.skillshelf/library/rnaseq-qc", "skill": "rnaseq-qc", "inLibrary": true, "domains": ["bioinfo","meta"] }]
 }
 ```
@@ -152,7 +152,7 @@ Example:
 ### 3e. `taxonomy.json` → skill → domain tags (drives node color / clustering)
 
 ```json
-{ "version": 1, "skills": { "rnaseq-qc": ["bioinfo","meta"], "agent-reach": ["browser","media"], "dbs": ["business"] } }
+{ "version": 1, "skills": { "rnaseq-qc": ["bioinfo","meta"], "web-search": ["browser","media"], "note-kit": ["business"] } }
 ```
 
 ## 4. Real sample data (use this so mockups feel true)
@@ -162,19 +162,19 @@ Example:
 | Location | ~count | note |
 |---|---|---|
 | `~/.claude/skills` | 48 | main collection (global, Claude Code) |
-| `~/Dropbox/Obsidian/.agents/skills` | 31 | green-card / business / philosophy; `.agents` bridge fmt |
+| `~/Dropbox/Obsidian/.agents/skills` | 31 | portfolio / business / philosophy; `.agents` bridge fmt |
 | `~/Library/CloudStorage/Dropbox/Obsidian/...` | (alias) | **same vault** → collapsed |
-| `/Volumes/Extreme/.../skills` | 12 | external drive, writing skills |
-| `~/Documents/GitHub/nature-skills/skills` | 18 | nature-* writing/figure set |
-| `~/Documents/GitHub/sskind/.claude/skills` | ~20 | bioinfo + a `_retired/` subdir |
-| `~/Documents/GitHub/BMI_infra/.claude/skills` | few | cloud-cost; `.agents` mirror |
-| `~/Documents/GitHub/meeting-ai-web/.claude/skills` | ~? | project skills |
-| `~/Documents/GitHub/cairn/skill` | 9 | analysis claims |
+| `/Volumes/External/.../skills` | 12 | external drive, writing skills |
+| `~/Documents/GitHub/writing-skills/skills` | 18 | nature-* writing/figure set |
+| `~/Documents/GitHub/analysis-repo/.claude/skills` | ~20 | bioinfo + a `_retired/` subdir |
+| `~/Documents/GitHub/infra-repo/.claude/skills` | few | cloud-cost; `.agents` mirror |
+| `~/Documents/GitHub/webapp/.claude/skills` | ~? | project skills |
+| `~/Documents/GitHub/claim-log/skill` | 9 | claim log |
 
 **Library:** ~113 skills. **Domains:** `bioinfo, business, philosophy, content, ops, browser,
-meta, sci-writing, media`. **Real skill names:** `rnaseq-qc, agent-reach, backup-dotfiles,
-cairn, behavior, cognitive-hijack, academic-writing, azure-cost-report`, and a large `dbs-*`
-family (`dbs, dbs-action, dbs-benchmark, dbs-chatroom, dbs-decision, …`).
+meta, sci-writing, media`. **Example skill names:** `rnaseq-qc, web-search, config-backup,
+claim-log, style-guide, attention-audit, prose-style, cost-report`, and a large `note-*`
+family (`note-kit, note-action, note-benchmark, note-chatroom, note-decision, …`).
 
 **Cross-agent surfaces:** `~/.claude/skills`, `~/.codex/skills`, `~/.cursor/skills`,
 `~/.opencode/skills`, plus project `./.claude/skills`.
@@ -230,7 +230,7 @@ I have a lot of" for free. Realpath-aliases and bridge-mirrors are collapsed bef
 
 - **Read to understand, click to act.** Every ⚠ badge is a button that runs the matching verb.
 - **Command echo.** Each action shows the exact `skl` command it will run, e.g.
-  `$ skl where rnaseq-qc --fix` or `$ skl import xhs-title --from ~/.codex/skills/xhs-title`.
+  `$ skl where rnaseq-qc --fix` or `$ skl import headline-picker --from ~/.codex/skills/headline-picker`.
   Builds trust (no hidden mutation) and teaches the CLI.
 - **Never auto-resolve a real decision.** Dead links / identical copies can auto-fix; **drift,
   second-source, and untracked copies always require a human choice** (mirror the CLI's

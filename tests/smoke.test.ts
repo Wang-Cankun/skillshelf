@@ -66,7 +66,7 @@ describe("CLI smoke (subprocess)", () => {
     cleanups.push(p.cleanup);
     const used = await runCli(["use", "philosophy", "--json"], { cwd: p.path });
     expect(used.code).toBe(0);
-    const link = join(p.path, ".claude", "skills", "wittgenstein-deconstruct");
+    const link = join(p.path, ".claude", "skills", "concept-deconstruct");
     expect(existsSync(link)).toBe(true);
 
     const dropped = await runCli(["drop", "philosophy", "--json"], { cwd: p.path });

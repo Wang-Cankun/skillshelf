@@ -66,7 +66,7 @@ A rich detail surface (full panel or drawer), replacing the slim Inspector for "
 | Link/unlink a skill or bundle into a project (`.claude/skills`) | HAVE | `use`/`drop`/`link` |
 | **Per-platform install/uninstall panel** across the agent-surface registry | NEW · L2 | expand `core/surfaces.ts` registry + `--json` |
 | **Custom platform config** (add your own skill dir convention) | NEW | settings → roots/surfaces |
-| Cross-agent breadth (claude, codex, cursor, gemini, windsurf, copilot, aider, openclaw…) | NEW | surfaces registry (he has 25+) |
+| Cross-agent breadth (claude, codex, cursor, gemini, windsurf, copilot, aider…) | NEW | surfaces registry (spans 25+ surfaces) |
 
 ### E. Organize
 | Feature | Status | Source |

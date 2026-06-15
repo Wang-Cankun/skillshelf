@@ -17,12 +17,12 @@ import type {
 import { SEV_MAP, type InboxSeverity } from "./tokens";
 import lockJson from "./data/shelf.lock.json";
 
-// real sample SKILL bodies (the two skills with on-disk files) — ?raw imports.
-import dbsChatroomRaw from "./data/skills/dbs-chatroom-austrian/SKILL.md?raw";
-import natureFigureRaw from "./data/skills/nature-figure/SKILL.md?raw";
-import natureReadmeRaw from "./data/skills/nature-figure/README.md?raw";
-import natureApiRaw from "./data/skills/nature-figure/references/api.md?raw";
-import natureDesignRaw from "./data/skills/nature-figure/references/design-theory.md?raw";
+// sample SKILL bodies (the two skills with on-disk files) — ?raw imports.
+import sampleChatroomRaw from "./data/skills/sample-chatroom/SKILL.md?raw";
+import sampleGuideRaw from "./data/skills/sample-guide/SKILL.md?raw";
+import sampleGuideReadmeRaw from "./data/skills/sample-guide/README.md?raw";
+import sampleGuideApiRaw from "./data/skills/sample-guide/references/api.md?raw";
+import sampleGuideDesignRaw from "./data/skills/sample-guide/references/design-theory.md?raw";
 
 interface LockEntry {
   name: string;
@@ -127,11 +127,11 @@ interface ShowSample {
 }
 
 const SHOW_SAMPLES: Record<string, ShowSample> = {
-  "dbs-chatroom-austrian": {
+  "sample-chatroom": {
     files: [{ path: "SKILL.md", kind: "md", depth: 0 }],
-    raw: { "SKILL.md": dbsChatroomRaw },
+    raw: { "SKILL.md": sampleChatroomRaw },
   },
-  "nature-figure": {
+  "sample-guide": {
     files: [
       { path: "SKILL.md", kind: "md", depth: 0 },
       { path: "README.md", kind: "md", depth: 0 },
@@ -140,10 +140,10 @@ const SHOW_SAMPLES: Record<string, ShowSample> = {
       { path: "references/design-theory.md", kind: "md", depth: 1 },
     ],
     raw: {
-      "SKILL.md": natureFigureRaw,
-      "README.md": natureReadmeRaw,
-      "references/api.md": natureApiRaw,
-      "references/design-theory.md": natureDesignRaw,
+      "SKILL.md": sampleGuideRaw,
+      "README.md": sampleGuideReadmeRaw,
+      "references/api.md": sampleGuideApiRaw,
+      "references/design-theory.md": sampleGuideDesignRaw,
     },
   },
 };

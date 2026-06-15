@@ -12,13 +12,11 @@ change ADR-0007 (fact-vs-inference, function-first).
 
 ## Context
 
-The remade, self-contained design mockup is the **visual + interaction source of truth**:
+The remade, self-contained design mockups are the **visual + interaction source of truth**:
 
-```
-docs/design/skillshelf-function1/Workbench.dc.html      ← READ IT FIRST (in full)
-docs/design/skillshelf-function1/uploads/               ← real data it was designed against
-docs/design/skillshelf-function1/skills/<name>/...      ← sample skill files for the file-tree/detail
-```
+- the Workbench mockup HTML — READ IT FIRST (in full)
+- the sample uploads it was designed against — real data it was designed against
+- the sample skill files (per-skill directories) — for the file-tree/detail
 
 It is a big evolution over rev. 1: it adds the **Detail Drawer** (file tree + Rendered/Raw/
 Explanation tabs + frontmatter + provenance + an **AGENTS** rail), a **Matrix** that toggles
@@ -95,12 +93,12 @@ The committed stack:
 - surfaces: page `#FAFAFA`, panel `#FFFFFF`; borders `#E7E7E9` / subtle `#EFEFF1`/`#F3F3F4`
 - text: ink `#18181B`, sub `#71717A`, faint `#9A9AA2`, absent `#C7C7CC`
 - status: green `#15A34A`, amber `#D97706`, blue `#2563EB`, red `#DC2626`, gray `#8A8A92`
-- domain hues: green-card `#2563EB`, content `#0891B2`, business `#D97706`, sci-writing `#DC2626`,
+- domain hues: portfolio `#2563EB`, content `#0891B2`, business `#D97706`, sci-writing `#DC2626`,
   docs `#7C3AED`, meta `#15A34A`, philosophy `#DB2777`, ops `#71717A`, bioinfo `#0D9488`,
   browser `#65A30D`, media `#9333EA`, `_unclassified` `#C7C7CC`
 - type: `system-ui` sans (chrome) + `ui-monospace,'SF Mono',Menlo` (paths/commands/names/counts).
   radii 6–14px, 1px borders. Encode all of the above as **Tailwind v4 `@theme` CSS variables**
-  (`--color-ink`, `--color-domain-green-card`, …) so utilities + shadcn components read the same
+  (`--color-ink`, `--color-domain-portfolio`, …) so utilities + shadcn components read the same
   token set; the `livepulse`/`drawerIn`/`scrimIn`/`toastIn` keyframes + `.md-body` styles port from
   the mockup. Rendered markdown uses **`react-markdown` + `remark-gfm` + `rehype-sanitize`** into
   the `.md-body` scope; strip frontmatter before render.
@@ -114,7 +112,7 @@ right side = four **individually-colored, count-bearing** spans `◆ {n} vendore
 `✓ {n} local edits` (green) · `🏷 {n} untagged` (amber) · `◆ {n} stub` (gray), sample 21/0/1/1).
 Global overlays: **undo toast** (§6), **type-to-confirm Remove** (§6), **Detail Drawer** (§5).
 *(Exact px/hex for every element live in the mockup `<style>`/markup — §2 says copy them verbatim;
-this ADR specifies structure + behavior, not each token.)*
+this ADR specifies structure + behaviour, not each token.)*
 
 - **Sidebar (234px):** `SMART VIEWS` — 5 rows with colored glyph + label + mono count:
   `⚠ Needs attention · 6` (→ Inbox, **no filter**), `◆ Vendored · tracked · 21`, `● Local ·
@@ -122,8 +120,8 @@ this ADR specifies structure + behavior, not each token.)*
   (→ Library, **filter:null** = clears). So **most** rows set `{view:'library', filter}` but
   `Needs attention` sets `{view:'inbox'}` and `All skills` clears the filter — not a blanket
   library-filter. `BY DOMAIN · 12` (hue dot + count + bar normalized to the max domain,
-  green-card 26 → 100%; click → domain filter). `PROVENANCE` (3 rows + a pinned-source card reading
-  `◆ dbskill @a58f647 · pinned`, mono, blue diamond). Filter kinds: `source`, `domain`, `untagged`.
+  portfolio 26 → 100%; click → domain filter). `PROVENANCE` (3 rows + a pinned-source card reading
+  `◆ skills @a58f647 · pinned`, mono, blue diamond). Filter kinds: `source`, `domain`, `untagged`.
 - **Main:** tab row `Inbox · Matrix · Library` (active = ink underline + dark count badge),
   per-tab toolbar, scrolling content (§4).
 - **Inspector (slim, 312px):** quick select/edit only — name + source badge + tag chips + an
@@ -147,7 +145,7 @@ this ADR specifies structure + behavior, not each token.)*
   "Click a skill name to open its detail drawer" hint.
 - **Matrix** — `GRID` mode pills **Domain | Agent**:
   - Two **fixed leading columns persist in both modes**: a **sticky** `SKILL` name column (the
-    click→drawer target) + a non-sticky `SOURCE` column (`dbskill` blue / `local` faint).
+    click→drawer target) + a non-sticky `SOURCE` column (`skills` blue / `local` faint).
   - **Domain mode:** columns = 11 domains; cell `●` primary / `◦` also-tagged / empty. A fully
     **untagged row** renders empty with an amber tint, and the legend carries `empty row =
     untagged`. Toolbar also shows an inline `● primary · ◦ also-tagged` hint. From `ls --json`.
@@ -275,7 +273,7 @@ First re-point the toolchain: **drop** `@sveltejs/vite-plugin-svelte` + `@tsconf
 `src/components/ui/` you own). `check` becomes `tsc --noEmit` (not `svelte-check`). Then:
 
 ```bash
-cd /Users/wang.13246/Documents/GitHub/skillshelf-ui/app
+cd ~/Documents/GitHub/skillshelf/app
 bun install && bun run check        # tsc --noEmit → 0 errors
 bun run build                       # vite green
 source "$HOME/.cargo/env" && ( cd src-tauri && cargo check )   # clean
