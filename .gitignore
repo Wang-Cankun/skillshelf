@@ -8,3 +8,6 @@ dist/
 
 # local global-core symlinks (machine-specific, created by `skl use`)
 .claude/
+
+# generated eval reports (regenerate with evals/grade_and_report.py)
+skills/skl/evals/results/
