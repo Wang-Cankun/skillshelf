@@ -9,7 +9,7 @@
 // FetchResult / RefResult with `ok` and a human `error` string on failure.
 
 import { join, basename, isAbsolute, resolve, relative, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { existsSync, lstatSync, realpathSync, type Dirent } from "node:fs";
 import { mkdtemp, rm, readdir, cp } from "node:fs/promises";
@@ -464,6 +464,20 @@ export type RepoFetchResult =
   | { ok: false; error: string; staging?: string };
 
 /**
+ * Clone a LOCAL filesystem path via a `file://` URL, never a bare path. A bare
+ * local path triggers git's local-clone optimization (hardlink/copy of `.git`),
+ * which (a) ignores `--depth` and warns "--depth is ignored in local clones",
+ * and (b) intermittently exits non-zero on a just-written repo (observed flaky on
+ * macOS CI). `file://` forces the normal fetch transport: `--depth 1` is honored
+ * and refs are read through proper machinery. Sources that are already a URL
+ * (file://, ssh://, https://) pass through unchanged.
+ */
+function localCloneUrl(localPath: string): string {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(localPath)) return localPath; // already a URL
+  return pathToFileURL(isAbsolute(localPath) ? localPath : resolve(localPath)).href;
+}
+
+/**
  * Clone a github/git source ONCE into a fresh staging dir and capture HEAD. Shared
  * by the single-skill fetch (fetchGithub/fetchGit) and the repo-wide fetchRepo so a
  * `--all`/`--skill` install clones exactly once and copies N skills out of it.
@@ -477,7 +491,9 @@ async function cloneToStaging(
   const cloneTarget =
     parsed.channel === "github"
       ? `https://github.com/${parsed.owner}/${parsed.repo}.git`
-      : parsed.localPath;
+      : parsed.localPath
+        ? localCloneUrl(parsed.localPath)
+        : undefined;
   if (!cloneTarget) return { ok: false, error: `not a cloneable source: ${parsed.raw}` };
 
   let staging: string;
