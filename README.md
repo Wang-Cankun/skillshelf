@@ -7,22 +7,17 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/Wang-Cankun/skillshelf/ci.yml?branch=main)](https://github.com/Wang-Cankun/skillshelf/actions)
 [![npm](https://img.shields.io/npm/v/skillshelf.svg)](https://www.npmjs.com/package/skillshelf)
 
-Your skills are scattered across **every agent you use** — some in `~/.claude/skills`, some in
-`~/.codex/skills` or `~/.cursor/skills`, some buried in Obsidian or notes vaults, more copied into
-a dozen per-project `.claude` / `.codex` directories. Each tool scatters its own copies and
-symlinks; you forget which ones exist, rewrite ones you already have, and copies drift out of sync.
-The naive fix — dump everything into one agent's dir — makes every session pay the token cost of
-loading hundreds of skill descriptions at once.
+Your skills are scattered across **every agent you use** — `~/.claude/skills`, `~/.codex/skills`,
+`~/.cursor/skills`, Obsidian vaults, and a dozen per-project `.claude` dirs. Copies drift, you
+rewrite skills you already have, and you forget which exist. The naive fix — dump everything into
+one agent's dir — makes every session pay to load hundreds of skill descriptions at once.
 
-skillshelf is **agent-agnostic** (Claude Code, Codex, Cursor, and compatible agents): the library
-is a neutral source, and `skl where` maps where every skill is actually deployed across all of
-them — surfacing untracked copies, drift, and dead links. It's the curation layer *over* your
-agent dirs, complementary to installers like [`vercel-labs/skills`](https://github.com/vercel-labs/skills).
-
-skillshelf is the middle path: a single git-backed **library** that is a *passive shelf*
-(nothing auto-loads), plus a CLI to **search, tag, bundle, and load** exactly the skills a
-project needs, exactly when it needs them. Find anything in one place; pay only for what you
-actually use.
+skillshelf is the middle path: one git-backed **library** that is a *passive shelf* (nothing
+auto-loads), plus a CLI to **search, tag, bundle, and load** exactly the skills a project needs,
+when it needs them. It's **agent-agnostic** (Claude Code, Codex, Cursor, …) — `skl where` maps
+where every skill is actually deployed across all of them, surfacing untracked copies, drift, and
+dead links. Find anything in one place; pay only for what you use. (Complementary to installers
+like [`vercel-labs/skills`](https://github.com/vercel-labs/skills).)
 
 ## Desktop app
 
@@ -148,27 +143,32 @@ skillshelf separates *owning* a skill from *loading* it.
 - **On-demand `show`** — prints only the SKILL.md instruction body and lists the paths of
   any bundled reference files (without reading them). Progressive disclosure: cheap by
   default, deep when you ask. Works mid-task with no reload.
-- **Owned vs linked entries** ([ADR-0004](./docs/adr/0004-owned-vs-linked-entries.md)) — the
-  library is a *bookshelf*: an entry either **owns** its bytes (a real copy; the library is
-  canonical — for downloads and stabilized skills) or is **linked** (a symlink to an external dev
-  repo that stays canonical — for skills you actively develop in their own git, e.g. `claim-log`).
-  `skl link --from <dev-repo>` registers a linked entry; `skl where` shows it as a clean
-  `✓ source`; `skl update` / `outdated` skip linked entries so they never pull upstream into your
-  dev repo. The mode is derived from the filesystem (a symlink resolving outside the library),
-  never stored, so it can't go stale.
+- **Owned vs linked entries** ([ADR-0004](./docs/adr/0004-owned-vs-linked-entries.md)) — an entry
+  either **owns** its bytes (a real copy — for downloads and stabilized skills) or is **linked**
+  (`skl link --from <dev-repo>` — a symlink to an external repo that stays canonical, for skills you
+  develop in their own git). `update` / `outdated` skip linked entries so they never push upstream
+  into your dev repo. The mode is derived from the filesystem, never stored, so it can't go stale.
 - **Updates never clobber your tags** — domain tags live in the central `taxonomy.json`
   ([ADR-0002](./docs/adr/0002-central-taxonomy-not-sidecars.md)), separate from the skill body, so
   `skl update` can swap an owned skill's upstream `SKILL.md` cleanly while your taxonomy survives.
 
-```
-                       skl search / ls / show          skl use <bundle>
-                                │                              │
-   ┌──────────────────────┐    │   ┌──────────────────────┐   │   ┌─────────────────────┐
-   │   canonical library  │────┴──▶│   bundles = tag query │───┴──▶│  project .claude/   │
-   │  (passive git shelf) │        │  bioinfo · coding · … │       │  skills/ (symlinks) │
-   └──────────┬───────────┘        └──────────────────────┘       └─────────────────────┘
-              │
-              └──── thin global core ──▶ ~/.claude/skills  (always-on, bounded)
+```mermaid
+flowchart LR
+    L["📚 Canonical library<br/><i>passive git shelf</i>"]
+    B["🏷️ Bundles<br/><i>tag query — bioinfo · coding · …</i>"]
+    P["📁 Project .claude/skills/<br/><i>symlinks, on demand</i>"]
+    G["⚡ ~/.claude/skills<br/><i>thin global core, always-on</i>"]
+
+    L -- "skl use bundle" --> B
+    B -- symlink --> P
+    L -- "thin global core" --> G
+
+    search(["skl search · ls · show"]) -. reads .-> L
+
+    classDef shelf fill:#1f2937,stroke:#4b5563,color:#e5e7eb;
+    classDef live fill:#064e3b,stroke:#10b981,color:#d1fae5;
+    class L,B shelf;
+    class P,G live;
 ```
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full design.
