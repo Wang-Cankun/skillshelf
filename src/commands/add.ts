@@ -38,7 +38,7 @@ import { hashContent } from "../core/crawl.ts";
 import { recordEntry } from "../core/provenance.ts";
 import { setDomainsForName } from "../core/taxonomy.ts";
 import { assertSafeName } from "../core/lifecycle.ts";
-import { loadLibrary, findByName } from "../core/library.ts";
+import { loadLibrary, findByName, entryStatus } from "../core/library.ts";
 import { ensureDir, isSymlink, realpathOrSelf } from "../lib/fs.ts";
 
 export const meta = {
@@ -217,7 +217,7 @@ interface InstallOptions {
 interface InstallOutcome {
   name: string;
   subpath: string;
-  verdict: Verdict | "duplicate";
+  verdict: Verdict | "duplicate" | "retired";
   status: "installed" | "skipped" | "error";
   reason: string;
   path: string;
@@ -266,6 +266,21 @@ async function installOne(
     assertSafeName(rawName);
   } catch (err) {
     return { ...base, reason: err instanceof Error ? err.message : String(err) };
+  }
+
+  // Retired-aware collision guard: if this name exists ONLY as a retired tombstone
+  // (<library>/_retired/<name>), do NOT install a fresh active copy beside it — that
+  // strands a duplicate and breaks `skl unretire`. The user must unretire first. This
+  // fires regardless of --force (force overwrites an ACTIVE copy, not a retired one).
+  // Checked against the flat library root (retirement is never under a domain folder).
+  const status = entryStatus(opts.libraryPath, rawName);
+  if (status.retired && !status.active) {
+    return {
+      ...base,
+      verdict: "retired",
+      status: "skipped",
+      reason: `a retired '${rawName}' exists — run \`skl unretire ${rawName}\` first`,
+    };
   }
 
   const destDir = destDirFor(opts.libraryPath, opts.domainFolder, rawName);
@@ -605,6 +620,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         multi: false,
       });
       if (o.status === "error") {
+        ctx.error("add:", o.reason);
+        return 1;
+      }
+      // A retired-name collision is a refusal in single mode (no duplicate written):
+      // surface it as an error + non-zero exit, pointing the user at `skl unretire`.
+      if (o.status === "skipped") {
         ctx.error("add:", o.reason);
         return 1;
       }

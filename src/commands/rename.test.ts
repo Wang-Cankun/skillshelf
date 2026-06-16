@@ -69,6 +69,20 @@ describe("skl rename — atomic slug move (friction #5)", () => {
     expect(errors.join("\n")).toContain("already exists");
   });
 
+  test("refuses renaming TO a retired name (points at unretire)", async () => {
+    // "beta" exists only as a retired tombstone — no active entry.
+    await mkdir(join(library, "_retired", "beta"), { recursive: true });
+    await writeFile(join(library, "_retired", "beta", "SKILL.md"), "---\nname: beta\n---\n\nb\n");
+
+    const { ctx, errors } = makeCtx(library);
+    const code = await renameRun(["alpha", "beta"], ctx);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("skl unretire beta");
+    // alpha untouched; no active beta created.
+    expect(existsSync(join(library, "alpha", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(library, "beta"))).toBe(false);
+  });
+
   test("refuses a missing source", async () => {
     const { ctx, errors } = makeCtx(library);
     const code = await renameRun(["ghost", "x"], ctx);
