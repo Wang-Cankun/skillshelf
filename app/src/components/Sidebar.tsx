@@ -9,7 +9,7 @@ import { useStore } from "../state/store";
 import type { Filter } from "../state/store";
 import { useLibrary, useWhere } from "../state/queries";
 import { aggregates } from "../lib/select";
-import { deriveInbox } from "../lib/derive";
+import { needsAttentionNames } from "../lib/derive";
 import { C, MONO, domainHue } from "../lib/tokens";
 
 const caption: CSSProperties = {
@@ -28,13 +28,14 @@ export function Sidebar() {
   const skills = useLibrary().data ?? [];
   const where = useWhere().data;
   const agg = aggregates(skills);
-  const inboxCount = where ? deriveInbox(skills, where).length : 0;
+  // ADR-0010 §6: the "Needs attention" badge must equal the rows the
+  // {kind:"needs"} list filter shows — both read the ONE needsAttentionNames set.
+  const inboxCount = where ? needsAttentionNames(skills, where).size : 0;
 
   const setFilter = (filter: Filter) =>
-    dispatch({ type: "setFilter", filter, view: "library" });
+    dispatch({ type: "setFilter", filter });
 
-  const filterActive = (f: Filter) =>
-    state.view === "library" && sameFilter(state.filter, f);
+  const filterActive = (f: Filter) => sameFilter(state.filter, f);
 
   // ── SMART VIEWS ──────────────────────────────────────────────────────────
   const smartRowStyle = (active: boolean): CSSProperties => ({
@@ -68,6 +69,7 @@ export function Sidebar() {
   const vendoredFilter: Filter = { kind: "source", value: "vendored" };
   const localFilter: Filter = { kind: "source", value: "local" };
   const untaggedFilter: Filter = { kind: "untagged" };
+  const needsFilter: Filter = { kind: "needs" };
 
   interface SmartRow {
     glyph: string;
@@ -83,8 +85,8 @@ export function Sidebar() {
       label: "Needs attention",
       count: inboxCount,
       color: C.amber,
-      onClick: () => dispatch({ type: "setView", view: "inbox" }),
-      active: state.view === "inbox",
+      onClick: () => setFilter(needsFilter),
+      active: filterActive(needsFilter),
     },
     {
       glyph: "◆",

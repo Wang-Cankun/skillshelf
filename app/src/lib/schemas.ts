@@ -121,6 +121,29 @@ export const AgentInfoSchema = z
     global: z.string(),
     projConvention: z.string(),
     installed: z.boolean(),
+    // ADR-0010 inheritance — whether the agent auto-loads ~/.<id>/skills per
+    // project. Optional at the boundary so an OLDER skl that omits it never makes
+    // the payload fail validation (default-safe). It is normalized to a required
+    // boolean (missing => true, the ~/.x/skills convention) right after parse in
+    // skl.ts so the rest of the app sees a guaranteed AgentInfo.inheritsGlobal.
+    // (Kept .optional() rather than .default()/.catch() because input/output
+    // divergence under .passthrough() breaks ZodType<T> inference downstream.)
+    inheritsGlobal: z.boolean().optional(),
+    // ADR-0010 §9 / delta 4 — optional custom-agent presentation fields.
+    icon: z.string().optional(),
+    color: z.string().optional(),
+    custom: z.boolean().optional(),
+  })
+  .passthrough();
+
+// `skl projects --json` -> `{ projects: string[] }`. There is no dedicated
+// `config --json` verb that emits custom agents; the engine folds them straight
+// into `agents --json` (tagged `custom:true`), and `loadConfig` recovers them by
+// filtering that report — so this schema only validates the `{ projects }` shape.
+// Kept permissive (.passthrough()) so a richer future payload never breaks it.
+export const ConfigSchema = z
+  .object({
+    projects: z.array(z.string()),
   })
   .passthrough();
 

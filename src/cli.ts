@@ -29,6 +29,7 @@ import * as infer from "./commands/infer.ts";
 import * as newCmd from "./commands/new.ts";
 import * as scan from "./commands/scan.ts";
 import * as roots from "./commands/roots.ts";
+import * as projects from "./commands/projects.ts";
 import * as importCmd from "./commands/import.ts";
 import * as link from "./commands/link.ts";
 import * as where from "./commands/where.ts";
@@ -56,6 +57,7 @@ const MODULES: CommandModule[] = [
   add,
   scan,
   roots,
+  projects,
   importCmd,
   link,
   tag,

@@ -413,6 +413,54 @@ const STUB_DEFAULTS = [
   "replace with a description",
 ];
 
+/** Is this skill's description still the scaffold default? */
+function isStub(s: Skill): boolean {
+  const d = s.description.trim().toLowerCase();
+  return STUB_DEFAULTS.some((def) => d.startsWith(def));
+}
+
+/**
+ * THE single source of truth for "Needs attention" (ADR-0010 §6, the folded
+ * Inbox): the set of REAL library skill names that need a per-skill action —
+ * untagged, deployment anomalies (drift / dead / copy / aliased), or a stub
+ * description. Used by BOTH the sidebar count and the list `{kind:"needs"}`
+ * filter so the badge always equals the rows shown (Bug 3).
+ *
+ * Note: the informational `deriveInbox` rows (family / thin-tag / tracked) are
+ * NOT included — they describe prefix-families/aggregates, not a single skill
+ * row, so they have no row to render under the filter and were the source of the
+ * count/list mismatch. The actionable per-skill triage is exactly this set.
+ */
+export function needsAttentionNames(
+  skills: Skill[],
+  where: DeploymentReport,
+): Set<string> {
+  const live = skills.filter((s) => !s.retired);
+  const liveNames = new Set(live.map((s) => s.name));
+  const names = new Set<string>();
+
+  for (const s of live) {
+    if (s.domains.length === 0 || isStub(s)) names.add(s.name);
+  }
+
+  // Deployment anomalies from the real `where` feed: drift / dead / copy /
+  // aliased sites whose skill is in the live library (so it has a row to show).
+  for (const p of where.problems) {
+    if (!liveNames.has(p.name)) continue;
+    if (
+      p.drift ||
+      p.kind === "dead" ||
+      p.kind === "copy" ||
+      p.kind === "foreign-link" ||
+      p.kind === "aliased"
+    ) {
+      names.add(p.name);
+    }
+  }
+
+  return names;
+}
+
 /**
  * Deterministic triage from the real library + deployment feeds.
  * - UNTAGGED: no domains.
@@ -450,8 +498,7 @@ export function deriveInbox(
 
   // STUB
   for (const s of live) {
-    const d = s.description.trim().toLowerCase();
-    if (STUB_DEFAULTS.some((def) => d.startsWith(def))) {
+    if (isStub(s)) {
       rows.push({
         severity: "stub",
         type: SEV_MAP.stub.label,

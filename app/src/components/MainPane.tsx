@@ -1,58 +1,30 @@
-// Main column (ADR-0008 §3, mockup lines 119-323): the tab row, the per-tab
-// toolbar, and the scrolling content area that swaps Inbox/Matrix/Library.
+// Main column (ADR-0010). The old three-tab Inbox/Matrix/Library shell is gone:
+// the top row is now a SCOPE SWITCHER — ● Global · <each project> · + Add project
+// — and below it the search/filter/sort toolbar, the CountBar (per-agent counts +
+// agent-settings gear), the project "Installed here ↔ All" range toggle, and the
+// scrolling SkillList. Inbox folded into the sidebar's {kind:"needs"} filter;
+// the Matrix is retired.
 //
-// The three toolbars are TOP-LEVEL components (not closures defined inside
-// MainPane's render) — defining them inline remounts them on every parent
-// render, which dropped focus from the Library search input after a single
-// keystroke. As stable module-scope components reading the store/queries
-// directly, their inputs keep focus across re-renders.
+// Toolbar lives at module scope (stable identity) so its search input keeps focus
+// across re-renders — the same fix the previous tab toolbars needed.
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useStore } from "../state/store";
-import type { View, SortKey, GroupMode } from "../state/store";
-import { useLibrary, useWhere, useAgents, useOutdated } from "../state/queries";
+import type { SortKey, GroupMode } from "../state/store";
+import { GLOBAL_SCOPE } from "../state/store";
+import { useLibrary, useConfig } from "../state/queries";
 import { useCommands } from "../state/commands";
-import { libraryView, filterLabel, allDomains } from "../lib/select";
-import { deriveInbox } from "../lib/derive";
-import { agentDeployCounts } from "../lib/agents";
+import { filterLabel, allDomains } from "../lib/select";
+import { projectScopeName } from "../lib/skl";
+import { pickDirectory } from "../lib/pickDir";
 import { MONO } from "../lib/tokens";
 import { DomainMenu } from "./DomainMenu";
-import { InboxView } from "./InboxView";
-import { MatrixView } from "./MatrixView";
-import { LibraryView } from "./LibraryView";
+import { CountBar } from "./CountBar";
+import { SkillList } from "./SkillList";
 
 const ink = "#18181B";
 const sub = "#71717A";
 
-const EMPTY_WHERE = { surfaces: [], sites: [], problems: [] };
-
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-    height: 42,
-    padding: "0 13px",
-    background: "none",
-    border: "none",
-    borderBottom: `2px solid ${active ? ink : "transparent"}`,
-    color: active ? ink : sub,
-    fontSize: 13,
-    fontWeight: active ? 600 : 500,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
-}
-function badgeStyle(active: boolean): React.CSSProperties {
-  return {
-    fontFamily: MONO,
-    fontSize: 10.5,
-    padding: "1px 6px",
-    borderRadius: 20,
-    background: active ? "#18181B" : "#F0F0F1",
-    color: active ? "#FFFFFF" : "#9A9AA2",
-  };
-}
 function pill(active: boolean, accent?: string): React.CSSProperties {
   const a = accent ?? "#18181B";
   return {
@@ -79,30 +51,6 @@ const dividerStyle: React.CSSProperties = {
 };
 
 export function MainPane() {
-  const { state, dispatch } = useStore();
-  const skills = useLibrary().data ?? [];
-  const where = useWhere().data ?? EMPTY_WHERE;
-
-  const inboxCount = deriveInbox(skills, where).length;
-  const matrixCount = skills.filter(
-    (s) => !s.retired && !state.removedHard[s.name],
-  ).length;
-  const libCount = libraryView(skills, {
-    filter: state.filter,
-    search: state.search,
-    sort: state.sort,
-    sortDir: state.sortDir,
-    group: state.group,
-    retired: state.retired,
-    removedHard: state.removedHard,
-  }).count;
-
-  const tabs: { view: View; label: string; badge: number }[] = [
-    { view: "inbox", label: "Inbox", badge: inboxCount },
-    { view: "matrix", label: "Matrix", badge: matrixCount },
-    { view: "library", label: "Library", badge: libCount },
-  ];
-
   return (
     <main
       style={{
@@ -114,306 +62,142 @@ export function MainPane() {
         background: "#FAFAFA",
       }}
     >
-      {/* TABS */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          padding: "0 14px",
-          height: 42,
-          borderBottom: "1px solid #E7E7E9",
-          background: "#FFFFFF",
-        }}
-      >
-        {tabs.map((t) => {
-          const active = state.view === t.view;
-          return (
-            <button
-              key={t.view}
-              onClick={() => dispatch({ type: "setView", view: t.view })}
-              style={tabStyle(active)}
-            >
-              {t.label} <span style={badgeStyle(active)}>{t.badge}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* PER-TAB TOOLBAR */}
-      {state.view === "inbox" ? (
-        <InboxToolbar />
-      ) : state.view === "matrix" ? (
-        <MatrixToolbar />
-      ) : (
-        <LibraryToolbar />
-      )}
-
-      {/* CONTENT SCROLL */}
+      <ScopeSwitcher />
+      <LibraryToolbar />
+      <CountBar />
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        {state.view === "inbox" ? (
-          <InboxView />
-        ) : state.view === "matrix" ? (
-          <MatrixView />
-        ) : (
-          <LibraryView />
-        )}
+        <SkillList />
       </div>
     </main>
   );
 }
 
-// ── Inbox toolbar ────────────────────────────────────────────────────────
-function InboxToolbar() {
+// ── Scope switcher (replaces the 3-tab row) ────────────────────────────────
+function ScopeSwitcher() {
   const { state, dispatch } = useStore();
-  const skills = useLibrary().data ?? [];
-  const where = useWhere().data ?? EMPTY_WHERE;
   const commands = useCommands();
-  const rows = deriveInbox(skills, where);
+  const projects = useConfig().data?.projects ?? [];
+  const [adding, setAdding] = useState(false);
 
-  const nUntagged = rows.filter((r) => r.severity === "untagged").length;
-  const nStub = rows.filter((r) => r.severity === "stub").length;
-  const nReview = rows.filter((r) => !r.auto).length;
-  const nAuto = rows.filter((r) => r.auto).length;
-  return (
-    <div
+  const tab = (
+    label: string,
+    active: boolean,
+    onClick: () => void,
+    glyph?: string,
+  ) => (
+    <button
+      key={label}
+      onClick={onClick}
       style={{
-        display: "flex",
+        display: "inline-flex",
         alignItems: "center",
-        justifyContent: "space-between",
-        padding: "11px 16px",
-        borderBottom: "1px solid #EFEFF1",
-        background: "#FFFFFF",
+        gap: 6,
+        height: 42,
+        padding: "0 13px",
+        background: "none",
+        border: "none",
+        borderBottom: `2px solid ${active ? ink : "transparent"}`,
+        color: active ? ink : sub,
+        fontSize: 13,
+        fontWeight: active ? 600 : 500,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Needs attention</span>
-        <span style={{ fontSize: 12, color: "#9A9AA2" }}>
-          {nUntagged} untagged · {nStub} stub · {nReview} to review
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button
-          onClick={() => dispatch({ type: "toggleDryRun" })}
-          style={{
-            background: state.dryRun ? "#18181B" : "#FFFFFF",
-            color: state.dryRun ? "#FFFFFF" : "#3F3F46",
-            border: `1px solid ${state.dryRun ? "#18181B" : "#E2E2E5"}`,
-            borderRadius: 7,
-            padding: "5px 12px",
-            fontSize: 12.5,
-            fontWeight: 550,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          ⚙ Dry-run · {state.dryRun ? "on" : "off"}
-        </button>
-        <button
-          onClick={() => commands.autoFix()}
-          style={{
-            background: "#18181B",
-            color: "#FFFFFF",
-            border: "1px solid #18181B",
-            borderRadius: 7,
-            padding: "5px 12px",
-            fontSize: 12.5,
-            fontWeight: 550,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          Auto-fix safe ({nAuto})
-        </button>
-      </div>
-    </div>
+      {glyph ? <span style={{ fontSize: 10 }}>{glyph}</span> : null}
+      {label}
+    </button>
   );
-}
 
-// ── Matrix toolbar ───────────────────────────────────────────────────────
-function MatrixToolbar() {
-  const { state, dispatch } = useStore();
-  const agents = useAgents().data;
-  const agentList = agents?.agents ?? [];
-  const agentCounts = agents ? agentDeployCounts(agents) : {};
-  const isDeploy = state.matrixMode === "agent";
-  const modePills: { mode: "domain" | "agent"; label: string }[] = [
-    { mode: "domain", label: "Domain" },
-    { mode: "agent", label: "Deployments" },
-  ];
+  const addProject = async () => {
+    if (adding) return;
+    setAdding(true);
+    try {
+      // Native directory picker (window.prompt is a no-op in Tauri's WRY webview);
+      // browser dev falls back to a prompt inside pickDirectory().
+      const path = await pickDirectory();
+      if (!path) return;
+      const ok = await commands.addProject(path);
+      if (ok)
+        dispatch({
+          type: "setScope",
+          scope: projectScopeName(path),
+          scopePath: path,
+        });
+    } finally {
+      setAdding(false);
+    }
+  };
+
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        flexWrap: "wrap",
-        padding: "9px 16px",
-        borderBottom: "1px solid #EFEFF1",
+        gap: 2,
+        padding: "0 14px",
+        height: 42,
+        borderBottom: "1px solid #E7E7E9",
         background: "#FFFFFF",
-        fontSize: 11.5,
-        color: "#71717A",
+        overflowX: "auto",
       }}
     >
-      <span style={labelStyle}>GRID</span>
-      <div style={{ display: "flex", gap: 5 }}>
-        {modePills.map((p) => (
-          <button
-            key={p.mode}
-            onClick={() => dispatch({ type: "setMatrixMode", mode: p.mode })}
-            style={pill(state.matrixMode === p.mode)}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-      {isDeploy ? (
-        <>
-          <span style={dividerStyle} />
-          <span style={labelStyle}>AGENT</span>
-          <div style={{ display: "flex", gap: 5 }}>
-            {agentList.map((a) => {
-              const active = state.matrixAgent === a.id;
-              return (
-                <button
-                  key={a.id}
-                  onClick={() =>
-                    dispatch({ type: "setMatrixAgent", agent: a.id })
-                  }
-                  style={{
-                    ...pill(active, "#2563EB"),
-                    fontFamily: MONO,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  {a.short}
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      padding: "0 5px",
-                      borderRadius: 10,
-                      background: active
-                        ? "rgba(255,255,255,0.22)"
-                        : "#E7E7E9",
-                      color: active ? "#FFFFFF" : "#71717A",
-                    }}
-                  >
-                    {agentCounts[a.id] ?? 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <span style={{ color: "#B6B6BC" }}>
-            columns = locations · cells read-only — link/unlink in the drawer
-          </span>
-        </>
-      ) : (
-        <>
-          <span style={{ color: "#C7C7CC" }}>·</span>
-          <span>● primary &nbsp; ◦ also-tagged</span>
-        </>
+      {tab(
+        "Global",
+        state.scope === GLOBAL_SCOPE,
+        () => dispatch({ type: "setScope", scope: GLOBAL_SCOPE }),
+        "●",
       )}
+      {projects.map((p) => {
+        const nm = projectScopeName(p);
+        return tab(nm, state.scope === nm, () =>
+          dispatch({ type: "setScope", scope: nm, scopePath: p }),
+        );
+      })}
+      <button
+        onClick={() => void addProject()}
+        disabled={adding}
+        style={{
+          height: 42,
+          padding: "0 11px",
+          background: "none",
+          border: "none",
+          color: "#71717A",
+          fontSize: 12.5,
+          fontWeight: 500,
+          cursor: adding ? "default" : "pointer",
+          fontFamily: "inherit",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {adding ? "…" : "+ Add project"}
+      </button>
     </div>
   );
 }
 
-// ── Library toolbar ──────────────────────────────────────────────────────
+// ── Search / filter / sort toolbar (kept; Inbox/Matrix toolbars dropped) ────
 function LibraryToolbar() {
   const { state, dispatch } = useStore();
   const skills = useLibrary().data ?? [];
-  const commands = useCommands();
-  // Update-awareness (ADR-0009): MANUAL outdated check. `oq.data` is undefined
-  // until the user clicks "Check updates" (the query is enabled:false), so
-  // badges + the "Update all stale" affordance only appear post-check.
-  const oq = useOutdated();
-  const staleNames = (oq.data?.rows ?? [])
-    .filter((r) => r.status === "stale")
-    .map((r) => r.name);
-
-  // Transient button feedback: Check updates → Checking… → (No updates / Check
-  // failed) → back to original. `outcome` is set when a check finishes and
-  // auto-clears after a beat; while fetching the label always reads "Checking…".
-  const [outcome, setOutcome] = useState<null | "none" | "error">(null);
-  const wasFetching = useRef(false);
-  useEffect(() => {
-    if (!wasFetching.current && oq.isFetching) setOutcome(null); // new check began
-    if (wasFetching.current && !oq.isFetching) {
-      // a check just finished — report its result
-      if (oq.isError) setOutcome("error");
-      else {
-        const updates = (oq.data?.stale ?? 0) + (oq.data?.diverged ?? 0);
-        setOutcome(updates === 0 ? "none" : null); // updates>0 → badges speak
-      }
-    }
-    wasFetching.current = oq.isFetching;
-  }, [oq.isFetching, oq.isError, oq.data]);
-  useEffect(() => {
-    if (outcome === null) return;
-    const t = setTimeout(() => setOutcome(null), 2500);
-    return () => clearTimeout(t);
-  }, [outcome]);
-  const checkLabel = oq.isFetching
-    ? "Checking…"
-    : outcome === "none"
-      ? "No updates"
-      : outcome === "error"
-        ? "Check failed"
-        : "Check updates";
-  const checkColor =
-    outcome === "none" ? "#15803D" : outcome === "error" ? "#DC2626" : "#3F3F46";
-  // Bulk "Update all stale": run sequentially (parallel git pulls would thrash),
-  // silent per-item (no toast spam), with progress on the button + one summary.
-  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
-  const runBulkUpdate = () => {
-    if (bulk || staleNames.length === 0) return;
-    // Snapshot the names: each update() patches the outdated cache, so the
-    // derived `staleNames` shrinks mid-loop — iterate the captured list.
-    const names = [...staleNames];
-    void (async () => {
-      setBulk({ done: 0, total: names.length });
-      for (let i = 0; i < names.length; i++) {
-        await commands.update(names[i]!, { silent: true });
-        setBulk({ done: i + 1, total: names.length });
-      }
-      setBulk(null);
-      dispatch({
-        type: "showToast",
-        toast: {
-          msg: `Updated ${names.length} skill${names.length > 1 ? "s" : ""}`,
-          cmd: `skl update ×${names.length}`,
-          undo: null,
-        },
-      });
-    })();
-  };
-  const libCount = libraryView(skills, {
-    filter: state.filter,
-    search: state.search,
-    sort: state.sort,
-    sortDir: state.sortDir,
-    group: state.group,
-    retired: state.retired,
-    removedHard: state.removedHard,
-  }).count;
 
   const sortPills: { sort: SortKey; label: string }[] = [
-    { sort: "modified", label: "Modified" },
     { sort: "name", label: "Name" },
-    { sort: "domain", label: "Domain" },
-    { sort: "deploys", label: "Deploys" },
+    { sort: "attention", label: "Attention" },
+    { sort: "deployed", label: "Deployed" },
   ];
   const groupPills: { group: GroupMode; label: string }[] = [
     { group: "list", label: "List" },
     { group: "domain", label: "By domain" },
     { group: "family", label: "By family" },
   ];
+
+  const isProject = state.scope !== GLOBAL_SCOPE;
+
   return (
     <div>
-      {/* row 1 — search + filter chips + count */}
+      {/* row 1 — search + filter chips + range toggle */}
       <div
         style={{
           display: "flex",
@@ -427,9 +211,7 @@ function LibraryToolbar() {
         <input
           aria-label="search skills"
           value={state.search}
-          onChange={(e) =>
-            dispatch({ type: "setSearch", search: e.target.value })
-          }
+          onChange={(e) => dispatch({ type: "setSearch", search: e.target.value })}
           placeholder="Fuzzy search name, description, tags…"
           style={{
             width: 260,
@@ -459,7 +241,10 @@ function LibraryToolbar() {
                 fontFamily: "inherit",
               }}
             >
-              {filterLabel(state.filter)} ✕
+              {state.filter.kind === "needs"
+                ? "needs attention"
+                : filterLabel(state.filter)}{" "}
+              ✕
             </button>
           ) : null}
           <DomainMenu
@@ -468,59 +253,33 @@ function LibraryToolbar() {
               dispatch({
                 type: "setFilter",
                 filter: { kind: "domain", value: d },
-                view: "library",
               })
             }
             variant="filter"
           />
         </div>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 12, color: "#9A9AA2" }}>{libCount} skills</span>
-        {/* update-awareness (ADR-0009): manual outdated check + bulk update.
-            Pills match the Inbox toolbar (⚙ Dry-run / Auto-fix). */}
-        <button
-          onClick={() => void oq.refetch()}
-          disabled={oq.isFetching}
-          title="Check upstream for newer versions of vendored skills"
-          style={{
-            background: "#FFFFFF",
-            border: "1px solid #E2E2E5",
-            borderRadius: 7,
-            padding: "5px 12px",
-            fontSize: 12.5,
-            fontWeight: 550,
-            cursor: oq.isFetching ? "default" : "pointer",
-            color: checkColor,
-            fontFamily: "inherit",
-            transition: "color 120ms",
-          }}
-        >
-          {checkLabel}
-        </button>
-        {staleNames.length > 0 || bulk ? (
-          <button
-            onClick={runBulkUpdate}
-            disabled={!!bulk}
-            title="Update every stale skill (diverged rows are excluded)"
-            style={{
-              background: "#18181B",
-              border: "1px solid #18181B",
-              borderRadius: 7,
-              padding: "5px 12px",
-              fontSize: 12.5,
-              fontWeight: 550,
-              cursor: bulk ? "default" : "pointer",
-              color: "#FFFFFF",
-              fontFamily: "inherit",
-            }}
-          >
-            {bulk
-              ? `Updating ${bulk.done}/${bulk.total}…`
-              : `Update all stale (${staleNames.length})`}
-          </button>
+        {/* project range toggle: Pinned here ↔ All (ADR-0010 §5). Default is
+            still pinned-only (anti-sparse); only the label changed since cells
+            now distinguish pinned from inherited-via-Global. */}
+        {isProject ? (
+          <div style={{ display: "flex", gap: 5 }}>
+            <button
+              onClick={() => dispatch({ type: "setRange", range: "installed" })}
+              style={pill(state.range === "installed")}
+            >
+              Pinned here
+            </button>
+            <button
+              onClick={() => dispatch({ type: "setRange", range: "all" })}
+              style={pill(state.range === "all")}
+            >
+              All skills
+            </button>
+          </div>
         ) : null}
       </div>
-      {/* row 2 — sort + view */}
+      {/* row 2 — sort + group */}
       <div
         style={{
           display: "flex",

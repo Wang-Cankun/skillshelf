@@ -178,6 +178,40 @@ export interface InferenceCorpus {
   generatedAt: string;
 }
 
+/**
+ * A custom / overridden agent registered in config (ADR-0010 delta 4). Merged
+ * with the built-in AGENT_SEEDS at report time: an entry whose `id` matches a seed
+ * OVERRIDES it (e.g. to set an icon, color, or non-standard skills dir); a new id
+ * APPENDS a custom agent; `hidden:true` removes a seed/detected agent from the
+ * matrix. This is registry/navigation metadata only — deployment truth is always
+ * derived from the filesystem (see Config.projects note).
+ */
+export interface AgentConfigEntry {
+  /** stable agent id (the `.<id>` dotdir segment) */
+  id: string;
+  /** display name */
+  name: string;
+  /** short label for dense UI */
+  short: string;
+  /** override the GLOBAL skills dir (default ~/.<id>/skills) */
+  global?: string;
+  /** override the project-relative convention (default .<id>/skills) */
+  projConvention?: string;
+  /** provider-icons key (optional; falls back to agent-icons/<id> then first letter) */
+  icon?: string;
+  /** hex tint (optional) */
+  color?: string;
+  /** hide a detected/seed agent from the matrix */
+  hidden?: boolean;
+  /**
+   * whether the agent loads its GLOBAL skills dir (~/.<id>/skills) in EVERY
+   * project, so a global-only skill is effectively active everywhere (ADR-0010
+   * inheritance). Omitted = inherit (true) — the ~/.x/skills convention; set
+   * false for a custom agent that does NOT auto-load its global dir per project.
+   */
+  inheritsGlobal?: boolean;
+}
+
 /** Resolved configuration for a skillshelf invocation. */
 export interface Config {
   /** absolute path to the canonical library (skill content) */
@@ -186,6 +220,15 @@ export interface Config {
   globalCoreTarget: string;
   /** persisted, absolute, de-duplicated scan roots (`skl scan` searches these) */
   roots: string[];
+  /** custom/overridden agent registry entries (ADR-0010 delta 4); defaulted to [] */
+  agents: AgentConfigEntry[];
+  /**
+   * persisted, absolute, de-duplicated project dirs the GUI shows as scope rows
+   * (ADR-0010 §5a). NAVIGATION state only — never deployment truth. An added-but-
+   * empty project survives here so it stays a selectable scope; its cells are still
+   * derived all-absent from reality.
+   */
+  projects: string[];
   /** absolute path to the config file that was read, if any */
   configFile: string | null;
   /** absolute path of the config file roots would be persisted to (read or default) */
@@ -222,6 +265,14 @@ export interface ConfigFile {
    * absolute path string (layout/notes are informational; see RootEntry).
    */
   roots?: Array<string | RootEntry>;
+  /** custom/overridden agent registry entries (ADR-0010 delta 4). */
+  agents?: AgentConfigEntry[];
+  /**
+   * persisted nav projects (ADR-0010 §5a). Each entry may be a bare path string or
+   * an annotated {path, name?} object; both normalize to an absolute path string on
+   * read (the optional `name` is informational — the GUI displays the basename).
+   */
+  projects?: Array<string | { path: string; name?: string }>;
 }
 
 /**
@@ -241,6 +292,14 @@ export interface Ctx {
   addRoot: (path: string) => Promise<string[]>;
   /** remove a scan root by resolved path (inverse of addRoot); persists to config.json. Returns the updated roots + whether one was removed. */
   removeRoot: (path: string) => Promise<{ roots: string[]; removed: boolean }>;
+  /** add a nav project (ADR-0010 §5a): expands ~, makes absolute, de-dupes, persists. Returns the updated projects. */
+  addProject: (path: string) => Promise<string[]>;
+  /** remove a nav project by resolved path (inverse of addProject); persists. Returns the updated projects + whether one was removed. */
+  removeProject: (path: string) => Promise<{ projects: string[]; removed: boolean }>;
+  /** add/override a custom agent (ADR-0010 delta 4): matching id overrides, new id appends; persists. Returns the updated custom-agent list. */
+  addAgent: (entry: AgentConfigEntry) => Promise<AgentConfigEntry[]>;
+  /** remove a custom agent by id (inverse of addAgent); persists. Returns the updated custom-agent list + whether one was removed. */
+  removeAgent: (id: string) => Promise<{ agents: AgentConfigEntry[]; removed: boolean }>;
   /** human-readable logging to stdout */
   log: (...args: unknown[]) => void;
   /** machine-parseable single-line JSON to stdout */

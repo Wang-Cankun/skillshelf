@@ -34,11 +34,20 @@ export function aggregates(skills: Skill[]): Aggregates {
   return { total: live.length, vendored, local, untagged, domains, domainMax };
 }
 
-function matchesFilter(s: Skill, filter: Filter): boolean {
+function matchesFilter(
+  s: Skill,
+  filter: Filter,
+  needsNames: Set<string> | null,
+): boolean {
   if (!filter) return true;
   if (filter.kind === "source") return (s.source ?? "local") === filter.value;
   if (filter.kind === "domain") return s.domains.includes(filter.value);
   if (filter.kind === "untagged") return s.domains.length === 0;
+  // `needs` (ADR-0010 §6, the folded Inbox) needs the deployment feed, which this
+  // pure Skill-only selector can't see — the caller computes the source-of-truth
+  // `needsAttentionNames` set and passes it in, so the pipeline filters by the
+  // SAME predicate the sidebar badge counts (Bug 3). No `where` → empty set.
+  if (filter.kind === "needs") return needsNames?.has(s.name) ?? false;
   return true;
 }
 
@@ -60,22 +69,20 @@ function compare(a: Skill, b: Skill, key: SortKey, dir: SortDir): number {
   const sign = dir === "desc" ? -1 : 1;
   let x: string | number;
   let y: string | number;
-  if (key === "name") {
-    x = a.name;
-    y = b.name;
-  } else if (key === "domain") {
-    x = primary(a);
-    y = primary(b);
-  } else if (key === "deploys") {
+  if (key === "deployed") {
+    // deployment breadth — how many surfaces this skill is on.
     x = a.deployCount ?? 0;
     y = b.deployCount ?? 0;
+  } else if (key === "attention") {
+    // ADR-0010 sort by "needs attention". Anomaly state lives in the agents
+    // report, not on Skill, so this pure selector can only tie-break by name;
+    // S3's list pipeline reorders by real anomaly weight before render.
+    x = a.name;
+    y = b.name;
   } else {
-    // modified — null/untracked always sorts last regardless of direction.
-    if (!a.modifiedAt && !b.modifiedAt) return a.name < b.name ? -1 : 1;
-    if (!a.modifiedAt) return 1;
-    if (!b.modifiedAt) return -1;
-    x = a.modifiedAt;
-    y = b.modifiedAt;
+    // "name" (default).
+    x = a.name;
+    y = b.name;
   }
   // Apply direction to the primary key; keep the name tie-break always asc.
   if (x < y) return -1 * sign;
@@ -105,6 +112,9 @@ export function libraryView(
     group: GroupMode;
     retired: Record<string, boolean>;
     removedHard: Record<string, boolean>;
+    /** source-of-truth set for the `{kind:"needs"}` filter (ADR-0010 §6). null
+     *  when the deployment feed isn't loaded yet → the needs filter matches none. */
+    needsNames?: Set<string> | null;
   },
 ): LibraryView {
   let rows = skills.filter(
@@ -112,7 +122,7 @@ export function libraryView(
       !s.retired &&
       !opts.retired[s.name] &&
       !opts.removedHard[s.name] &&
-      matchesFilter(s, opts.filter) &&
+      matchesFilter(s, opts.filter, opts.needsNames ?? null) &&
       matchesSearch(s, opts.search),
   );
   const count = rows.length;

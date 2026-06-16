@@ -4,21 +4,27 @@
 // lifecycle). Every fact is backed by the live `skl show`/`skl agents` feeds;
 // the Explanation tab is an honest "coming soon" placeholder (ADR-0007).
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import hljs from "highlight.js/lib/common";
 import "highlight.js/styles/github.css";
 import { useStore } from "../state/store";
-import { useShow, useLibrary, useAgents } from "../state/queries";
+import { useShow, useLibrary, useAgents, useConfig } from "../state/queries";
 import { useCommands } from "../state/commands";
-import { effState } from "../lib/agents";
+import { projectScopeName } from "../lib/skl";
 import { stripFrontmatter } from "../lib/derive";
 import { allDomains } from "../lib/select";
 import { openInEditor, revealInFinder } from "../lib/shell";
 import { DomainMenu } from "./DomainMenu";
-import { DEPLOY_GLYPH, MONO } from "../lib/tokens";
+import { AgentToggle } from "./AgentToggle";
+import { ResolvePopover } from "./ResolvePopover";
+import { InheritedPopover } from "./InheritedPopover";
+import { AddToProjectPicker } from "./AddToProjectPicker";
+import { SourceCell } from "./SourceCell";
+import { MONO } from "../lib/tokens";
+import { GLOBAL_SCOPE } from "../state/store";
 import type { AgentsReport, RefFile } from "../lib/types";
 import type { DrawerTab } from "../state/store";
 
@@ -49,9 +55,24 @@ export function DetailDrawer() {
   const library = useLibrary().data ?? [];
   const skill = library.find((s) => s.name === name);
   const agentsReport = useAgents().data ?? EMPTY_AGENTS;
+  const config = useConfig().data;
   const commands = useCommands();
+  // Projects added transiently via "+ Add to project…" — they appear as matrix
+  // rows even before a deployment exists (the ONLY way a non-deployed row shows;
+  // RISK 3). Reset whenever the drawer target changes.
+  const [extraScopes, setExtraScopes] = useState<string[]>([]);
+  useEffect(() => setExtraScopes([]), [name]);
 
-  if (!name) return null;
+  // ResolvePopover + InheritedPopover are mounted globally here (DetailDrawer is
+  // always mounted) so a list-row anomaly/inherited click resolves even with the
+  // drawer closed.
+  if (!name)
+    return (
+      <>
+        <ResolvePopover />
+        <InheritedPopover />
+      </>
+    );
 
   const isVendored = skill?.source === "vendored";
   const removedTags = state.removedTags[name] ?? [];
@@ -63,6 +84,30 @@ export function DetailDrawer() {
   // are shown verbatim so the navigator can preview anything in the dir.
   const isMd = state.drawerFile.toLowerCase().endsWith(".md");
   const fileLabel = state.drawerFile.split("/").pop() ?? state.drawerFile;
+
+  // ── Anti-sparse agent × scope sub-matrix (delta 3 / RISK 3) ───────────────
+  // ROWS = Global + ONLY the projects where THIS skill is actually deployed
+  // (any agent has a non-absent project state) + any transiently added rows.
+  // We NEVER iterate all `agentsReport.scopes` — that reintroduces the sparsity
+  // the old Matrix died of. Empty added rows surface via `extraScopes`.
+  const byAgent = agentsReport.deployments[name] ?? {};
+  const deployedProjectScopes = new Set<string>();
+  for (const dep of Object.values(byAgent)) {
+    if (dep.p)
+      for (const [sc, st] of Object.entries(dep.p))
+        if (st && st !== "absent") deployedProjectScopes.add(sc);
+  }
+  for (const sc of extraScopes) deployedProjectScopes.add(sc);
+  // basename → absolute path so deploy emits `--project <path>` (RISK 4).
+  const pathByScope = new Map<string, string>();
+  for (const p of config?.projects ?? [])
+    pathByScope.set(projectScopeName(p), p);
+  const projectRows = [...deployedProjectScopes].sort();
+  const matrixScopes: { scope: string; scopePath?: string }[] = [
+    { scope: GLOBAL_SCOPE },
+    ...projectRows.map((sc) => ({ scope: sc, scopePath: pathByScope.get(sc) })),
+  ];
+  const shownScopes = [GLOBAL_SCOPE, ...projectRows];
 
   return (
     <>
@@ -537,6 +582,12 @@ export function DetailDrawer() {
                 }}
               >
                 <div style={{ ...CAPTION, marginBottom: 9 }}>PROVENANCE</div>
+                {skill ? (
+                  <div style={{ marginBottom: 8 }}>
+                    {/* owner/repo links out to GitHub for vendored github rows */}
+                    <SourceCell skill={skill} variant="drawer" />
+                  </div>
+                ) : null}
                 <div
                   style={{
                     display: "flex",
@@ -587,7 +638,10 @@ export function DetailDrawer() {
               </div>
             ) : null}
 
-            {/* AGENTS */}
+            {/* AGENTS × SCOPE sub-matrix (delta 3, anti-sparse): one row per
+                scope where this skill lives (Global + deployed projects only),
+                columns = agents, cells = the shared AgentToggle (size 30).
+                "+ Add to project…" is the only way to surface a fresh row. */}
             <div
               style={{ padding: "15px 16px", borderBottom: "1px solid #EFEFF1" }}
             >
@@ -596,158 +650,99 @@ export function DetailDrawer() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  marginBottom: 7,
+                  marginBottom: 9,
                 }}
               >
-                <span style={CAPTION}>AGENTS</span>
+                <span style={CAPTION}>DEPLOYMENTS</span>
                 <span
                   style={{ fontSize: 10, color: "#B6B6BC", fontFamily: MONO }}
                 >
-                  global + projects
+                  scope × agent
                 </span>
               </div>
-              {agentsReport.agents.map((agent) => {
-                const g = effState(
-                  agentsReport,
-                  state.deployOverrides,
-                  name,
-                  agent.id,
-                  "Global",
-                );
-                const deployedGlobal = g !== "absent";
-                const projChips = agentsReport.scopes
-                  .filter((sc) => sc !== "Global")
-                  .map((sc) => ({
-                    scope: sc,
-                    st: effState(
-                      agentsReport,
-                      state.deployOverrides,
-                      name,
-                      agent.id,
-                      sc,
-                    ),
-                  }))
-                  .filter((p) => p.st !== "absent");
-                const anywhere = deployedGlobal || projChips.length > 0;
-                const gl = DEPLOY_GLYPH[g];
-                return (
-                  <div
-                    key={agent.id}
+
+              {/* agent column header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  paddingLeft: 92,
+                  marginBottom: 5,
+                }}
+              >
+                {agentsReport.agents.map((a) => (
+                  <span
+                    key={a.id}
+                    title={a.name}
                     style={{
-                      padding: "10px 0",
-                      borderBottom: "1px solid #F5F5F6",
-                      opacity: agent.installed ? 1 : 0.6,
+                      width: 30,
+                      textAlign: "center",
+                      fontSize: 9.5,
+                      fontWeight: 600,
+                      color: a.installed ? "#71717A" : "#C7C7CC",
+                      fontFamily: MONO,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 7 }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          color: anywhere ? "#18181B" : "#71717A",
-                          fontFamily: MONO,
-                        }}
-                      >
-                        {agent.short}
-                      </span>
-                      {!agent.installed ? (
-                        <span
-                          style={{
-                            fontSize: 9,
-                            color: "#C7C7CC",
-                            border: "1px solid #ECECEE",
-                            borderRadius: 4,
-                            padding: "0 5px",
-                          }}
-                        >
-                          not installed
-                        </span>
-                      ) : null}
-                      <span style={{ flex: 1 }} />
-                      <button
-                        onClick={() =>
-                          commands.deploy(
-                            name,
-                            agent.id,
-                            "Global",
-                            !deployedGlobal,
-                          )
-                        }
-                        style={{
-                          background: deployedGlobal ? "#FFFFFF" : "#18181B",
-                          color: deployedGlobal ? "#52525B" : "#FFFFFF",
-                          border:
-                            "1px solid " +
-                            (deployedGlobal ? "#E2E2E5" : "#18181B"),
-                          borderRadius: 6,
-                          padding: "3px 11px",
-                          fontSize: 11,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        {deployedGlobal ? "Unlink" : "Link"}
-                      </button>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        marginTop: 5,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                          fontSize: 11,
-                          color: deployedGlobal ? gl.color : "#9A9AA2",
-                        }}
-                      >
-                        {deployedGlobal
-                          ? `${gl.glyph} global · ${g}`
-                          : "+ not in global"}
-                      </span>
-                      {projChips.map((p) => {
-                        const pg = DEPLOY_GLYPH[p.st];
-                        return (
-                          <span
-                            key={p.scope}
-                            style={{
-                              background: "#F4F4F5",
-                              color: pg.color,
-                              borderRadius: 5,
-                              padding: "1px 7px",
-                              fontSize: 10.5,
-                              fontFamily: MONO,
-                            }}
-                          >
-                            {p.scope} {pg.glyph}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontFamily: MONO,
-                        fontSize: 9,
-                        color: "#C7C7CC",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {agent.global}/{name}
-                    </div>
-                  </div>
-                );
-              })}
+                    {a.short}
+                  </span>
+                ))}
+              </div>
+
+              {matrixScopes.map(({ scope, scopePath }) => (
+                <div
+                  key={scope}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "5px 0",
+                    borderTop: "1px solid #F5F5F6",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 86,
+                      flexShrink: 0,
+                      fontSize: 11.5,
+                      fontWeight: scope === GLOBAL_SCOPE ? 600 : 500,
+                      color: scope === GLOBAL_SCOPE ? "#18181B" : "#52525B",
+                      fontFamily: MONO,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={scopePath ?? scope}
+                  >
+                    {scope === GLOBAL_SCOPE ? "● Global" : scope}
+                  </span>
+                  {agentsReport.agents.map((a) => (
+                    <AgentToggle
+                      key={a.id}
+                      skill={name}
+                      agentId={a.id}
+                      scope={scope}
+                      scopePath={scopePath}
+                      size={30}
+                    />
+                  ))}
+                </div>
+              ))}
+
+              <AddToProjectPicker
+                shownScopes={shownScopes}
+                onPicked={(path) =>
+                  setExtraScopes((prev) =>
+                    prev.includes(projectScopeName(path))
+                      ? prev
+                      : [...prev, projectScopeName(path)],
+                  )
+                }
+              />
+
               <div
                 style={{
                   marginTop: 9,
@@ -756,7 +751,7 @@ export function DetailDrawer() {
                   fontFamily: MONO,
                 }}
               >
-                project copy shadows global · live from skl where
+                warning cells open a resolve flow · live from skl where
               </div>
             </div>
 
@@ -837,6 +832,8 @@ export function DetailDrawer() {
           </div>
         </div>
       </div>
+      <ResolvePopover />
+      <InheritedPopover />
     </>
   );
 }

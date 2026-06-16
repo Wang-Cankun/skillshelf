@@ -2,6 +2,9 @@
 // THIS install chooses to present them. Kept in one place so it's obvious what
 // is a product fact vs. a personal display choice.
 
+import type { AgentInfo } from "./types";
+import { mergeAgents } from "./agents";
+
 /**
  * Agent ids hidden from the UI (the AGENTS rail, the deployment matrix, the
  * agent filter). The engine still knows about them — this only trims what's
@@ -17,4 +20,17 @@ export const HIDDEN_AGENT_IDS = new Set<string>([
 /** Drop hidden agents from a report's agent list (display filter only). */
 export function visibleAgents<T extends { id: string }>(agents: T[]): T[] {
   return agents.filter((a) => !HIDDEN_AGENT_IDS.has(a.id));
+}
+
+/**
+ * The single place that resolves the displayed agent registry: merge custom
+ * config agents (delta 4) onto whatever the report already carries, then drop
+ * hidden ids. `loadAgents` calls this so the report's `agents` list, the count
+ * bar, the rows, and the settings popover all read one merged-then-filtered set.
+ */
+export function resolveVisibleAgents(
+  reportAgents: AgentInfo[],
+  customAgents?: AgentInfo[],
+): AgentInfo[] {
+  return visibleAgents(mergeAgents(reportAgents, customAgents));
 }

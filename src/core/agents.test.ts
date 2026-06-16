@@ -131,6 +131,93 @@ describe("computeAgentsReport", () => {
   });
 });
 
+describe("computeAgentsReport — opts (ADR-0010)", () => {
+  const baseReport: DeploymentReport = {
+    surfaces: [],
+    sites: [site({ name: "alpha", surface: "/home/u/.claude/skills", kind: "linked" })],
+    problems: [],
+  };
+
+  test("opts.agents appends a custom agent (pi) after the seeds", () => {
+    const r = computeAgentsReport(baseReport, HOME, {
+      agents: [{ id: "pi", name: "PI Agent", short: "PI", icon: "anthropic" }],
+    });
+    expect(r.agents.map((a) => a.id)).toEqual([
+      "claude",
+      "codex",
+      "cursor",
+      "opencode",
+      "gemini",
+      "pi",
+    ]);
+  });
+
+  test("opts.agents can override a seed and hide another", () => {
+    const r = computeAgentsReport(baseReport, HOME, {
+      agents: [
+        { id: "claude", name: "Claude Code", short: "CC", global: "~/.claude/skills" },
+        { id: "cursor", name: "Cursor", short: "Cursor", hidden: true },
+      ],
+    });
+    expect(r.agents.find((a) => a.id === "claude")!.short).toBe("CC");
+    expect(r.agents.some((a) => a.id === "cursor")).toBe(false);
+  });
+
+  test("opts.extraScopes lists empty projects with NO phantom deployments", () => {
+    const r = computeAgentsReport(baseReport, HOME, { extraScopes: ["scratch", "webapp"] });
+    expect(r.scopes).toContain("scratch");
+    expect(r.scopes).toContain("webapp");
+    // empty project = no deployment fabricated; only the real Global linked site exists
+    expect(r.deployments.alpha!.claude!.g).toBe("clean");
+    expect(r.deployments.alpha!.claude!.p).toBeUndefined();
+  });
+
+  test("custom-agent surfaces are detected via the widened id set", () => {
+    const r = computeAgentsReport(
+      {
+        surfaces: [],
+        sites: [site({ name: "x", surface: "/work/proj/.pi/skills", kind: "linked" })],
+        problems: [],
+      },
+      HOME,
+      { agents: [{ id: "pi", name: "PI", short: "PI" }] },
+    );
+    expect(r.deployments.x!.pi!.p!.proj).toBe("clean");
+  });
+
+  test("no opts is backward-compatible (seed-only, default extraScopes)", () => {
+    const r = computeAgentsReport(baseReport, HOME);
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini"]);
+  });
+
+  test("inheritsGlobal: all seeds default true; report carries the flag", () => {
+    const r = computeAgentsReport(baseReport, HOME);
+    expect(r.agents.find((a) => a.id === "claude")!.inheritsGlobal).toBe(true);
+    expect(r.agents.every((a) => a.inheritsGlobal === true)).toBe(true);
+  });
+
+  test("inheritsGlobal: a custom agent defaults true unless inheritsGlobal:false", () => {
+    const r = computeAgentsReport(baseReport, HOME, {
+      agents: [
+        { id: "pi", name: "PI", short: "PI" }, // no flag → inherits (true)
+        { id: "static", name: "Static", short: "Static", inheritsGlobal: false },
+      ],
+    });
+    expect(r.agents.find((a) => a.id === "pi")!.inheritsGlobal).toBe(true);
+    expect(r.agents.find((a) => a.id === "static")!.inheritsGlobal).toBe(false);
+  });
+
+  test("inheritsGlobal:false on a seed override is carried through the merge", () => {
+    const r = computeAgentsReport(baseReport, HOME, {
+      agents: [{ id: "codex", name: "Codex", short: "Codex", inheritsGlobal: false }],
+    });
+    expect(r.agents.find((a) => a.id === "codex")!.inheritsGlobal).toBe(false);
+    // a non-inheriting agent must NEVER be presented as auto-loading globally:
+    // the derived-cell layer (app cellStateFor) keys off exactly this flag.
+    expect(r.agents.find((a) => a.id === "claude")!.inheritsGlobal).toBe(true);
+  });
+});
+
 describe("agentDeployDir", () => {
   test("global = ~/.<id>/skills", () => {
     expect(agentDeployDir("claude", "global", HOME, "/cwd")).toBe("/home/u/.claude/skills");

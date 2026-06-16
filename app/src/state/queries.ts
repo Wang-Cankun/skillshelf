@@ -14,6 +14,7 @@ import {
   loadScan,
   loadStatus,
   loadAgents,
+  loadConfig,
   loadShow,
   loadOutdated,
 } from "../lib/skl";
@@ -23,6 +24,7 @@ import type {
   ScanReport,
   StatusReport,
   AgentsReport,
+  AppConfig,
   ShowReport,
   OutdatedReport,
 } from "../lib/types";
@@ -33,6 +35,7 @@ export const qk = {
   scan: ["scan"] as const,
   status: ["status"] as const,
   agents: ["agents"] as const,
+  config: ["config"] as const,
   outdated: ["outdated"] as const,
   show: (name: string, file?: string) => ["show", name, file ?? null] as const,
 };
@@ -51,6 +54,12 @@ export function useStatus(): UseQueryResult<StatusReport> {
 }
 export function useAgents(): UseQueryResult<AgentsReport> {
   return useQuery({ queryKey: qk.agents, queryFn: loadAgents });
+}
+// Persisted nav-config (§5a custom agents + project scopes). Drives the scope
+// switcher's extra projects and the agent-settings popover. Browser-fixture
+// fallback lives in loadConfig (skl.ts) so dev mode renders without Tauri.
+export function useConfig(): UseQueryResult<AppConfig> {
+  return useQuery({ queryKey: qk.config, queryFn: loadConfig });
 }
 // MANUAL query (ADR-0009): never auto-runs (enabled:false) — triggered by the
 // toolbar "Check updates" button via refetch() to avoid hammering GitHub across

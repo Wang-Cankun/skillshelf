@@ -10,7 +10,7 @@
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import { existsSync } from "node:fs";
-import type { DeploymentReport, DeploymentSite } from "../types.ts";
+import type { AgentConfigEntry, DeploymentReport, DeploymentSite } from "../types.ts";
 
 /** Deployment state of one (skill, agent, scope) cell. */
 export type DeployState =
@@ -35,6 +35,20 @@ export interface AgentInfo {
   projConvention: string;
   /** true if the agent's global skills dir exists on this machine */
   installed: boolean;
+  /**
+   * true if the agent loads its GLOBAL skills dir (~/.<id>/skills) in EVERY
+   * project IN ADDITION to the project's own dir (ADR-0010 inheritance). When
+   * true, a globally-deployed skill is EFFECTIVELY active in every project even
+   * with no project symlink (the "inherited from Global" model). Default true
+   * (the ~/.x/skills convention all seeds follow); a custom agent may set false.
+   */
+  inheritsGlobal: boolean;
+  /** provider-icons key (custom-agent presentation, ADR-0010 delta 4) */
+  icon?: string;
+  /** hex tint (custom-agent presentation) */
+  color?: string;
+  /** true if this agent came from a config `agents` entry (custom or seed override) */
+  custom?: boolean;
 }
 
 /** Per (skill, agent): global state + per-project states. Omitted keys = absent. */
@@ -57,6 +71,15 @@ interface AgentSeed {
   name: string;
   short: string;
 }
+// ENGINE seed list — the full set of agents `skl` can DETECT on disk (claude,
+// codex, cursor, opencode, gemini; no `pi`). This INTENTIONALLY diverges from the
+// app-side seed list in `app/src/lib/agents.ts` (claude, codex, pi), which shows
+// only the agents a given user actually deploys to and reconstructs the report in
+// the browser dev fallback. The two lists are NOT meant to match: the engine
+// errs toward broad detection, the app toward the user's real surfaces, and
+// custom/overridden agents flow through config (delta 4) on both sides. If you
+// add/remove an id here, decide deliberately whether the app list should follow —
+// see the matching comment over AGENT_SEEDS in app/src/lib/agents.ts.
 const AGENT_SEEDS: AgentSeed[] = [
   { id: "claude", name: "Claude Code", short: "Claude" },
   { id: "codex", name: "Codex", short: "Codex" },
@@ -72,9 +95,13 @@ function globalDir(id: string, home: string): string {
   return join(home, `.${id}`, "skills");
 }
 
-/** Which agent owns a surface path (by its `/.<id>/` dotdir segment), or null. */
-export function agentIdForSurface(surface: string): string | null {
-  for (const id of AGENT_IDS) {
+/**
+ * Which agent owns a surface path (by its `/.<id>/` dotdir segment), or null.
+ * `ids` defaults to the built-in registry; computeAgentsReport passes a widened set
+ * (seeds + custom config agents) so custom-agent surfaces are detected too.
+ */
+export function agentIdForSurface(surface: string, ids: readonly string[] = AGENT_IDS): string | null {
+  for (const id of ids) {
     if (surface.includes(`${sep}.${id}${sep}`) || surface.endsWith(`${sep}.${id}`)) {
       return id;
     }
@@ -160,13 +187,27 @@ const RANK: Record<DeployState, number> = {
 export function computeAgentsReport(
   report: DeploymentReport,
   home: string = homedir(),
+  opts: { extraScopes?: string[]; agents?: AgentConfigEntry[] } = {},
 ): AgentsReport {
+  // Merge the built-in seeds with custom/overridden config agents (ADR-0010 delta
+  // 4): a matching id OVERRIDES a seed, a new id APPENDS, `hidden:true` removes it.
+  // Seed order is preserved; custom-only agents follow in config order.
+  const merged = mergeAgents(opts.agents ?? []);
+  const ids = merged.map((a) => a.id);
+
   const deployments: Record<string, Record<string, AgentDeployment>> = {};
   const scopeSet = new Set<string>(["Global"]);
 
+  // Persisted-but-empty project scopes (ADR-0010 §5a): union them in so an added
+  // project still appears as a drawer/scope row. They get NO deployments — cells
+  // stay all-absent, derived from reality, never fabricated.
+  for (const s of opts.extraScopes ?? []) {
+    if (s && s !== "Global") scopeSet.add(s);
+  }
+
   for (const site of report.sites) {
     if (!isAgentMatrixSurface(site.surface)) continue;
-    const agentId = agentIdForSurface(site.surface);
+    const agentId = agentIdForSurface(site.surface, ids);
     if (!agentId) continue;
     const scope = scopeForSurface(site.surface, agentId, home);
     if (scope !== "Global") scopeSet.add(scope);
@@ -187,13 +228,28 @@ export function computeAgentsReport(
     }
   }
 
-  const agents: AgentInfo[] = AGENT_SEEDS.map((a) => ({
+  // Ids that came from a config `agents` entry (custom agent or seed override) so
+  // the GUI can recover the custom registry from the report (loadConfig filters on
+  // `custom`) without a separate config-read verb (ADR-0010 delta 4).
+  const customIds = new Set(
+    (opts.agents ?? [])
+      .filter((a) => a && typeof a.id === "string" && a.id.trim() !== "")
+      .map((a) => a.id),
+  );
+  const agents: AgentInfo[] = merged.map((a) => ({
     id: a.id,
     name: a.name,
     short: a.short,
-    global: `~/.${a.id}/skills`,
-    projConvention: `.${a.id}/skills`,
+    global: a.global ?? `~/.${a.id}/skills`,
+    projConvention: a.projConvention ?? `.${a.id}/skills`,
     installed: existsSync(globalDir(a.id, home)),
+    // Default true (the ~/.x/skills inheritance convention all seeds follow); a
+    // custom config entry may opt out with inheritsGlobal:false. `?? true` keeps
+    // legacy config entries (no flag) inheriting, preserving today's behaviour.
+    inheritsGlobal: a.inheritsGlobal ?? true,
+    ...(a.icon ? { icon: a.icon } : {}),
+    ...(a.color ? { color: a.color } : {}),
+    ...(customIds.has(a.id) ? { custom: true } : {}),
   }));
 
   const scopes = [
@@ -202,6 +258,25 @@ export function computeAgentsReport(
   ];
 
   return { agents, scopes, deployments };
+}
+
+/**
+ * Merge the built-in AGENT_SEEDS with custom config entries (ADR-0010 delta 4),
+ * dropping any agent flagged `hidden`. Returns the effective registry (seed order
+ * preserved; custom-only ids appended in config order). Shared by the report's
+ * `agents[]` and the widened surface-detection id set.
+ */
+function mergeAgents(custom: AgentConfigEntry[]): AgentConfigEntry[] {
+  const byId = new Map<string, AgentConfigEntry>();
+  for (const seed of AGENT_SEEDS) {
+    byId.set(seed.id, { id: seed.id, name: seed.name, short: seed.short });
+  }
+  for (const c of custom) {
+    if (!c || typeof c.id !== "string" || c.id.trim() === "") continue;
+    const prev = byId.get(c.id);
+    byId.set(c.id, prev ? { ...prev, ...c } : { ...c });
+  }
+  return [...byId.values()].filter((a) => !a.hidden);
 }
 
 /** Resolve an agent's deploy dir for a scope: global (~/.<id>/skills) or a project. */
