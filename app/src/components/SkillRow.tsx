@@ -5,6 +5,7 @@
 // The agent toggles are the shared AgentToggle (size 28) bound to the active
 // scope, so a row is deployable straight from the list (delta 5).
 
+import { memo } from "react";
 import { useStore, GLOBAL_SCOPE } from "../state/store";
 import { useAgents } from "../state/queries";
 import { domainHue, MONO, DEPLOY_GLYPH } from "../lib/tokens";
@@ -39,7 +40,7 @@ function worstAnomaly(
   return worst;
 }
 
-export function SkillRow({ skill }: { skill: Skill }) {
+function SkillRowImpl({ skill }: { skill: Skill }) {
   const { state, dispatch } = useStore();
   const report = useAgents().data ?? EMPTY_AGENTS;
   const checked = !!state.selected[skill.name];
@@ -221,3 +222,13 @@ export function SkillRow({ skill }: { skill: Skill }) {
     </div>
   );
 }
+
+// Memoized on a STABLE `skill` prop: libraryView (select.ts) only filters/sorts the
+// TanStack-Query-cached Skill[] — it never .map()s rows into new objects — so the
+// default shallow compare on { skill } is correct and sufficient.
+// CAVEAT: SkillRowImpl calls useStore(), whose single context value { state, dispatch }
+// is recreated on every dispatch (store.tsx). So any store mutation still re-renders
+// every row regardless of this memo — context consumers always re-render when the
+// value changes. This memo only blocks pure parent-driven re-renders today; the full
+// per-row win needs the store split into selector-based subscriptions.
+export const SkillRow = memo(SkillRowImpl);

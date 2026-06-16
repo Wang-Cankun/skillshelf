@@ -3,7 +3,7 @@
 // skills; never touches real files or links to unrelated skills. Idempotent.
 
 import { join } from "node:path";
-import type { Ctx } from "../types.ts";
+import type { Ctx, Skill } from "../types.ts";
 import { resolveBundle } from "../core/bundle.ts";
 import { findByName } from "../core/library.ts";
 import { parseDeployTarget } from "../core/agents.ts";
@@ -11,8 +11,8 @@ import { isSymlink, realpathOrSelf, realpathOrSelfAsync, removeSymlink } from ".
 
 export const meta = {
   name: "drop",
-  summary: "Remove a bundle's (or skill's) symlinks from an agent's skills dir (default: ./.claude/skills/)",
-  usage: "skl drop <bundle|skill> [--agent <id>] [--global | --project <name>] [--json]",
+  summary: "Remove bundle(s)/skill(s) symlinks from an agent's skills dir (default: ./.claude/skills/)",
+  usage: "skl drop <bundle|skill>... [--agent <id>] [--global | --project <name>] [--json]",
 } as const;
 
 interface DropResult {
@@ -42,12 +42,31 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // later drop stay symmetric on the active set — we match on the same active set.
     const skills = await ctx.loadLibrary();
     const active = skills.filter((s) => !s.retired);
-    // Mirror `use`: resolve a single skill name first, else a bundle, so
-    // `skl drop <skill>` undoes `skl use <skill>` symmetrically.
-    const single = findByName(active, bundleName);
-    const bundle = single
-      ? { name: single.name, skills: [single] }
-      : await resolveBundle(active, bundleName);
+    const multi = positionals.length > 1;
+    // Mirror `use`: resolve EACH positional as a single skill name first, else a
+    // bundle, so `skl drop <name...>` undoes `skl use <name...>` symmetrically.
+    const resolveOne = async (name: string): Promise<{ name: string; skills: Skill[] }> => {
+      const single = findByName(active, name);
+      return single ? { name: single.name, skills: [single] } : await resolveBundle(active, name);
+    };
+
+    let bundle: { name: string; skills: Skill[] };
+    if (!multi) {
+      // Single-name: byte-identical resolution to before.
+      bundle = await resolveOne(bundleName as string);
+    } else {
+      // Many positionals union their skills (deduped by name) for one unlink pass.
+      const union: Skill[] = [];
+      const seen = new Set<string>();
+      for (const name of positionals) {
+        for (const s of (await resolveOne(name)).skills) {
+          if (seen.has(s.name)) continue;
+          seen.add(s.name);
+          union.push(s);
+        }
+      }
+      bundle = { name: positionals.join(", "), skills: union };
+    }
 
     const skillsDir = target.dir;
     const results: DropResult[] = [];

@@ -22,6 +22,7 @@
 // A authors this; B imports it read-only (DetailDrawer matrix). Do not widen the
 // prop contract without updating both call sites.
 
+import { memo } from "react";
 import { useStore } from "../state/store";
 import { useAgents, useWhere } from "../state/queries";
 import { useCommands } from "../state/commands";
@@ -54,7 +55,7 @@ const ANOMALY: ReadonlySet<DeployStateName> = new Set<DeployStateName>([
   "dead",
 ]);
 
-export function AgentToggle({
+function AgentToggleImpl({
   skill,
   agentId,
   scope,
@@ -256,3 +257,13 @@ export function AgentToggle({
     </button>
   );
 }
+
+// All props are primitives (skill/agentId/scope/scopePath/size/readOnly), so the
+// default shallow compare is exact — memo bails out on pure parent-driven re-renders.
+// CAVEAT: this component calls useStore(), and the store exposes a single context
+// value { state, dispatch } recreated on every dispatch (store.tsx). So any store
+// mutation (a deploy override, selection, search) still re-renders EVERY chip
+// regardless of this memo — context consumers always re-render when the value
+// changes. Realising the per-cell win needs the store split into selector-based
+// subscriptions; until then this memo only helps the non-store render paths.
+export const AgentToggle = memo(AgentToggleImpl);

@@ -91,6 +91,58 @@ describe("skl use/drop — single-skill deploy (friction #2)", () => {
     expect((json[0] as { error: string }).error).toBe("empty-bundle");
   });
 
+  test("multi-name `use <a> <b>` links ALL named skills in ONE call", async () => {
+    const { ctx, json } = makeCtx(library);
+    const code = await useRun(["alpha", "beta", "--json"], ctx);
+    expect(code).toBe(0);
+    const out = json[0] as { linked: Array<{ name: string; status: string }>; unresolved: string[] };
+    const names = out.linked.map((l) => l.name).sort();
+    expect(names).toEqual(["alpha", "beta"]);
+    expect(out.unresolved).toEqual([]);
+    expect(existsSync(join(project, ".claude", "skills", "alpha"))).toBe(true);
+    expect(existsSync(join(project, ".claude", "skills", "beta"))).toBe(true);
+  });
+
+  test("multi-name `use` dedupes when a skill and its bundle overlap", async () => {
+    // `bio` is a bundle containing {alpha, beta}; naming `alpha` too must not double-link it.
+    const { ctx, json } = makeCtx(library);
+    const code = await useRun(["alpha", "bio", "--json"], ctx);
+    expect(code).toBe(0);
+    const out = json[0] as { linked: Array<{ name: string }> };
+    const names = out.linked.map((l) => l.name).sort();
+    expect(names).toEqual(["alpha", "beta"]); // alpha appears once
+  });
+
+  test("multi-name partial: one good + one unresolved exits 1 yet still links the good one", async () => {
+    const { ctx, json } = makeCtx(library);
+    const code = await useRun(["alpha", "ghost", "--json"], ctx);
+    expect(code).toBe(1);
+    const out = json[0] as { linked: Array<{ name: string; status: string }>; unresolved: string[] };
+    expect(out.unresolved).toEqual(["ghost"]);
+    expect(out.linked.map((l) => l.name)).toEqual(["alpha"]);
+    // partial success is real on disk
+    expect(existsSync(join(project, ".claude", "skills", "alpha"))).toBe(true);
+  });
+
+  test("multi-name `drop <a> <b>` removes ALL named skills in ONE call", async () => {
+    await useRun(["alpha", "beta"], makeCtx(library).ctx);
+    const { ctx, json } = makeCtx(library);
+    const code = await dropRun(["alpha", "beta", "--json"], ctx);
+    expect(code).toBe(0);
+    const out = json[0] as { removed: number };
+    expect(out.removed).toBe(2);
+    expect(existsSync(join(project, ".claude", "skills", "alpha"))).toBe(false);
+    expect(existsSync(join(project, ".claude", "skills", "beta"))).toBe(false);
+  });
+
+  test("single-name JSON shape is unchanged (no `unresolved` field)", async () => {
+    const { ctx, json } = makeCtx(library);
+    await useRun(["alpha", "--json"], ctx);
+    const out = json[0] as Record<string, unknown>;
+    expect("unresolved" in out).toBe(false);
+    expect(out.kind).toBe("skill");
+  });
+
   test("use/drop --project against a fresh EMPTY project dir creates + symmetrically removes (ADR-0010 §5a)", async () => {
     // A brand-new project dir with no .claude/skills yet — the GUI deploy path.
     const fresh = join(tmp, "fresh-project");

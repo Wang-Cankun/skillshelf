@@ -7,6 +7,7 @@
 // The `{kind:"needs"}` filter and the `attention` sort both consult the agents
 // report (anomaly state lives there, not on Skill), which this component owns.
 
+import { useCallback, useMemo } from "react";
 import { useStore } from "../state/store";
 import { GLOBAL_SCOPE } from "../state/store";
 import { useLibrary, useAgents, useWhere } from "../state/queries";
@@ -82,21 +83,44 @@ export function SkillList() {
   // below (otherwise the count and the rows would diverge again — Bug 3).
   const needsFilter = state.filter?.kind === "needs";
   const retiredFilter = state.filter?.kind === "retired";
-  const needsNames =
-    needsFilter && where ? needsAttentionNames(skills, where) : null;
+  // Memoized so the Set isn't rebuilt (and the view memo below isn't busted) on
+  // every parent render — only when the library or deployment feed changes.
+  const needsNames = useMemo(
+    () => (needsFilter && where ? needsAttentionNames(skills, where) : null),
+    [needsFilter, where, skills],
+  );
 
   // 1. base filter/sort/group pipeline (search + source/domain/untagged/needs).
-  const view = libraryView(skills, {
-    filter: state.filter,
-    search: state.search,
-    sort: state.sort,
-    sortDir: state.sortDir,
-    group: state.group,
-    retired: state.retired,
-    unretired: state.unretired,
-    removedHard: state.removedHard,
-    needsNames,
-  });
+  // Memoized on its REAL inputs so an unrelated re-render (e.g. a deploy toggle
+  // that only touches the agents report) doesn't recompute the whole filter/
+  // sort/group pass over the library. The output buckets keep identity, which is
+  // what lets the memoized SkillRow children bail out.
+  const view = useMemo(
+    () =>
+      libraryView(skills, {
+        filter: state.filter,
+        search: state.search,
+        sort: state.sort,
+        sortDir: state.sortDir,
+        group: state.group,
+        retired: state.retired,
+        unretired: state.unretired,
+        removedHard: state.removedHard,
+        needsNames,
+      }),
+    [
+      skills,
+      state.filter,
+      state.search,
+      state.sort,
+      state.sortDir,
+      state.group,
+      state.retired,
+      state.unretired,
+      state.removedHard,
+      needsNames,
+    ],
+  );
 
   // 2. scope/range slice + anomaly-aware overlays the pure selector can't do
   //    (it has no agents report). Re-bucket after filtering each bucket's rows.
@@ -106,28 +130,44 @@ export function SkillList() {
     state.scope !== GLOBAL_SCOPE &&
     state.range === "installed";
 
-  const sliceRows = (rows: Skill[]): Skill[] => {
-    let r = rows;
-    if (projectInstalled)
-      r = r.filter((s) =>
-        deployedInScope(report, state.deployOverrides, s.name, state.scope),
-      );
-    if (state.sort === "attention") {
-      const sign = state.sortDir === "desc" ? -1 : 1;
-      r = r
-        .slice()
-        .sort(
-          (a, b) =>
-            sign * (anomalyWeight(report, b.name) - anomalyWeight(report, a.name)) ||
-            (a.name < b.name ? -1 : 1),
+  const sliceRows = useCallback(
+    (rows: Skill[]): Skill[] => {
+      let r = rows;
+      if (projectInstalled)
+        r = r.filter((s) =>
+          deployedInScope(report, state.deployOverrides, s.name, state.scope),
         );
-    }
-    return r;
-  };
+      if (state.sort === "attention") {
+        const sign = state.sortDir === "desc" ? -1 : 1;
+        r = r
+          .slice()
+          .sort(
+            (a, b) =>
+              sign * (anomalyWeight(report, b.name) - anomalyWeight(report, a.name)) ||
+              (a.name < b.name ? -1 : 1),
+          );
+      }
+      return r;
+    },
+    [
+      projectInstalled,
+      report,
+      state.deployOverrides,
+      state.scope,
+      state.sort,
+      state.sortDir,
+    ],
+  );
 
-  const buckets = view.buckets
-    .map((b) => ({ ...b, rows: sliceRows(b.rows) }))
-    .filter((b) => b.rows.length > 0);
+  // Memoized so the anomaly/installed overlay pass only re-runs when the view or
+  // the deployment-derived inputs (report, overrides, scope, range, sort) change.
+  const buckets = useMemo(
+    () =>
+      view.buckets
+        .map((b) => ({ ...b, rows: sliceRows(b.rows) }))
+        .filter((b) => b.rows.length > 0),
+    [view, sliceRows],
+  );
 
   const visibleNames = buckets.flatMap((b) => b.rows.map((r) => r.name));
   const allSelected =
