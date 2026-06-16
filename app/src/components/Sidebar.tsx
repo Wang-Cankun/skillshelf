@@ -90,22 +90,6 @@ export function Sidebar() {
       active: filterActive(needsFilter),
     },
     {
-      glyph: "◆",
-      label: "Vendored · tracked",
-      count: agg.vendored,
-      color: C.blue,
-      onClick: () => setFilter(vendoredFilter),
-      active: filterActive(vendoredFilter),
-    },
-    {
-      glyph: "●",
-      label: "Local · authored",
-      count: agg.local,
-      color: C.ink,
-      onClick: () => setFilter(localFilter),
-      active: filterActive(localFilter),
-    },
-    {
       glyph: "🏷",
       label: "Untagged",
       count: agg.untagged,
@@ -187,13 +171,6 @@ export function Sidebar() {
       count: agg.local,
       color: C.ink,
       filter: localFilter,
-    },
-    {
-      glyph: "🏷",
-      label: "Untagged",
-      count: agg.untagged,
-      color: C.amber,
-      filter: untaggedFilter,
     },
   ];
 
