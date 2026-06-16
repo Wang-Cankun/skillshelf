@@ -96,13 +96,19 @@ stale absolute paths, prune links to removed/retired/renamed skills, leave forei
 (pointing outside the library) untouched. `--dry-run` previews.
 
 ## add
-`skl add <src> [--all | --skill <a,b,…>] [--list] [--dry-run] [--domain <d>] [--name <slug>] [--no-infer] [--force] [--json]`
+`skl add <src> [--all | --skill <a,b,…>] [--list] [--dry-run] [--domain <d>] [--name <slug>] [--no-infer] [--force] [--yes] [--json]`
 Install third-party skill(s) into the **library only** (never an agent dir — deploy with `use`
 after). One repo = one clone.
 - Sources: `github:owner/repo`, `github:owner/repo/path`, `git:url#subpath`, or a registry name.
-- `--list` — discover and print available skills, no writes.
+- `--list` — discover and print available skills, no writes. Marks each `published` / `unpublished` / `internal`.
 - `--dry-run` — drift preflight (new / identical / differs) without writing.
-- `--all` — install every discovered skill; `--skill <a,b>` — install a named subset (conflicts with `--all`).
+- `--all` — install the **published set**, not every file on disk (ADR-0012): when the repo has a
+  `.claude-plugin/plugin.json` or `marketplace.json`, its `skills` array is an allowlist that *bounds*
+  `--all`; with no manifest, every discovered skill. Skills with `metadata.internal: true` are always
+  excluded. `--skill <a,b>` — install a named subset, resolved against the **full** discovered set so
+  it can name an unpublished/internal skill (conflicts with `--all`).
+- `--yes` — bypass the `--all` **count gate**: a published set over **15** skills refuses without it
+  (blast-radius guard). `--skill`/`--list`/`--dry-run` are never gated. Distinct from `--force`.
 - `--domain <d>` — frontmatter domain to apply; `--no-infer` — skip AI domain tagging (stay untagged).
 - `--name <slug>` — single-skill only: override the installed name.
 - `--force` — overwrite when an existing skill's body differs (multi-skill: a `differs` skill is skipped without it).
