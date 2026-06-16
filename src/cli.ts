@@ -32,6 +32,9 @@ import * as roots from "./commands/roots.ts";
 import * as projects from "./commands/projects.ts";
 import * as importCmd from "./commands/import.ts";
 import * as link from "./commands/link.ts";
+import * as track from "./commands/track.ts";
+import * as untrack from "./commands/untrack.ts";
+import * as migrate from "./commands/migrate.ts";
 import * as where from "./commands/where.ts";
 import * as agents from "./commands/agents.ts";
 import * as tag from "./commands/tag.ts";
@@ -60,6 +63,9 @@ const MODULES: CommandModule[] = [
   projects,
   importCmd,
   link,
+  track,
+  untrack,
+  migrate,
   tag,
   untag,
   retag,
