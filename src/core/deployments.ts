@@ -159,17 +159,6 @@ export async function inventoryDeployments(
   return { surfaces: realSurfaces, sites, problems };
 }
 
-/** Group sites by skill name (stable order, names sorted). */
-export function sitesByName(report: DeploymentReport): Map<string, DeploymentSite[]> {
-  const m = new Map<string, DeploymentSite[]>();
-  for (const s of report.sites) {
-    const arr = m.get(s.name) ?? [];
-    arr.push(s);
-    m.set(s.name, arr);
-  }
-  return m;
-}
-
 /**
  * What `skl where --fix` may do automatically for a flagged site. Only DETERMINISTIC,
  * non-destructive remediations are auto-applied (skillshelf never guesses which copy

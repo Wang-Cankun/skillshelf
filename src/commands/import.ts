@@ -35,6 +35,7 @@ import {
   realpathOrSelfAsync,
 } from "../lib/fs.ts";
 import { entryStatus } from "../core/library.ts";
+import { SLUG_RE } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "import",
@@ -52,8 +53,6 @@ interface Flags {
   force: boolean;
   json: boolean;
 }
-
-const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
   const flags: Flags = {

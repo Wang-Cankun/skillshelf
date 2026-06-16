@@ -10,15 +10,13 @@
 // re-run `skl use` in affected projects (or `skl where` to find stragglers) after.
 
 import type { Ctx } from "../types.ts";
-import { renameSkill, reindexLibrary } from "../core/lifecycle.ts";
+import { renameSkill, reindexLibrary, SLUG_RE } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "rename",
   summary: "Rename a skill slug atomically (dir + frontmatter + taxonomy + lock)",
   usage: "skl rename <old> <new> [--json]",
 } as const;
-
-const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");

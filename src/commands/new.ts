@@ -12,6 +12,7 @@ import type { Ctx } from "../types.ts";
 import { serializeFrontmatter } from "../lib/frontmatter.ts";
 import { ensureDir } from "../lib/fs.ts";
 import { entryStatus } from "../core/library.ts";
+import { SLUG_RE } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "new",
@@ -26,8 +27,6 @@ interface Args {
   force: boolean;
   json: boolean;
 }
-
-const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 function parseArgs(argv: string[]): { args: Args } | { error: string } {
   const args: Args = { name: null, domain: null, desc: null, force: false, json: false };

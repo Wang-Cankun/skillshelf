@@ -9,15 +9,13 @@
 import type { Ctx } from "../types.ts";
 import { findByName } from "../core/library.ts";
 import { addDomainsForName } from "../core/taxonomy.ts";
-import { reindexLibrary } from "../core/lifecycle.ts";
+import { reindexLibrary, SLUG_RE } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "tag",
   summary: "Add domain tag(s) to a skill in the central taxonomy",
   usage: "skl tag <name> <domain> [<domain>...] [--json]",
 } as const;
-
-const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");

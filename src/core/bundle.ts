@@ -48,12 +48,3 @@ export async function listBundles(
   }
   return bundles;
 }
-
-/** Synchronous resolve when taxonomy was already merged into domains[]. */
-export function resolveBundleSync(skills: Skill[], bundleName: string): Bundle {
-  const name = bundleName.trim();
-  const matched = skills
-    .filter((s) => !s.retired && s.domains.includes(name))
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return { name, skills: matched };
-}

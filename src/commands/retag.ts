@@ -8,15 +8,13 @@
 
 import type { Ctx } from "../types.ts";
 import { renameDomainAcrossLibrary } from "../core/taxonomy.ts";
-import { reindexLibrary } from "../core/lifecycle.ts";
+import { reindexLibrary, SLUG_RE } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "retag",
   summary: "Rename a domain across the whole library taxonomy (deterministic)",
   usage: "skl retag <old-domain> <new-domain> [--json]",
 } as const;
-
-const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");

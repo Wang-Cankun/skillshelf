@@ -61,37 +61,3 @@ export const DEPLOY_GLYPH: Record<DeployState, { glyph: string; color: string }>
     dead: { glyph: "✗", color: C.red },
     absent: { glyph: "·", color: "#D4D4D8" },
   };
-
-// Inbox severity map: type -> [glyph, color, label, bg].
-export type InboxSeverity =
-  | "untagged"
-  | "stub"
-  | "tracked"
-  | "family"
-  | "thintag"
-  | "drift"
-  | "dead"
-  | "untracked"
-  | "second-source"
-  | "aliased";
-
-export const SEV_MAP: Record<
-  InboxSeverity,
-  { glyph: string; color: string; label: string; bg: string }
-> = {
-  untagged: { glyph: "🏷", color: C.amber, label: "UNTAGGED", bg: "#FAF1E2" },
-  stub: { glyph: "◆", color: C.blue, label: "STUB", bg: "#EAF1FD" },
-  tracked: { glyph: "✓", color: C.green, label: "TRACKED", bg: "#ECF6EF" },
-  family: { glyph: "◇", color: C.gray, label: "FAMILY", bg: "#F1F1F2" },
-  thintag: { glyph: "🏷", color: C.gray, label: "THIN TAGS", bg: "#F1F1F2" },
-  drift: { glyph: "⚠", color: C.amber, label: "DRIFT", bg: "#FAF1E2" },
-  dead: { glyph: "✗", color: C.red, label: "DEAD", bg: "#FBEBEB" },
-  untracked: { glyph: "◌", color: C.gray, label: "UNTRACKED", bg: "#F1F1F2" },
-  "second-source": {
-    glyph: "⊕",
-    color: C.amber,
-    label: "2ND-SOURCE",
-    bg: "#FAF1E2",
-  },
-  aliased: { glyph: "⚠", color: C.amber, label: "ALIASED", bg: "#FAF1E2" },
-};

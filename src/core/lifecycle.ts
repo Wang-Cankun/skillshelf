@@ -14,6 +14,7 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { rename, rm, readdir } from "node:fs/promises";
+import type { Ctx } from "../types.ts";
 import { isSymlink, ensureDir } from "../lib/fs.ts";
 import { parseFrontmatter, serializeFrontmatter } from "../lib/frontmatter.ts";
 import { readTaxonomy, writeTaxonomy } from "./taxonomy.ts";
@@ -26,10 +27,74 @@ import { writeIndex } from "./indexgen.ts";
 // reach for them via lifecycle.ts (e.g. add.ts) keep working.
 export { assertSafeName, RETIRED_DIR };
 
+// A skill/domain slug is lowercase letters/digits/hyphens, leading alnum. Shared by the
+// command layer (add/import/new/tag/retag/rename) so the validation charset is defined
+// once. Also a SECURITY guard where the slug is joined into a library path.
+export const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+/** Collapse whitespace and clip a description to one line of at most `max` chars. */
+export function oneLine(desc: string, max = 100): string {
+  const flat = desc.replace(/\s+/g, " ").trim();
+  return flat.length <= max ? flat : flat.slice(0, max - 1).trimEnd() + "…";
+}
+
 /** Regenerate INDEX.md from the current library state. Returns the path written. */
 export async function reindexLibrary(libraryPath: string): Promise<string> {
   const skills = await loadLibrary(libraryPath);
-  return writeIndex(libraryPath, skills);
+  return (await writeIndex(libraryPath, skills)).path;
+}
+
+/**
+ * Run a per-name lifecycle mutation (retire/unretire) over many names, collecting
+ * results/failures, reindexing INDEX.md exactly ONCE if anything moved, and emitting
+ * the shared JSON shape: a single object `{ok,name,[jsonKey]:dest}` for one name, an
+ * array for several (a failure emits NO json, only the error stream — unchanged). The
+ * caller owns the human-readable (non-json) output via `onResults`. `verb` is the
+ * `skl <verb>` prefix for failure lines. Returns the process exit code (1 if any failed).
+ */
+export async function bulkLifecycle(
+  names: string[],
+  fn: (libraryPath: string, name: string) => Promise<string>,
+  ctx: Ctx,
+  opts: {
+    json: boolean;
+    jsonKey: string;
+    verb: string;
+    onResults: (results: Array<{ name: string; dest: string }>) => void;
+  },
+): Promise<number> {
+  const multi = names.length > 1;
+  const results: Array<{ name: string; dest: string }> = [];
+  const failures: Array<{ name: string; error: string }> = [];
+  let didMutate = false;
+  for (const name of names) {
+    try {
+      const dest = await fn(ctx.libraryPath, name);
+      didMutate = true;
+      results.push({ name, dest });
+    } catch (err) {
+      failures.push({ name, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // Reindex once if anything actually moved on disk (a single pass for N names).
+  if (didMutate) await reindexLibrary(ctx.libraryPath);
+
+  if (opts.json) {
+    // Single-name shape stays byte-identical (success emits the object, a failure
+    // emits NO json — only the error stream); multi returns an array.
+    if (!multi) {
+      const r = results[0];
+      if (r) ctx.json({ ok: true, name: r.name, [opts.jsonKey]: r.dest });
+    } else {
+      ctx.json(results.map((r) => ({ ok: true, name: r.name, [opts.jsonKey]: r.dest })));
+    }
+  } else {
+    opts.onResults(results);
+  }
+
+  for (const f of failures) ctx.error(`skl ${opts.verb}: ${f.error}`);
+  return failures.length > 0 ? 1 : 0;
 }
 
 /** Where a skill entry physically lives, if anywhere. */

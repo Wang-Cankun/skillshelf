@@ -93,10 +93,7 @@ function resolveEnvFilePath(env: NodeJS.ProcessEnv, override?: string): string |
 
 /** First non-empty trimmed value, or "". */
 function firstNonEmpty(...vals: (string | undefined)[]): string {
-  for (const v of vals) {
-    if (v && v.trim() !== "") return v.trim();
-  }
-  return "";
+  return vals.find(v => v?.trim())?.trim() ?? "";
 }
 
 /**

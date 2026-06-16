@@ -37,7 +37,7 @@ import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { hashContent } from "../core/crawl.ts";
 import { recordEntry } from "../core/provenance.ts";
 import { setDomainsForName } from "../core/taxonomy.ts";
-import { assertSafeName } from "../core/lifecycle.ts";
+import { assertSafeName, SLUG_RE } from "../core/lifecycle.ts";
 import { loadLibrary, findByName, entryStatus } from "../core/library.ts";
 import { ensureDir, isSymlink, realpathOrSelf } from "../lib/fs.ts";
 
@@ -62,11 +62,10 @@ interface Flags {
   src: string | null;
 }
 
-// A skill slug is lowercase letters/digits/hyphens. This is also a SECURITY guard:
+// SLUG_RE is shared from core/lifecycle.ts. This is also a SECURITY guard here:
 // `name` may be derived from an untrusted third-party SKILL.md frontmatter and
 // `domain` from a flag, and both are joined into a library path. Rejecting anything
 // outside this charset stops `..`/`/` path traversal out of the library.
-const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 function addSkillFilter(cur: string[] | null, raw: string): string[] {
   const names = raw.split(",").map((s) => s.trim()).filter((s) => s !== "");
@@ -165,36 +164,15 @@ async function driftVerdict(skill: DiscoveredSkill, destDir: string): Promise<Ve
 }
 
 /**
- * Optionally run an AI inference tagging pass over a freshly-installed skill.
- *
- * A MISSING hook module is expected and stays silent (untagged is valid). But a hook
- * that IS present and THROWS is a real failure — we surface it via `warn` rather than
- * swallowing it. Either way the skill stays untagged. Returns the domains written.
+ * Optional AI inference tagging pass over a freshly-installed skill. No inference hook
+ * ships today, so this always leaves the skill untagged (returns null); installs land
+ * with whatever `--domain` gave them. Kept as a seam so `--infer`/`--no-infer` and the
+ * `tagged` summary field stay meaningful when a hook is wired in.
  */
 async function maybeInferTags(
-  skill: Skill,
-  warn?: (msg: string) => void,
+  _skill: Skill,
+  _warn?: (msg: string) => void,
 ): Promise<string[] | null> {
-  const candidates = ["../core/infer.ts", "../adapters/inference/tag.ts"];
-  for (const rel of candidates) {
-    const spec: string = rel;
-    const mod: unknown = await import(spec).catch(() => null);
-    if (!mod || typeof mod !== "object") continue;
-    const hook = (mod as Record<string, unknown>).tagSkill;
-    if (typeof hook !== "function") continue;
-    try {
-      const result = await (hook as (s: Skill) => Promise<string[] | null>)(skill);
-      if (Array.isArray(result)) {
-        return result.filter((d) => typeof d === "string" && d.trim() !== "");
-      }
-      return null;
-    } catch (err) {
-      warn?.(
-        `add: inference hook ${rel} failed (skill left untagged): ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return null;
-    }
-  }
   return null;
 }
 

@@ -1,7 +1,7 @@
 // Filesystem helpers: realpath-dedupe, safe symlink ops, directory walking.
 // Bun built-ins + node:fs/node:path only. No external deps.
 
-import { realpathSync, existsSync, lstatSync, type Dirent } from "node:fs";
+import { realpathSync, existsSync, lstatSync } from "node:fs";
 import {
   mkdir,
   readdir,
@@ -28,22 +28,6 @@ export async function realpathOrSelfAsync(p: string): Promise<string> {
   } catch {
     return resolve(p);
   }
-}
-
-/**
- * De-duplicate a list of paths by their realpath (handles aliased mounts like
- * cloud-sync mirror locations). Returns the first-seen path for each realpath.
- */
-export function dedupeByRealpath(paths: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const p of paths) {
-    const rp = realpathOrSelf(p);
-    if (seen.has(rp)) continue;
-    seen.add(rp);
-    out.push(p);
-  }
-  return out;
 }
 
 export function pathExists(p: string): boolean {
@@ -105,61 +89,6 @@ export async function removeSymlink(
   }
   await rm(linkPath, { recursive: true, force: true });
   return true;
-}
-
-export interface WalkOptions {
-  /** max depth (0 = only the root's direct entries). Default Infinity. */
-  maxDepth?: number;
-  /** directory names to skip entirely (e.g. node_modules). */
-  skipDirs?: Set<string>;
-  /** follow symlinked dirs. Default false. */
-  followSymlinks?: boolean;
-}
-
-export interface WalkEntry {
-  path: string;
-  name: string;
-  isDirectory: boolean;
-  isSymlink: boolean;
-  depth: number;
-}
-
-/**
- * Recursively walk a directory yielding entries. Never throws on individual
- * unreadable dirs (skips them). Skips `skipDirs` by name at any depth.
- */
-export async function* walk(
-  root: string,
-  opts: WalkOptions = {},
-): AsyncGenerator<WalkEntry> {
-  const maxDepth = opts.maxDepth ?? Infinity;
-  const skipDirs = opts.skipDirs ?? new Set(["node_modules", ".git"]);
-  const follow = opts.followSymlinks ?? false;
-
-  async function* recurse(dir: string, depth: number): AsyncGenerator<WalkEntry> {
-    let entries: Dirent[] = [];
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const full = join(dir, e.name);
-      const link = e.isSymbolicLink();
-      let isDir = e.isDirectory();
-      if (link) {
-        isDir = await isDirectory(full);
-      }
-      yield { path: full, name: e.name, isDirectory: isDir, isSymlink: link, depth };
-      if (isDir && depth < maxDepth) {
-        if (skipDirs.has(e.name)) continue;
-        if (link && !follow) continue;
-        yield* recurse(full, depth + 1);
-      }
-    }
-  }
-
-  yield* recurse(root, 0);
 }
 
 /** Ensure a directory exists. */

@@ -2,7 +2,7 @@
 // into effective skills, attach provenance from the lockfile, content-hash, list.
 
 import { existsSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Skill } from "../types.ts";
 import { crawl } from "./crawl.ts";
 import { readTaxonomy, applyTaxonomy } from "./taxonomy.ts";
@@ -183,5 +183,3 @@ export function listDomains(skills: Skill[]): string[] {
   for (const s of skills) for (const d of s.domains) set.add(d);
   return [...set].sort();
 }
-
-export { basename as _basename, dirname as _dirname };

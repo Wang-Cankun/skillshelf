@@ -5,7 +5,8 @@ import type { Skill } from "../types.ts";
 
 const UNCLASSIFIED = "_unclassified";
 
-function oneLine(desc: string): string {
+// Catalog lines run wider than the CLI `oneLine` (lifecycle.ts) — distinct clip on purpose.
+function catalogLine(desc: string): string {
   const flat = desc.replace(/\s+/g, " ").trim();
   if (flat.length <= 160) return flat;
   return flat.slice(0, 157).trimEnd() + "...";
@@ -61,7 +62,7 @@ export function generateIndex(
       const extra = s.domains.filter((d) => d !== s.primaryDomain);
       const tags = extra.length ? ` _(also: ${extra.join(", ")})_` : "";
       const prov = s.source ? ` \`[${s.source.source}]\`` : "";
-      lines.push(`- **${s.name}**${tags}${prov} — ${oneLine(s.description)}`);
+      lines.push(`- **${s.name}**${tags}${prov} — ${catalogLine(s.description)}`);
     }
     lines.push("");
   }
@@ -70,7 +71,7 @@ export function generateIndex(
     lines.push("## _retired");
     lines.push("");
     for (const s of retired.slice().sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      lines.push(`- ~~${s.name}~~ — ${oneLine(s.description)}`);
+      lines.push(`- ~~${s.name}~~ — ${catalogLine(s.description)}`);
     }
     lines.push("");
   }
@@ -78,14 +79,17 @@ export function generateIndex(
   return lines.join("\n");
 }
 
-/** Write INDEX.md into the library root. Returns the path written. */
+/**
+ * Write INDEX.md into the library root. Returns the path written and the rendered
+ * byte length, so callers that report size don't re-render the catalog.
+ */
 export async function writeIndex(
   libraryPath: string,
   skills: Skill[],
   opts: { generatedAt?: string } = {},
-): Promise<string> {
+): Promise<{ path: string; bytes: number }> {
   const content = generateIndex(skills, opts);
   const out = join(libraryPath, "INDEX.md");
   await Bun.write(out, content + "\n");
-  return out;
+  return { path: out, bytes: content.length };
 }

@@ -45,7 +45,7 @@ function scopeFlags(scope: string, scopePath?: string): string[] {
 }
 
 export function useCommands() {
-  const { state, dispatch } = useStore();
+  const { dispatch } = useStore();
   const qc = useQueryClient();
 
   const invalidate = useCallback(
@@ -467,16 +467,6 @@ export function useCommands() {
     [dispatch, run],
   );
 
-  // ── Auto-fix safe deployment problems (`where --fix`) ───────────────────
-  const autoFix = useCallback(async () => {
-    const args = state.dryRun ? ["where", "--fix", "--dry-run"] : ["where", "--fix"];
-    await run(args, {
-      rollback: () => {},
-      invalidate: [qk.where, qk.scan, qk.library],
-      toast: { msg: state.dryRun ? "Dry-run: safe fixes previewed" : "Applied safe fixes", undo: null },
-    });
-  }, [run, state.dryRun]);
-
   // ── Update a vendored skill from upstream (ADR-0009) — NOT invertible ────
   // Callers gate this to status==="stale"|"diverged" github rows only (the
   // badge logic in LibraryView/MatrixView; never linked/local). `skl update`
@@ -543,7 +533,6 @@ export function useCommands() {
     untag,
     tag,
     hardRemove,
-    autoFix,
     update,
     resolveCopy,
   };

@@ -3,17 +3,13 @@
 
 import type { Ctx, Skill } from "../types.ts";
 import { searchSkills } from "../core/library.ts";
+import { oneLine } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "search",
   summary: "Fuzzy over name+desc+domains across the library",
   usage: "skl search <kw...> [--json]",
 } as const;
-
-function oneLine(desc: string, max = 100): string {
-  const flat = desc.replace(/\s+/g, " ").trim();
-  return flat.length <= max ? flat : flat.slice(0, max - 1).trimEnd() + "…";
-}
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {

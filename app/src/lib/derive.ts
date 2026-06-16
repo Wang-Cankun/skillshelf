@@ -14,7 +14,6 @@ import type {
   OutdatedRow,
   OutdatedStatus,
 } from "./types";
-import { SEV_MAP, type InboxSeverity } from "./tokens";
 import lockJson from "./data/shelf.lock.json";
 
 // sample SKILL bodies (the two skills with on-disk files) — ?raw imports.
@@ -363,58 +362,13 @@ export function normalizeShow(raw: unknown, name: string): ShowReport {
   };
 }
 
-// ── Inbox triage (deterministic, from real signals — ADR-0008 §4) ──────────
-
-export interface InboxRow {
-  severity: InboxSeverity;
-  type: string;
-  skill: string;
-  detail: string;
-  counts: string;
-  countColor: string;
-  auto: boolean;
-  cmd: string;
-  /** valid `skl` arg vectors for the row's action buttons */
-  actions: { label: string; primary: boolean; args?: string[] }[];
-  openable: boolean;
-  /** UNTAGGED rows only: a deterministic prefix-family majority domain to
-   *  pre-offer as the safe one-click tag (null = no confident sibling signal). */
-  suggestedDomain?: string | null;
-}
-
-/**
- * Deterministic tag suggestion for an untagged skill: the most common primary
- * domain among its string-prefix family siblings (ADR-0007 fact layer — a
- * reproducible majority over a string-prefix match, no model). Null when the
- * family gives no signal.
- */
-export function suggestDomain(s: Skill, live: Skill[]): string | null {
-  const prefix = s.name.split("-")[0];
-  const counts = new Map<string, number>();
-  for (const o of live) {
-    if (o.name === s.name) continue;
-    if (o.name.split("-")[0] !== prefix) continue;
-    const d = o.primaryDomain ?? o.domains[0];
-    if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
-  }
-  let best: string | null = null;
-  let bestN = 0;
-  for (const [d, n] of counts) {
-    if (n > bestN || (n === bestN && best !== null && d < best)) {
-      best = d;
-      bestN = n;
-    }
-  }
-  return best;
-}
-
 const STUB_DEFAULTS = [
   "replace with description of the skill",
   "replace with a description",
 ];
 
 /** Is this skill's description still the scaffold default? */
-function isStub(s: Skill): boolean {
+export function isStub(s: Skill): boolean {
   const d = s.description.trim().toLowerCase();
   return STUB_DEFAULTS.some((def) => d.startsWith(def));
 }
@@ -426,9 +380,9 @@ function isStub(s: Skill): boolean {
  * description. Used by BOTH the sidebar count and the list `{kind:"needs"}`
  * filter so the badge always equals the rows shown (Bug 3).
  *
- * Note: the informational `deriveInbox` rows (family / thin-tag / tracked) are
- * NOT included — they describe prefix-families/aggregates, not a single skill
- * row, so they have no row to render under the filter and were the source of the
+ * Note: informational aggregate rows (family / thin-tag / tracked) are NOT
+ * included — they describe prefix-families/aggregates, not a single skill row,
+ * so they have no row to render under the filter and were the source of the
  * count/list mismatch. The actionable per-skill triage is exactly this set.
  */
 export function needsAttentionNames(
@@ -459,164 +413,4 @@ export function needsAttentionNames(
   }
 
   return names;
-}
-
-/**
- * Deterministic triage from the real library + deployment feeds.
- * - UNTAGGED: no domains.
- * - STUB: description is the scaffold default.
- * - THIN TAGS: a prefix-family spans multiple domains (tag drift).
- * - FAMILY: a string-prefix family (informational; the largest bundles).
- * - TRACKED: vendored + clean (lockfile, no local edits).
- * DRIFT/DEAD/UNTRACKED/2ND-SOURCE come from the real `where.problems` feed.
- */
-export function deriveInbox(
-  skills: Skill[],
-  where: DeploymentReport,
-): InboxRow[] {
-  const live = skills.filter((s) => !s.retired);
-  const rows: InboxRow[] = [];
-
-  // UNTAGGED
-  for (const s of live) {
-    if (s.domains.length === 0) {
-      rows.push({
-        severity: "untagged",
-        type: SEV_MAP.untagged.label,
-        skill: s.name,
-        detail: "No domains in taxonomy.json — needs a tag",
-        counts: "",
-        countColor: "",
-        auto: true,
-        cmd: `skl tag ${s.name} <domain>`,
-        actions: [{ label: "Tag ▾", primary: true }],
-        openable: true,
-        suggestedDomain: suggestDomain(s, live),
-      });
-    }
-  }
-
-  // STUB
-  for (const s of live) {
-    if (isStub(s)) {
-      rows.push({
-        severity: "stub",
-        type: SEV_MAP.stub.label,
-        skill: s.name,
-        detail: "Description still the scaffold default",
-        counts: "",
-        countColor: "",
-        auto: false,
-        cmd: `skl show ${s.name}`,
-        actions: [{ label: "Retire", primary: false, args: ["retire", s.name] }],
-        openable: true,
-      });
-    }
-  }
-
-  // families by prefix (first '-' segment)
-  const families = new Map<string, Skill[]>();
-  for (const s of live) {
-    const prefix = s.name.split("-")[0];
-    if (!families.has(prefix)) families.set(prefix, []);
-    families.get(prefix)!.push(s);
-  }
-
-  // THIN TAGS: a family whose members span >1 distinct primary domain.
-  for (const [prefix, members] of families) {
-    if (members.length < 3) continue;
-    const domains = new Set(
-      members.map((m) => m.primaryDomain).filter(Boolean) as string[],
-    );
-    if (domains.size > 1) {
-      rows.push({
-        severity: "thintag",
-        type: SEV_MAP.thintag.label,
-        skill: `${prefix}-*`,
-        detail: `Spans ${[...domains].join(" · ")} — tag drift worth a pass`,
-        counts: String(members.length),
-        countColor: SEV_MAP.thintag.color,
-        auto: false,
-        cmd: `skl ls`,
-        actions: [{ label: "Review ▾", primary: false }],
-        openable: false,
-      });
-    }
-  }
-
-  // FAMILY: the largest prefix family (a bundle candidate).
-  let biggest: { prefix: string; n: number } | null = null;
-  for (const [prefix, members] of families) {
-    if (members.length >= 4 && (!biggest || members.length > biggest.n))
-      biggest = { prefix, n: members.length };
-  }
-  if (biggest) {
-    rows.push({
-      severity: "family",
-      type: SEV_MAP.family.label,
-      skill: `${biggest.prefix}-*`,
-      detail: `${biggest.n} skills under one prefix — candidate for a bundle`,
-      counts: String(biggest.n),
-      countColor: SEV_MAP.family.color,
-      auto: false,
-      cmd: `skl ls`,
-      actions: [{ label: "Review ▾", primary: false }],
-      openable: false,
-    });
-  }
-
-  // TRACKED: vendored + clean.
-  const vendored = live.filter((s) => lockEntry(s.name));
-  if (vendored.length) {
-    rows.push({
-      severity: "tracked",
-      type: SEV_MAP.tracked.label,
-      skill: `${vendored[0].name} · +${vendored.length - 1}`,
-      detail: "Vendored + clean (lockfile, no local edits)",
-      counts: `${vendored.length} ✓`,
-      countColor: SEV_MAP.tracked.color,
-      auto: false,
-      cmd: `skl status`,
-      actions: [{ label: "View lock", primary: false }],
-      openable: false,
-    });
-  }
-
-  // DRIFT / DEAD / UNTRACKED / 2ND-SOURCE from real where.problems.
-  for (const p of where.problems) {
-    let severity: InboxSeverity | null = null;
-    let detail = "";
-    if (p.drift) {
-      severity = "drift";
-      detail = `Deployed copy diverged from library — ${p.surface}`;
-    } else if (p.kind === "dead") {
-      severity = "dead";
-      detail = `Broken symlink — ${p.path}`;
-    } else if (p.kind === "copy" && !p.inLibrary) {
-      severity = "untracked";
-      detail = `Copy not in library — ${p.surface}`;
-    } else if (p.kind === "foreign-link") {
-      severity = "second-source";
-      detail = `Links outside the library — ${p.target ?? p.surface}`;
-    } else if (p.kind === "aliased") {
-      severity = "aliased";
-      detail = `Link name ≠ the library skill it points at — ${p.surface}`;
-    }
-    if (!severity) continue;
-    const m = SEV_MAP[severity];
-    rows.push({
-      severity,
-      type: m.label,
-      skill: p.name,
-      detail,
-      counts: "",
-      countColor: "",
-      auto: false,
-      cmd: `skl where`,
-      actions: [{ label: "Review ▾", primary: false }],
-      openable: true,
-    });
-  }
-
-  return rows;
 }

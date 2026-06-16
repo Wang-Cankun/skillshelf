@@ -9,12 +9,38 @@
 //   - Support both `name/SKILL.md` and `skills/name/SKILL.md` layouts.
 
 import { createHash } from "node:crypto";
-import { join, basename, dirname, sep } from "node:path";
+import { join, basename, sep } from "node:path";
 import { readdir } from "node:fs/promises";
 import { existsSync, type Dirent } from "node:fs";
 import type { Skill } from "../types.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { realpathOrSelf, isDirectory } from "../lib/fs.ts";
+
+/** Expand a parent dir (like ~/Documents/GitHub) into candidate skill roots. */
+export async function expandProjectRoots(parent: string): Promise<string[]> {
+  const out: string[] = [];
+  if (!existsSync(parent)) return out;
+  let entries: Dirent[];
+  try {
+    entries = await readdir(parent, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (e.name === "node_modules") continue;
+    const proj = join(parent, e.name);
+    for (const sub of [
+      join(proj, ".claude", "skills"),
+      join(proj, ".agents", "skills"),
+      join(proj, "skills"),
+      join(proj, "skill"),
+    ]) {
+      if (existsSync(sub)) out.push(sub);
+    }
+  }
+  return out;
+}
 
 const SKILL_FILE = "SKILL.md";
 const RETIRED_DIR = "_retired";
@@ -255,30 +281,3 @@ export async function crawl(
   return { skills: [...byReal.values()], dedupedRoots };
 }
 
-/** Expand a parent dir (like ~/Documents/GitHub) into candidate skill roots. */
-export async function expandProjectRoots(parent: string): Promise<string[]> {
-  const out: string[] = [];
-  if (!existsSync(parent)) return out;
-  let entries: Dirent[];
-  try {
-    entries = await readdir(parent, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    if (e.name === "node_modules") continue;
-    const proj = join(parent, e.name);
-    for (const sub of [
-      join(proj, ".claude", "skills"),
-      join(proj, ".agents", "skills"),
-      join(proj, "skills"),
-      join(proj, "skill"),
-    ]) {
-      if (existsSync(sub)) out.push(sub);
-    }
-  }
-  return out;
-}
-
-export { dirname as _dirname };

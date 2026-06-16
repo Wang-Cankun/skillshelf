@@ -8,6 +8,7 @@ import { resolveBundle } from "../core/bundle.ts";
 import { inventoryDeployments } from "../core/deployments.ts";
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
 import { isCleanSite } from "../core/agents.ts";
+import { oneLine } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "ls",
@@ -42,11 +43,6 @@ function sortSkills(skills: Skill[], field: SortField, deployCounts: Map<string,
     if (!bm) return -1;
     return bm.localeCompare(am);
   });
-}
-
-function oneLine(desc: string, max = 100): string {
-  const flat = desc.replace(/\s+/g, " ").trim();
-  return flat.length <= max ? flat : flat.slice(0, max - 1).trimEnd() + "…";
 }
 
 function emitHuman(ctx: Ctx, skills: Skill[]): void {

@@ -7,7 +7,7 @@
 //   skl retire <name> [--json]
 
 import type { Ctx } from "../types.ts";
-import { retireSkill, reindexLibrary } from "../core/lifecycle.ts";
+import { retireSkill, bulkLifecycle } from "../core/lifecycle.ts";
 
 export const meta = {
   name: "retire",
@@ -23,45 +23,17 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     ctx.error(`usage: ${meta.usage}`);
     return 1;
   }
-  const multi = names.length > 1;
-
-  // Retire each name, collecting results/failures, then reindex ONCE at the end
-  // (a per-name reindex is the cost a bulk retire pays — this collapses it to one).
-  const results: Array<{ ok: true; name: string; retiredTo: string }> = [];
-  const failures: Array<{ name: string; error: string }> = [];
-  let didMutate = false;
-  for (const name of names) {
-    try {
-      const dest = await retireSkill(ctx.libraryPath, name);
-      didMutate = true;
-      results.push({ ok: true, name, retiredTo: dest });
-    } catch (err) {
-      failures.push({ name, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
-  // Reindex once if anything actually moved on disk, so INDEX.md never lists a
-  // skill that left the active set (a single pass for N names).
-  if (didMutate) await reindexLibrary(ctx.libraryPath);
-
-  if (json) {
-    // Single-name shape stays byte-identical (success emits the object, a failure
-    // emits NO json — only the error stream, exactly as before); multi returns an array.
-    if (!multi) {
-      const r = results[0];
-      if (r) ctx.json({ ok: true, name: r.name, retiredTo: r.retiredTo });
-    } else {
-      ctx.json(results.map((r) => ({ ok: true, name: r.name, retiredTo: r.retiredTo })));
-    }
-  } else {
-    for (const r of results) {
-      ctx.log(`retired ${r.name} -> _retired/${r.name}`);
-    }
-    if (results.length > 0) {
-      ctx.log("  (excluded from bundles/deploys; restore with `skl unretire`, purge with `skl rm`)");
-    }
-  }
-
-  for (const f of failures) ctx.error(`skl retire: ${f.error}`);
-  return failures.length > 0 ? 1 : 0;
+  // Retire each name; reindex ONCE at the end (a per-name reindex is the cost a bulk
+  // retire pays — bulkLifecycle collapses it to one).
+  return bulkLifecycle(names, retireSkill, ctx, {
+    json,
+    jsonKey: "retiredTo",
+    verb: "retire",
+    onResults: (results) => {
+      for (const r of results) ctx.log(`retired ${r.name} -> _retired/${r.name}`);
+      if (results.length > 0) {
+        ctx.log("  (excluded from bundles/deploys; restore with `skl unretire`, purge with `skl rm`)");
+      }
+    },
+  });
 }

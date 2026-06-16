@@ -1,7 +1,7 @@
 // Sidebar (234px) — ADR-0008 §3, mockup lines 74-116 + renderVals 657-684.
 // Three sections (Smart Views · By Domain · Provenance) plus the pinned skills
 // card. Self-contained: reads aggregates from the real library, the inbox count
-// from deriveInbox, and active state from the store. Filters dispatch through
+// from needsAttentionNames, and active state from the store. Filters dispatch through
 // the store using the FROZEN Filter contract (source value = "vendored"/"local").
 
 import type { CSSProperties } from "react";
@@ -20,8 +20,13 @@ const caption: CSSProperties = {
   padding: "0 8px 7px",
 };
 
-const sameFilter = (a: Filter, b: Filter) =>
-  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const sameFilter = (a: Filter, b: Filter) => {
+  if (a === null || b === null) return a === b;
+  if (a.kind !== b.kind) return false;
+  const av = "value" in a ? a.value : undefined;
+  const bv = "value" in b ? b.value : undefined;
+  return av === bv;
+};
 
 export function Sidebar() {
   const { state, dispatch } = useStore();

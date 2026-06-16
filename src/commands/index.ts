@@ -2,7 +2,7 @@
 // the library root, via core/indexgen.
 
 import type { Ctx } from "../types.ts";
-import { writeIndex, generateIndex } from "../core/indexgen.ts";
+import { writeIndex } from "../core/indexgen.ts";
 
 export const meta = {
   name: "index",
@@ -16,7 +16,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const skills = await ctx.loadLibrary();
 
     const generatedAt = new Date().toISOString();
-    const path = await writeIndex(ctx.config.libraryPath, skills, {
+    const { path, bytes } = await writeIndex(ctx.config.libraryPath, skills, {
       generatedAt,
     });
 
@@ -30,7 +30,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         active,
         retired,
         generatedAt,
-        bytes: generateIndex(skills, { generatedAt }).length,
+        bytes,
       });
       return 0;
     }

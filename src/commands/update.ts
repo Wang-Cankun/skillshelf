@@ -60,7 +60,7 @@ function bodyOf(text: string): string {
  * We still keep `shelf.lock.json`/`taxonomy.json` in the preserve set defensively,
  * so a stray copy inside a skill dir is never deleted by this cleanup.
  */
-async function applyUpstream(destDir: string, upstreamDir: string, _name: string): Promise<void> {
+async function applyUpstream(destDir: string, upstreamDir: string): Promise<void> {
   const PRESERVE = new Set(["shelf.lock.json", "taxonomy.json"]);
   // Remove existing upstream-managed files (everything except lock/taxonomy/.git).
   let entries: Dirent[] = [];
@@ -134,7 +134,7 @@ async function updateOne(
             note: "would reconcile adopted baseline (identical to upstream) (dry-run)",
           };
         }
-        await applyUpstream(destDir, fetched.skillDir, entry.name);
+        await applyUpstream(destDir, fetched.skillDir);
         const graduated: LockEntry = {
           ...entry,
           ref: fetched.ref,
@@ -184,7 +184,7 @@ async function updateOne(
           note: "would overwrite adopted body with upstream and graduate (--force, dry-run)",
         };
       }
-      await applyUpstream(destDir, fetched.skillDir, entry.name);
+      await applyUpstream(destDir, fetched.skillDir);
       const graduated: LockEntry = {
         ...entry,
         ref: fetched.ref,
@@ -261,7 +261,7 @@ async function updateOne(
 
     // Apply: replace body + ref files; domain tags + lock live at the library
     // root (taxonomy.json / shelf.lock.json), untouched by this skill-dir cleanup.
-    await applyUpstream(destDir, fetched.skillDir, entry.name);
+    await applyUpstream(destDir, fetched.skillDir);
 
     // Update lockfile ref + record the new installed body hash + clear localEdits
     // (the on-disk body now equals upstream again, so we are pristine).

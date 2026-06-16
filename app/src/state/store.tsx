@@ -99,7 +99,6 @@ export interface State {
   selected: Record<string, boolean>;
   /** bulk-bar intent (delta 2); the bar shows when `selected` is non-empty. */
   bulkMode: BulkMode;
-  dryRun: boolean;
 
   // optimistic overrides (rolled back on mutation error)
   deployOverrides: Record<string, "on" | "off">; // `${skill}|${agent}|${scope}`
@@ -143,7 +142,6 @@ export const initialState: State = {
   group: "list",
   selected: {},
   bulkMode: "enable",
-  dryRun: false,
   deployOverrides: {},
   retired: {},
   unretired: {},
@@ -174,7 +172,6 @@ export type Action =
   | { type: "setSelectedMany"; names: string[]; value: boolean }
   | { type: "clearSelection" }
   | { type: "setBulkMode"; mode: BulkMode }
-  | { type: "toggleDryRun" }
   // optimistic overrides
   | { type: "setDeployOverride"; key: string; value: "on" | "off" }
   | { type: "clearDeployOverride"; key: string }
@@ -260,8 +257,6 @@ export function reducer(state: State, action: Action): State {
       return { ...state, selected: {} };
     case "setBulkMode":
       return { ...state, bulkMode: action.mode };
-    case "toggleDryRun":
-      return { ...state, dryRun: !state.dryRun };
     case "setDeployOverride":
       return {
         ...state,

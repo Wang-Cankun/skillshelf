@@ -218,11 +218,7 @@ export function serializeFrontmatter(
       out.push(`${key}: [${items.join(", ")}]`);
     } else {
       const s = serializeScalar(value);
-      if (s.startsWith("|\n")) {
-        out.push(`${key}: ${s}`);
-      } else {
-        out.push(`${key}: ${s}`);
-      }
+      out.push(`${key}: ${s}`);
     }
   }
   out.push(FENCE);
