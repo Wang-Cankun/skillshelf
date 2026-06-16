@@ -24,6 +24,31 @@ skillshelf is the middle path: a single git-backed **library** that is a *passiv
 project needs, exactly when it needs them. Find anything in one place; pay only for what you
 actually use.
 
+## Desktop app
+
+A cross-platform desktop UI (React + Tauri) sits on top of the same engine — a **Library-first**
+workbench for managing where every skill is deployed across your agents. It reads the **real**
+`skl` library (no separate data store) and every toggle writes the same symlinks the CLI does.
+
+![skillshelf — Library view](docs/images/main.png)
+
+- **Library-first, skill-centric list** — scan all skills, flip them on/off per agent inline; a
+  top **scope switcher** (Global · each project · + Add project) and a per-scope count bar.
+- **Project scopes** — manage a project's loadout without leaving the app; globally-deployed
+  skills show an *"active via Global"* inherited state so you always know what's effectively live.
+- **Two-tier toggles** — a clean on/off for the happy path, but drift / copy / dead / aliased
+  surface a resolve flow instead of silently doing the wrong thing (state is derived from the
+  filesystem, never stored — so the UI can't lie about what's deployed).
+
+![skillshelf — skill detail drawer](docs/images/detail.png)
+
+The detail drawer shows a skill's body, tags, provenance, and an `agent × scope` deployment
+matrix (Global + the projects where it's pinned), plus lifecycle actions.
+
+> Browser/dev mode (`cd app && bun run dev`) renders synthetic fixtures with no backend; the
+> packaged desktop app talks to your real `skl` engine. See [`docs/adr/0010-*`](docs/adr/) for the
+> design.
+
 ## Install
 
 skillshelf runs on [Bun](https://bun.sh) (>= 1.0). No other runtime dependencies.
