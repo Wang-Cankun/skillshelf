@@ -113,6 +113,98 @@ async function updateOne(
     const upstreamHash = hashContent(upstreamBody);
     const localHash = hashContent(localBody);
 
+    // ADOPTED entry (`skl track`/`skl migrate`): the recorded baseline was NEVER verified
+    // against real upstream (its ref may be empty / its installedHash describes the LOCAL
+    // copy only). Be CONSERVATIVE — even if the body looks identical to upstream we must
+    // not silently treat it as a normal entry. Two graduation paths (ADR-0011):
+    //   - local == upstream  → an identical reconcile: graduate (clear adopted) without
+    //                           --force; nothing is overwritten so it's lossless.
+    //   - local != upstream  → always show the diff and require --force; only a forced
+    //                           overwrite reconciles + graduates.
+    if (entry.adopted === true) {
+      if (localHash === upstreamHash) {
+        if (opts.dryRun) {
+          return {
+            name: entry.name,
+            source: entry.source,
+            channel: entry.channel,
+            fromRef: entry.ref,
+            toRef: fetched.ref,
+            outcome: "updated",
+            note: "would reconcile adopted baseline (identical to upstream) (dry-run)",
+          };
+        }
+        await applyUpstream(destDir, fetched.skillDir, entry.name);
+        const graduated: LockEntry = {
+          ...entry,
+          ref: fetched.ref,
+          installedAt: new Date().toISOString(),
+          localEdits: false,
+          installedHash: upstreamHash,
+          adopted: false,
+        };
+        await recordEntry(ctx.config.libraryPath, graduated);
+        return {
+          name: entry.name,
+          source: entry.source,
+          channel: entry.channel,
+          fromRef: entry.ref,
+          toRef: fetched.ref,
+          outcome: "updated",
+          note: "adopted baseline verified against upstream (identical); graduated to tracked",
+        };
+      }
+      // Bodies differ — never clobber an unverified baseline without --force.
+      if (!opts.force) {
+        const diff = await unifiedDiff(
+          localText,
+          upstreamText,
+          `${entry.name} (local, adopted)`,
+          `${entry.name} (upstream ${fetched.ref.slice(0, 10)})`,
+        );
+        return {
+          name: entry.name,
+          source: entry.source,
+          channel: entry.channel,
+          fromRef: entry.ref,
+          toRef: fetched.ref,
+          outcome: "diverged",
+          note: "adopted baseline unverified and differs from upstream; not clobbering (use --force to reconcile)",
+          diff,
+        };
+      }
+      if (opts.dryRun) {
+        return {
+          name: entry.name,
+          source: entry.source,
+          channel: entry.channel,
+          fromRef: entry.ref,
+          toRef: fetched.ref,
+          outcome: "updated",
+          note: "would overwrite adopted body with upstream and graduate (--force, dry-run)",
+        };
+      }
+      await applyUpstream(destDir, fetched.skillDir, entry.name);
+      const graduated: LockEntry = {
+        ...entry,
+        ref: fetched.ref,
+        installedAt: new Date().toISOString(),
+        localEdits: false,
+        installedHash: upstreamHash,
+        adopted: false,
+      };
+      await recordEntry(ctx.config.libraryPath, graduated);
+      return {
+        name: entry.name,
+        source: entry.source,
+        channel: entry.channel,
+        fromRef: entry.ref,
+        toRef: fetched.ref,
+        outcome: "updated",
+        note: "overwrote adopted body with upstream (--force); graduated to tracked",
+      };
+    }
+
     // Already current: local body matches upstream and ref unchanged.
     if (localHash === upstreamHash && fetched.ref === entry.ref) {
       return {

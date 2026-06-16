@@ -21,7 +21,7 @@ export const meta = {
   usage: "skl outdated [name] [--check-local] [--json]",
 } as const;
 
-type Status = "stale" | "current" | "unknown" | "linked" | "diverged";
+type Status = "stale" | "current" | "unknown" | "linked" | "diverged" | "adopted";
 
 interface Row {
   name: string;
@@ -87,6 +87,24 @@ function linkedRow(entry: LockEntry): Row {
  * INVISIBLE to outdated, giving an agent zero positive evidence its dev repo is the
  * canonical source. Surface it as a `linked` row regardless.
  */
+/**
+ * An ADOPTED entry (`skl track`/`skl migrate`): provenance is known but the upstream
+ * baseline was NEVER verified against real upstream (the recorded ref may be empty and
+ * the installedHash describes the LOCAL copy only). Reporting it as stale/current off the
+ * empty ref would be a lie, so surface it as `adopted` and do NOT network-probe (ADR-0011).
+ */
+function adoptedRow(entry: LockEntry): Row {
+  return {
+    name: entry.name,
+    channel: entry.channel,
+    source: entry.source,
+    installedRef: entry.ref || "-",
+    latestRef: null,
+    status: "adopted",
+    note: "provenance adopted; baseline unverified — run `skl update` to reconcile",
+  };
+}
+
 function linkedRowFromName(name: string, linkTarget: string | null): Row {
   return {
     name,
@@ -156,9 +174,16 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       entries.map((e) =>
         entryMode(libraryPath, e.name) === "linked"
           ? Promise.resolve(linkedRow(e))
-          : checkLocal
-            ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
-            : checkEntry(e),
+          : e.adopted === true
+            ? // An adopted entry has an unverified (often empty) baseline — never probe
+              // upstream off it; report it as `adopted` so `update` reconciles (ADR-0011).
+              // --check-local still does the offline body-vs-baseline compare below.
+              checkLocal
+              ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
+              : Promise.resolve(adoptedRow(e))
+            : checkLocal
+              ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
+              : checkEntry(e),
       ),
     );
 
@@ -198,19 +223,22 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
             : r.status === "diverged" ? "DIVERGED"
               : r.status === "current" ? "current "
                 : r.status === "linked" ? "linked  "
-                  : "unknown ";
+                  : r.status === "adopted" ? "adopted "
+                    : "unknown ";
         const refInfo =
           r.status === "linked"
             ? r.note
-            : r.status === "stale"
-              ? `${shortRef(r.installedRef)} -> ${shortRef(r.latestRef ?? "")}`
-              : r.status === "diverged"
-                ? r.note
-                : r.status === "current"
-                  ? shortRef(r.installedRef) + (checkLocal ? " (offline)" : "")
-                  : `${shortRef(r.installedRef)} (${r.note})`;
+            : r.status === "adopted"
+              ? r.note
+              : r.status === "stale"
+                ? `${shortRef(r.installedRef)} -> ${shortRef(r.latestRef ?? "")}`
+                : r.status === "diverged"
+                  ? r.note
+                  : r.status === "current"
+                    ? shortRef(r.installedRef) + (checkLocal ? " (offline)" : "")
+                    : `${shortRef(r.installedRef)} (${r.note})`;
         const extra =
-          r.note && !["unknown", "linked", "diverged"].includes(r.status) ? `  [${r.note}]` : "";
+          r.note && !["unknown", "linked", "diverged", "adopted"].includes(r.status) ? `  [${r.note}]` : "";
         ctx.log(`${mark}  ${r.name.padEnd(28)} ${r.channel.padEnd(15)} ${refInfo}${extra}`);
       }
       ctx.log("");

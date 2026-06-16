@@ -82,6 +82,17 @@ export interface LockEntry {
    * hand-edited (do not clobber without --force). Optional for legacy entries.
    */
   installedHash?: string;
+  /**
+   * Provenance was ADOPTED (`skl track`/`skl migrate`) for a skill already in the
+   * library, WITHOUT verifying its body against the real upstream baseline. true =
+   * the ref/installedHash describe the LOCAL copy as an assumed baseline only; the
+   * upstream body was never fetched and compared, so `update` must be conservative
+   * (always diff, require --force) and `outdated` reports "adopted" rather than
+   * stale/current. Cleared (set false) once `update` reconciles against real
+   * upstream — the entry then "graduates" to a normal tracked entry. Optional;
+   * absent/false = a normally-installed (verified) entry. See ADR-0011.
+   */
+  adopted?: boolean;
 }
 
 /** The whole lockfile (`shelf.lock.json` at the library root). */
