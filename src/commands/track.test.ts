@@ -99,6 +99,24 @@ describe("skl track — adopt provenance offline", () => {
     expect((await readLockfile(library)).entries.bar).toBeUndefined();
   });
 
+  test("refuses an ALIASED LINKED entry where the symlink slug != frontmatter name", async () => {
+    // Regression for the linked-guard bypass: a dev repo linked as library/aka-dir but
+    // whose SKILL.md frontmatter name is `aka-name`. findByName matches the frontmatter
+    // name, but linked-ness must be resolved by the on-disk slug (basename of the path),
+    // or a LINKED skill slips the guard and `update` later clobbers the dev repo (ADR-0004).
+    const dev = join(tmp, "dev", "aka-dir");
+    await mkdir(dev, { recursive: true });
+    await writeFile(join(dev, "SKILL.md"), "---\nname: aka-name\ndescription: d\n---\n\nbody\n");
+    await symlink(dev, join(library, "aka-dir"));
+
+    const { ctx, errors } = makeCtx(library);
+    const code = await trackRun(["aka-name", "--source", "github:owner/repo"], ctx);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("LINKED");
+    expect((await readLockfile(library)).entries["aka-name"]).toBeUndefined();
+    expect((await readLockfile(library)).entries["aka-dir"]).toBeUndefined();
+  });
+
   test("refuses an existing lock entry without --force, allows with --force", async () => {
     const { ctx } = makeCtx(library);
     await trackRun(["foo", "--source", "github:owner/repo"], ctx);

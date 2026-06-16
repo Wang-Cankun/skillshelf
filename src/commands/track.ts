@@ -17,6 +17,7 @@
 // `untrack` removes the lockfile entry (idempotent, like `drop`) — the inverse of track
 // (ADR-0005).
 
+import { basename } from "node:path";
 import type { Ctx, LockEntry } from "../types.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { hashContent } from "../core/crawl.ts";
@@ -107,7 +108,12 @@ export async function trackOne(
   }
 
   // GUARD (b): a LINKED entry's versioning belongs to its dev repo (ADR-0004).
-  if (entryMode(libraryPath, name) === "linked") {
+  // Resolve linked-ness by the ON-DISK SLUG (the symlink's basename), NOT the
+  // frontmatter `name` — they differ for an aliased link, and entryMode keys off
+  // the on-disk dir (library/<slug>). Using `name` let an aliased linked skill slip
+  // this guard and get an entry that `update` would then clobber the dev repo through.
+  const slug = basename(skill.path);
+  if (entryMode(libraryPath, slug) === "linked") {
     return { ok: false, name, reason: "LINKED to a dev repo — its own git owns versioning (ADR-0004)" };
   }
 
