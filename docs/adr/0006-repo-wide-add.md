@@ -149,6 +149,12 @@ in an `--all` run is **skipped with a warning**, not overwritten.
 
 ### 6. Keep the model boundaries (what we deliberately DON'T build here)
 
+> **Amended by [ADR-0012](0012-published-set-and-all-count-gate.md).** The "No `.claude-plugin`
+> manifest requirement … never gate on it" stance below was reversed for the *meaning of `--all`*:
+> a `.claude-plugin` manifest, when present, now defines the **published set** that `--all` installs
+> (allowlist), and a count gate bounds `--all`. The rest of this section still holds.
+
+
 - **No agent-dir writes / symlink fan-out in `add`.** `add` writes only into the library. Targeting
   `~/.claude/skills`/`~/.codex/skills`/… stays with `skl use` (project) / future `skl deploy`
   (global). No `-g`/`--agent` on `add`.

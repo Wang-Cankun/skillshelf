@@ -19,6 +19,13 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   `ref`, `installedHash`) in `shelf.lock.json`. The app's update-aware SOURCE column surfaces
   it: click-through to the repo root + a manual "Check updates" → `↑` stale / `⚠` diverged
   badges beside the name; linked/local entries are never updated (ADR-0004, ADR-0009).
+- **Published set** — the subset of a repo's discovered skills that `skl add --all` installs: the
+  skills listed in the repo's `.claude-plugin` manifest when one is present (else *all* discovered),
+  minus any `metadata.internal: true`. The rest are **unpublished** — still real, shown by `--list`
+  marked as such, but reachable only by explicit `--skill <name>`. `--all` is bounded by a count
+  gate (refuses > 15 without `--yes`). The manifest is read as an *allowlist*, deliberately stricter
+  than vercel's grouping-only use (ADR-0012, amending ADR-0006 §6).
+  _Avoid_: "all skills" (means the published set, not every `SKILL.md` on disk)
 
 ## Verbs (and the curator boundary)
 

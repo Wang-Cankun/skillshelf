@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`skl add --all` installs the *published set*, behind a count gate** ([ADR-0012](./docs/adr/0012-published-set-and-all-count-gate.md)).
+  Dogfooding against a repo that lays out 29 `SKILL.md` dirs (including `deprecated/` and `in-progress/`)
+  but publishes only 15 in its `.claude-plugin/plugin.json` showed `--all` meaning "every file on disk,"
+  not "every skill the author publishes." `--all` now installs the **published set**:
+  - **Manifest as allowlist** — when a `.claude-plugin/plugin.json` (or `marketplace.json`, union over
+    plugins) is present, its `skills` array *bounds* `--all` to the listed dirs (containment-checked);
+    with no manifest, the published set is every discovered skill (prior behaviour). Discovery still finds
+    everything — the manifest subtracts, it is not the source of existence. This **amends [ADR-0006](./docs/adr/0006-repo-wide-add.md) §6**
+    (which deferred manifest handling as discovery-only) and is a deliberate, *stricter* divergence from
+    vercel's grouping-only manifest use.
+  - **`metadata.internal` excluded** — any skill with frontmatter `metadata.internal: true` is dropped
+    from the published set (ecosystem-aligned), installable only when named.
+  - **Unpublished installs by name only** — a discovered-but-unpublished skill (unlisted, or `internal`)
+    installs **only** via explicit `--skill <name>`; there is no bulk "install the unpublished" path.
+  - **Count gate** — if the resolved `--all` set exceeds **15** skills, `add` refuses and prints what it
+    would install, pointing at `--skill`/`--list`/`--yes`. The new **`--yes`** flag bypasses the gate
+    (`--all --yes`); `--skill` is never gated (you named them), nor are `--list`/`--dry-run`. `--yes` is
+    distinct from `--force` (the drift-overwrite axis).
+  - **`--list` marks `published`/`unpublished`** so excluded skills stay visible even though `--all` skips them.
 - **Update-aware SOURCE column in the desktop app** ([ADR-0009](./docs/adr/0009-update-aware-source-column.md)).
   The Library SOURCE column now tells the truth and acts on it: it shows each vendored skill's real
   upstream `owner/repo` (parsed from the lockfile `source`, surfaced via new `origin`/`channel` fields
