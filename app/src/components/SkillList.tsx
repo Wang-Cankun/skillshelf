@@ -9,7 +9,6 @@
 
 import { useCallback, useDeferredValue, useMemo } from "react";
 import { useStore } from "../state/store";
-import { GLOBAL_SCOPE } from "../state/store";
 import { useLibrary, useAgents, useWhere } from "../state/queries";
 import { libraryView } from "../lib/select";
 import { needsAttentionNames } from "../lib/derive";
@@ -129,16 +128,16 @@ export function SkillList() {
 
   // 2. scope/range slice + anomaly-aware overlays the pure selector can't do
   //    (it has no agents report). Re-bucket after filtering each bucket's rows.
-  const projectInstalled =
-    !needsFilter &&
-    !retiredFilter &&
-    state.scope !== GLOBAL_SCOPE &&
-    state.range === "installed";
+  // "installed" range = only skills deployed in the active scope. Works for any
+  // scope: a project (pinned symlinks, excluding inherited-via-Global) AND Global
+  // (skills symlinked into the Global agent dirs). deployedInScope is scope-generic.
+  const installedOnly =
+    !needsFilter && !retiredFilter && state.range === "installed";
 
   const sliceRows = useCallback(
     (rows: Skill[]): Skill[] => {
       let r = rows;
-      if (projectInstalled)
+      if (installedOnly)
         r = r.filter((s) =>
           deployedInScope(report, state.deployOverrides, s.name, state.scope),
         );
@@ -155,7 +154,7 @@ export function SkillList() {
       return r;
     },
     [
-      projectInstalled,
+      installedOnly,
       report,
       state.deployOverrides,
       state.scope,
@@ -241,8 +240,8 @@ export function SkillList() {
               ? "Nothing needs attention here."
               : retiredFilter
                 ? "Nothing retired."
-                : projectInstalled
-                ? "No skills installed in this project yet — switch to All to deploy some."
+                : installedOnly
+                ? "No skills installed here yet — switch to All skills to deploy some."
                 : "No skills match."}
           </div>
         ) : (

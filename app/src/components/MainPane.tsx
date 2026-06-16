@@ -259,25 +259,24 @@ function LibraryToolbar() {
           />
         </div>
         <span style={{ flex: 1 }} />
-        {/* project range toggle: Pinned here ↔ All (ADR-0010 §5). Default is
-            still pinned-only (anti-sparse); only the label changed since cells
-            now distinguish pinned from inherited-via-Global. */}
-        {isProject ? (
-          <div style={{ display: "flex", gap: 5 }}>
-            <button
-              onClick={() => dispatch({ type: "setRange", range: "installed" })}
-              style={pill(state.range === "installed")}
-            >
-              Pinned here
-            </button>
-            <button
-              onClick={() => dispatch({ type: "setRange", range: "all" })}
-              style={pill(state.range === "all")}
-            >
-              All skills
-            </button>
-          </div>
-        ) : null}
+        {/* range toggle: Installed ↔ All. In a project the installed set is the
+            pinned-here symlinks (label "Pinned here"); in Global it's the skills
+            installed into the Global agent dirs. Default is installed-only in a
+            project (anti-sparse) and all in Global (see store setScope). */}
+        <div style={{ display: "flex", gap: 5 }}>
+          <button
+            onClick={() => dispatch({ type: "setRange", range: "installed" })}
+            style={pill(state.range === "installed")}
+          >
+            {isProject ? "Pinned here" : "Installed"}
+          </button>
+          <button
+            onClick={() => dispatch({ type: "setRange", range: "all" })}
+            style={pill(state.range === "all")}
+          >
+            All skills
+          </button>
+        </div>
       </div>
       {/* row 2 — sort + group */}
       <div
