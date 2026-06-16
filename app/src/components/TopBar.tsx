@@ -2,10 +2,31 @@
 // indicator (keyed off IS_TAURI) on the right. The centered search/command pill
 // was removed — the real search lives in the Library toolbar (cmdk deferred).
 
+import { useEffect, useState } from "react";
 import { MONO } from "../lib/tokens";
 import { IS_TAURI } from "../lib/skl";
+import { useFsSyncStatus } from "../hooks/useFsEventsSync";
 
 export function TopBar() {
+  const { active, lastTick } = useFsSyncStatus();
+
+  // Brief "synced" pulse for ~1.2s after each received fs-changed event.
+  const [synced, setSynced] = useState(false);
+  useEffect(() => {
+    if (lastTick === null) return;
+    setSynced(true);
+    const t = setTimeout(() => setSynced(false), 1200);
+    return () => clearTimeout(t);
+  }, [lastTick]);
+
+  // Honest badge state:
+  //  - browser (!IS_TAURI): grey dot, "dev" — there is no watcher.
+  //  - desktop, listener subscribed: green "Live"; flashes "synced" on events.
+  //  - desktop, not yet subscribed: amber dot, "Live" pending (no pulse).
+  const dotColor = !IS_TAURI ? "#A1A1AA" : active ? "#15A34A" : "#D4A017";
+  const label = !IS_TAURI ? "dev" : synced ? "synced" : "Live";
+  const pulse = IS_TAURI && active;
+
   return (
     <div
       style={{
@@ -75,11 +96,13 @@ export function TopBar() {
             width: 7,
             height: 7,
             borderRadius: "50%",
-            background: IS_TAURI ? "#15A34A" : "#A1A1AA",
-            animation: IS_TAURI ? "var(--animate-livepulse)" : undefined,
+            background: dotColor,
+            transform: synced ? "scale(1.4)" : undefined,
+            transition: "transform 150ms ease, background 150ms ease",
+            animation: pulse ? "var(--animate-livepulse)" : undefined,
           }}
         />
-        <span>{IS_TAURI ? "Live" : "dev"}</span>
+        <span>{label}</span>
         <span style={{ fontFamily: MONO, fontSize: 11, color: "#A1A1AA" }}>
           FSEvents
         </span>
