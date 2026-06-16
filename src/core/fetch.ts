@@ -200,6 +200,18 @@ export interface DiscoveredSkill {
   subpath: string;
   /** frontmatter `description` ("" if absent) */
   description: string;
+  /**
+   * frontmatter `metadata.internal === true` — the ecosystem signal for "hide from
+   * `--all`" (ADR-0012). An internal skill is never in the published set, but stays
+   * discovered (existence) and installable when named explicitly via `--skill`.
+   */
+  internal: boolean;
+  /**
+   * In the PUBLISHED set `--all` installs (ADR-0012): listed by a `.claude-plugin`
+   * manifest (when one is present) OR every discovered skill (when none is) — AND
+   * not `internal`. An unpublished skill installs only via explicit `--skill <name>`.
+   */
+  published: boolean;
 }
 
 // Dirs that never hold installable skills — pruned during discovery so build output,
@@ -225,6 +237,80 @@ function containedUnder(childReal: string, rootReal: string): boolean {
 /** True if a subpath tries to climb out of the checkout (`..` segment). */
 function subpathClimbs(cleanSub: string): boolean {
   return cleanSub.split("/").includes("..");
+}
+
+/**
+ * Collect the manifest-declared skill dirs from a `.claude-plugin` manifest at the
+ * checkout root (ADR-0012): `plugin.json` (single plugin, `skills: string[]`) and/or
+ * `marketplace.json` (multi-plugin; UNION of every plugin's `skills`). Returns the
+ * resolved+containment-checked REALPATHS of the declared dirs, or `null` if NEITHER
+ * manifest is present (→ no allowlist; every discovered skill is published).
+ *
+ * The manifest is an ALLOWLIST, not a source of existence: a declared path that has no
+ * valid skill simply never matches a discovered dir. Paths follow Claude convention
+ * (start with `./`) and are resolved relative to the manifest base (the checkout root),
+ * then containment-checked — a path that escapes the checkout (e.g. `../../etc`) is
+ * dropped, reusing the same realpath-containment guard discovery uses (security; never
+ * regress ADR-0006). Missing/malformed JSON is treated as "no usable entries", not a throw.
+ */
+async function readManifestAllowlist(root: string, rootReal: string): Promise<Set<string> | null> {
+  const pluginPath = join(root, ".claude-plugin", "plugin.json");
+  const marketPath = join(root, ".claude-plugin", "marketplace.json");
+  const hasPlugin = existsSync(pluginPath);
+  const hasMarket = existsSync(marketPath);
+  if (!hasPlugin && !hasMarket) return null;
+
+  const declared: string[] = [];
+  const readJson = async (p: string): Promise<unknown> => {
+    try {
+      return JSON.parse(await Bun.file(p).text());
+    } catch {
+      return null;
+    }
+  };
+  const skillsOf = (obj: unknown): string[] => {
+    if (typeof obj !== "object" || obj === null) return [];
+    const arr = (obj as Record<string, unknown>).skills;
+    return Array.isArray(arr) ? arr.filter((s): s is string => typeof s === "string") : [];
+  };
+
+  if (hasPlugin) declared.push(...skillsOf(await readJson(pluginPath)));
+  if (hasMarket) {
+    const m = await readJson(marketPath);
+    const plugins = (m as Record<string, unknown> | null)?.plugins;
+    // We honor each plugin's `skills` relative to the checkout root only. A plugin
+    // `source`/`pluginRoot` that relocates skills into another repo/subdir is NOT
+    // resolved (those entries simply won't match a discovered dir → not published).
+    // Ignoring `source` is the SAFE direction (it can't point discovery outside the
+    // checkout); resolving it would need its own containment guard (ADR-0012 deferred).
+    if (Array.isArray(plugins)) for (const p of plugins) declared.push(...skillsOf(p));
+  }
+
+  // Resolve each declared path relative to the checkout root, then containment-check.
+  // We key the allowlist by REALPATH so matching a discovered skill (also keyed by its
+  // dir realpath) is alias/symlink-canonical.
+  const allow = new Set<string>();
+  for (const raw of declared) {
+    const clean = raw.replace(/^\.\//, "").replace(/^\/+|\/+$/g, "");
+    if (clean === "" || subpathClimbs(clean)) continue;
+    const abs = join(root, clean);
+    const real = realpathOrSelf(abs);
+    if (containedUnder(real, rootReal)) allow.add(real);
+  }
+  return allow;
+}
+
+/**
+ * Apply the published-set rule (ADR-0012) over discovered skills, in place:
+ *   - manifest present → `published` = (dir realpath is in the allowlist) AND not internal
+ *   - no manifest      → `published` = NOT internal (already set by buildDiscovered)
+ * Discovery itself is unchanged (still surfaces every skill for existence).
+ */
+function tagPublished(skills: DiscoveredSkill[], allow: Set<string> | null): void {
+  if (allow === null) return; // no manifest: keep buildDiscovered's `published = !internal`
+  for (const s of skills) {
+    s.published = !s.internal && allow.has(realpathOrSelf(s.dir));
+  }
 }
 
 /**
@@ -278,6 +364,11 @@ async function buildDiscovered(
   const { data } = parseFrontmatter(raw);
   const fmName = typeof data.name === "string" ? data.name.trim() : "";
   const description = typeof data.description === "string" ? data.description.trim() : "";
+  // `metadata.internal: true` hides a skill from `--all` (ADR-0012). Read defensively:
+  // `metadata` may be absent or a non-object on a malformed/sparse SKILL.md.
+  const meta = data.metadata;
+  const internal =
+    typeof meta === "object" && meta !== null && (meta as Record<string, unknown>).internal === true;
   // A DISCOVERED (walked) skill must declare BOTH name and description — the
   // convention gate that keeps template/example SKILL.md stubs out of `--all`
   // (ADR-0006 §3). An EXPLICIT subpath pointer is exempt (requireValid:false): the
@@ -289,7 +380,10 @@ async function buildDiscovered(
   // aliased / symlink-cycle path like `self/x` records the canonical committed `x`.
   const rel = relative(rootReal, dirReal);
   const subpath = rel === "" ? "" : rel.split(sep).join("/");
-  return { name, dir, subpath, description };
+  // `published` defaults to "in the set unless excluded": true here, then
+  // tagPublished() applies the manifest allowlist (when present) over the result.
+  // An internal skill is never published regardless of the manifest.
+  return { name, dir, subpath, description, internal, published: !internal };
 }
 
 /** Bounded recursive fallback: collect every valid skill dir under `start`. */
@@ -342,10 +436,16 @@ export async function discoverSkills(root: string, subpath = ""): Promise<Discov
   // Defense-in-depth: the resolved base must still be inside the checkout.
   if (!containedUnder(realpathOrSelf(base), rootReal)) return [];
 
+  // The manifest (if any) lives at the CHECKOUT ROOT and is the published-set allowlist
+  // regardless of any discovery subpath scoping (ADR-0012).
+  const allow = await readManifestAllowlist(root, rootReal);
+
   // Explicit pointer: the named subpath IS a skill dir. Return it verbatim (lenient).
   if (cleanSub && isSkillDir(base)) {
     const one = await buildDiscovered(base, rootReal, { requireValid: false });
-    return one ? [one] : [];
+    if (!one) return [];
+    tagPublished([one], allow);
+    return [one];
   }
 
   // De-duplicate by REALPATH (not the raw string) so aliased / symlink-cycle paths
@@ -391,9 +491,11 @@ export async function discoverSkills(root: string, subpath = ""): Promise<Discov
   // 2) Recursive fallback ONLY if the conventional scan found nothing.
   if (byReal.size === 0) await recurseDiscover(base, rootReal, 0, add, new Set<string>());
 
-  return [...byReal.values()].sort((a, b) =>
+  const out = [...byReal.values()].sort((a, b) =>
     a.subpath < b.subpath ? -1 : a.subpath > b.subpath ? 1 : 0,
   );
+  tagPublished(out, allow);
+  return out;
 }
 
 /**

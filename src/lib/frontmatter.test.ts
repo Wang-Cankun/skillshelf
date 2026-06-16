@@ -15,6 +15,23 @@ describe("parseFrontmatter", () => {
     expect(r.data.domains).toEqual(["bioinfo", "qc-x", "coding"]);
   });
 
+  test("block nested mapping (metadata.internal)", () => {
+    const r = parseFrontmatter("---\nname: x\nmetadata:\n  internal: true\n---\nbody");
+    expect(r.data.metadata).toEqual({ internal: true });
+  });
+
+  test("inline flow mapping (metadata: {internal: true})", () => {
+    // Flow style must parse to an object too, else the `metadata.internal` signal
+    // (ADR-0012) could be bypassed by author style. Both styles are equivalent.
+    const r = parseFrontmatter("---\nname: x\nmetadata: {internal: true}\n---\nbody");
+    expect(r.data.metadata).toEqual({ internal: true });
+  });
+
+  test("flow mapping tolerates spaces and quoted values", () => {
+    const r = parseFrontmatter('---\nm: { a: 1, b: "x, y" }\n---\nbody');
+    expect(r.data.m).toEqual({ a: 1, b: "x, y" });
+  });
+
   test("block scalar literal |", () => {
     const r = parseFrontmatter(
       "---\nname: x\ndescription: |\n  line one\n  line two\n---\nbody",

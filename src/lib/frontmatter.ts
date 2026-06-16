@@ -57,6 +57,51 @@ function parseInlineList(s: string): string[] {
   return items.map((x) => stripQuotes(x.trim())).filter((x) => x.length > 0);
 }
 
+/** Split on top-level commas (outside quotes/brackets), preserving quoted commas. */
+function splitTopLevel(inner: string): string[] {
+  const items: string[] = [];
+  let buf = "";
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!;
+    if (quote) {
+      if (ch === quote) quote = null;
+      buf += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      buf += ch;
+    } else if (ch === ",") {
+      items.push(buf);
+      buf = "";
+    } else {
+      buf += ch;
+    }
+  }
+  items.push(buf);
+  return items;
+}
+
+/**
+ * Parse an inline FLOW mapping `{a: 1, b: "x"}` (one level, scalar values) into a
+ * Record. Symmetric with parseInlineList for `[...]`. This matters for the ecosystem's
+ * `metadata: {internal: true}` form — without it, a flow mapping would be stored as a
+ * bare string, silently bypassing the `metadata.internal` "hide from --all" signal
+ * (ADR-0012).
+ */
+function parseInlineMap(s: string): Record<string, unknown> {
+  const inner = s.trim().slice(1, -1).trim();
+  const out: Record<string, unknown> = {};
+  if (inner === "") return out;
+  for (const part of splitTopLevel(inner)) {
+    const colon = part.indexOf(":");
+    if (colon === -1) continue;
+    const key = stripQuotes(part.slice(0, colon).trim());
+    if (key === "") continue;
+    out[key] = parseScalar(part.slice(colon + 1));
+  }
+  return out;
+}
+
 function parseScalar(raw: string): unknown {
   const v = stripQuotes(raw.trim());
   if (v === "true") return true;
@@ -146,9 +191,19 @@ export function parseFrontmatter(text: string): Frontmatter {
       continue;
     }
 
-    // block list: `key:` followed by `  - item` lines
+    // inline flow mapping (`metadata: {internal: true}`) — parsed to an object so
+    // nested flags (e.g. `metadata.internal`) are readable in flow OR block style.
+    if (restTrim.startsWith("{") && restTrim.endsWith("}")) {
+      data[key] = parseInlineMap(restTrim);
+      continue;
+    }
+
+    // block list (`key:` + `  - item` lines) OR a one-level nested mapping
+    // (`key:` + `  subkey: value` lines, e.g. `metadata:\n  internal: true`).
     if (restTrim === "") {
       const items: string[] = [];
+      const nested: Record<string, unknown> = {};
+      let hasNested = false;
       let j = i + 1;
       while (j < fmLines.length) {
         const cur = fmLines[j]!;
@@ -157,13 +212,29 @@ export function parseFrontmatter(text: string): Frontmatter {
           j++;
           continue;
         }
+        // a non-indented line ends the block
+        if (cur.length - cur.trimStart().length === 0) break;
         const lm = ct.match(/^-\s+(.*)$/);
-        if (!lm || cur.length - cur.trimStart().length === 0) break;
-        items.push(stripQuotes(lm[1]!.trim()));
-        j++;
+        if (lm) {
+          items.push(stripQuotes(lm[1]!.trim()));
+          j++;
+          continue;
+        }
+        // `subkey: value` → nested mapping (single level; values are scalars)
+        const km = ct.match(/^([A-Za-z0-9_-]+):(.*)$/);
+        if (km && items.length === 0) {
+          nested[km[1]!] = parseScalar(km[2]!);
+          hasNested = true;
+          j++;
+          continue;
+        }
+        break;
       }
       if (items.length > 0) {
         data[key] = items;
+        i = j - 1;
+      } else if (hasNested) {
+        data[key] = nested;
         i = j - 1;
       } else {
         data[key] = "";

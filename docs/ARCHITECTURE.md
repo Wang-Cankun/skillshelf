@@ -162,6 +162,18 @@ installs a whole repo, or a chosen subset, in **one clone**:
   out of the single staging checkout → **N installs, one network fetch** (never clone-per-skill).
   Each skill is its own lockfile entry — same `source`+`ref`, its own `@subpath` + `installedHash`
   (no schema change).
+- **Published set + count gate** ([ADR-0012](../adr/0012-published-set-and-all-count-gate.md), which
+  **amends ADR-0006 §6**: a manifest now *bounds* `--all`, no longer just opportunistic-for-discovery).
+  `--all` installs the **published set**, not every `SKILL.md` on disk: when a `.claude-plugin/plugin.json`
+  (or `marketplace.json`, union over plugins) is present, its `skills` array is an **allowlist** —
+  discovery still finds all dirs, but `--all` keeps only the listed ones; with no manifest, the published
+  set is every discovered skill (prior behaviour). In both cases a skill with frontmatter
+  `metadata.internal: true` is excluded. A discovered-but-unpublished skill (unlisted, or `internal`)
+  installs **only** via explicit `--skill <name>`. A **count gate** bounds blast radius: if the resolved
+  `--all` set exceeds **15**, `add` refuses and prints what it would install, pointing at
+  `--skill`/`--list`/`--yes`; the new **`--yes`** flag bypasses it (distinct from `--force`, which is the
+  drift-overwrite axis). `--skill`, `--list`, and `--dry-run` are never gated (they name explicitly or
+  don't write). `--list` marks each skill `published`/`unpublished` so excluded skills stay visible.
 - `skl add <repo> --dry-run` — the **drift preflight**: per skill, classify the library destination
   as `new` / `identical` / `differs` (frontmatter-stripped body hash). A `differs` skill in `--all`
   is **skipped without `--force`** (never clobbered), and `add` never writes *through* a LINKED
@@ -193,7 +205,7 @@ hand-`rm`/`mv`/`ln -s` to undo or tweak is the signal of a missing primitive.
 | `skl scan [roots…]` | Read-only discovery of skill candidates across roots (counts, duplicates, drift). `--add-root`/`--remove-root` mutate the registry; `skl roots` lists it. |
 | `skl import <name> --from <path>` | Adopt one of your own skills into the library as an OWNED copy (move + symlink-back, or `--copy`). |
 | `skl link [<name>] --from <dev-repo>` | Shelve a dev-repo skill as a LINKED entry (library symlinks to it). `--at <path>` instead collapses a stray copy into the library ([ADR-0004](adr/0004-owned-vs-linked-entries.md)). |
-| `skl add <src>` | Install third-party skill(s) into the library, record provenance, AI-tag. Repo-wide via `--all`/`--skill`/`--list`/`--dry-run` — one repo, one clone ([ADR-0006](adr/0006-repo-wide-add.md)). |
+| `skl add <src>` | Install third-party skill(s) into the library, record provenance, AI-tag. Repo-wide via `--all`/`--skill`/`--list`/`--yes`/`--dry-run` — one repo, one clone ([ADR-0006](adr/0006-repo-wide-add.md)); `--all` installs the **published set** behind a count gate ([ADR-0012](adr/0012-published-set-and-all-count-gate.md)). |
 | `skl new` | Scaffold a new skill into the library. |
 | `skl init` | Initialize a library / global core. |
 

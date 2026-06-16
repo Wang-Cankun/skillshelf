@@ -45,8 +45,16 @@ export const meta = {
   name: "add",
   summary: "Install third-party skill(s) (github:/git:/registry); repo-wide via --all/--skill",
   usage:
-    "skl add <src> [--all|--skill <a,b,…>] [--list] [--dry-run] [--domain <d>] [--name <slug>] [--no-infer] [--force] [--json]",
+    "skl add <src> [--all|--skill <a,b,…>] [--list] [--dry-run] [--domain <d>] [--name <slug>] [--no-infer] [--force] [--yes] [--json]",
 } as const;
+
+/**
+ * The `--all` count gate threshold (ADR-0012): if the resolved published set has MORE
+ * than this many skills, `add --all` refuses (bounds blast radius) until the user passes
+ * `--yes`, narrows with `--skill`, or inspects with `--list`. `--skill`/`--list`/`--dry-run`
+ * are never gated. On the count, not the provenance — manifest or full discovery alike.
+ */
+export const ALL_COUNT_GATE = 15;
 
 interface Flags {
   json: boolean;
@@ -54,6 +62,8 @@ interface Flags {
   name: string | null;
   infer: boolean;
   force: boolean;
+  /** bypass ONLY the --all count gate (distinct from --force = overwrite differing body) */
+  yes: boolean;
   all: boolean;
   list: boolean;
   dryRun: boolean;
@@ -79,6 +89,7 @@ function parseFlags(argv: string[]): Flags {
     name: null,
     infer: true,
     force: false,
+    yes: false,
     all: false,
     list: false,
     dryRun: false,
@@ -90,6 +101,7 @@ function parseFlags(argv: string[]): Flags {
     if (a === "--json") f.json = true;
     else if (a === "--no-infer") f.infer = false;
     else if (a === "--force") f.force = true;
+    else if (a === "--yes") f.yes = true;
     else if (a === "--all") f.all = true;
     else if (a === "--list") f.list = true;
     else if (a === "--dry-run") f.dryRun = true;
@@ -369,20 +381,27 @@ function reportList(
     description: d.description,
     subpath: d.subpath,
     inLibrary: Boolean(findByName(library, d.name)),
+    // ADR-0012: keep the FULL set visible, marked by published-set membership, so an
+    // unpublished/internal skill is discoverable even though `--all` skips it.
+    published: d.published,
+    internal: d.internal,
   }));
   if (flags.json) {
     ctx.json({ ok: true, action: "list", source: parsed.source, ref, count: rows.length, skills: rows });
     return 0;
   }
-  ctx.log(`${rows.length} skill(s) in ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""}:`);
+  const publishedCount = rows.filter((r) => r.published).length;
+  ctx.log(`${rows.length} skill(s) in ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""} (${publishedCount} published):`);
   ctx.log("");
   for (const r of rows) {
     const mark = r.inLibrary ? "✓" : " ";
-    ctx.log(`  ${mark} ${r.name.padEnd(28)} ${r.subpath || "(root)"}`);
+    const tag = r.published ? "published  " : r.internal ? "internal   " : "unpublished";
+    ctx.log(`  ${mark} ${tag}  ${r.name.padEnd(28)} ${r.subpath || "(root)"}`);
     if (r.description) ctx.log(`      ${r.description.length > 100 ? r.description.slice(0, 99) + "…" : r.description}`);
   }
   ctx.log("");
-  ctx.log(`✓ = already in your library. Install with: skl add ${flags.src} --all   (or --skill <name,…>)`);
+  ctx.log(`✓ = already in your library. published = installed by --all; unpublished/internal = only via --skill <name>.`);
+  ctx.log(`Install with: skl add ${flags.src} --all   (or --skill <name,…>)`);
   return 0;
 }
 
@@ -532,7 +551,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const { data } = parseFrontmatter(body);
     const nm = typeof data.name === "string" && data.name.trim() !== "" ? data.name.trim() : basename(fetched.skillDir);
     const desc = typeof data.description === "string" ? data.description.trim() : "";
-    discovered = [{ name: nm, dir: fetched.skillDir, subpath: "", description: desc }];
+    const meta = data.metadata;
+    const internal =
+      typeof meta === "object" && meta !== null && (meta as Record<string, unknown>).internal === true;
+    // Single registry/explicit skill: no manifest context → published unless internal.
+    discovered = [{ name: nm, dir: fetched.skillDir, subpath: "", description: desc, internal, published: !internal }];
   }
 
   try {
@@ -552,9 +575,16 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       return reportList(ctx, flags, parsed, ref, discovered, library);
     }
 
-    // ---- --dry-run (drift preflight over the full set, no writes) ----
+    // ---- --dry-run (drift preflight, no writes) ----
+    // Over the set it WOULD install: the published set for --all (ADR-0012), the named
+    // subset for --skill, else the full discovered set. Never gated (it doesn't write).
     if (flags.dryRun) {
-      return await reportDryRun(ctx, flags, parsed, ref, discovered, domainFolder);
+      const preview = flags.all
+        ? discovered.filter((d) => d.published)
+        : flags.skill !== null
+          ? discovered.filter((d) => flags.skill!.includes(d.name))
+          : discovered;
+      return await reportDryRun(ctx, flags, parsed, ref, preview, domainFolder);
     }
 
     // ---- selection ----
@@ -571,7 +601,26 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
       multi = true;
     } else if (flags.all) {
-      selected = discovered;
+      // ADR-0012: --all installs the PUBLISHED set (manifest allowlist when present,
+      // else every discovered skill), always minus internal skills.
+      selected = discovered.filter((d) => d.published);
+      if (selected.length === 0) {
+        ctx.error(
+          `add: no published skills in ${parsed.source} — every discovered skill is unpublished or internal` +
+            ` (e.g. a .claude-plugin manifest that lists none/is unreadable, or skills marked metadata.internal).`,
+        );
+        ctx.error(`     inspect the full set with --list, or install one by name with --skill <name>.`);
+        return 1;
+      }
+      // COUNT GATE: refuse a large blast radius unless --yes. On the final selected
+      // count, regardless of provenance. --skill/--list/--dry-run are never gated.
+      if (selected.length > ALL_COUNT_GATE && !flags.yes) {
+        ctx.error(
+          `add: ${selected.length} published skills in ${parsed.source} exceeds the --all gate of ${ALL_COUNT_GATE}.`,
+        );
+        ctx.error(`     re-run with --yes to install them all, narrow with --skill <name,…>, or inspect with --list.`);
+        return 1;
+      }
       multi = true;
     } else if (discovered.length > 1) {
       ctx.error(

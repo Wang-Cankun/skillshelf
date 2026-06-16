@@ -103,7 +103,7 @@ describe("config: agents block (ADR-0010 delta 4)", () => {
     await Bun.write(cfg, JSON.stringify({ agents }));
     const config = await resolveConfig({ configFilePath: cfg });
     expect(config.agents).toHaveLength(1);
-    expect(config.agents[0].inheritsGlobal).toBe(false);
+    expect(config.agents[0]!.inheritsGlobal).toBe(false);
   });
 
   test("missing agents block resolves to []", async () => {
