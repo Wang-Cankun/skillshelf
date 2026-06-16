@@ -20,6 +20,18 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   it: click-through to the repo root + a manual "Check updates" → `↑` stale / `⚠` diverged
   badges beside the name; linked/local entries are never updated (ADR-0004, ADR-0009).
 
+## Verbs (and the curator boundary)
+
+- **Add** — vendor a skill *into the library* (`skl add`): copy + record provenance. This is
+  curation, not deployment. "Install" in skillshelf means *this* — it never implies activation.
+- **Use** — *activate* a library skill at an agent surface (`skl use`): symlink it into
+  `~/.claude/skills` (or another agent dir). Accepts skill names (exact) or a bundle tag.
+- **Curator boundary** — `add` only ever writes the library; `use` only ever writes agent dirs.
+  skillshelf deliberately does **not** offer one-shot install-and-activate (the `vercel-labs/skills`
+  installer model); getting-and-activating in one command is out of scope by ADR-0003. To install
+  and turn on a set: `skl add …` then `skl use <name…>` — never deploy a whole domain tag to
+  activate a few named skills.
+
 ## Migration nouns
 
 - **Root** — a directory that `skl scan` searches for skills (e.g. `~/.claude/skills`, an
