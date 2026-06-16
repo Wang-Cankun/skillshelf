@@ -177,11 +177,13 @@ export function useCommands() {
   );
 
   // ── Bulk deploy (deltas 1 & 2) — the SOLE deploy-execution point (ADR §11).
-  // Loops one `use`/`drop` per skill, applies each optimistic override, then
-  // emits ONE combined toast and invalidates ONCE. On any failure the failed
-  // skill's override is rolled back and the error surfaced; succeeded skills
-  // are real on disk and reflected after the single invalidate. Undo reverses
-  // every successful override and runs the inverse vectors in one batch.
+  // ONE multi-name `use`/`drop` call (the engine unions+dedupes the names and
+  // runs the symlink loop once — one library crawl, one pass). Applies every
+  // optimistic override up front, fires the SINGLE batch call, invalidates ONCE,
+  // then clears every override (the invalidate reconciles to disk truth). The
+  // batch exits 0 iff ALL names succeeded; on failure the refetch already shows
+  // real (partial-success) truth, so a coarse clear-all-overrides is correct and
+  // simpler than per-name bookkeeping. Undo is a SINGLE inverse batch call.
   const bulkDeploy = useCallback(
     async (
       names: string[],
@@ -200,65 +202,54 @@ export function useCommands() {
       for (const key of keys)
         dispatch({ type: "setDeployOverride", key, value: on ? "on" : "off" });
 
-      const succeeded: string[] = [];
-      const failures: string[] = [];
-      for (const name of names) {
-        const args = [
-          verb,
-          name,
-          "--agent",
-          agentId,
-          ...scopeFlags(scope, scopePath),
-        ];
-        const res = await runAction(args);
-        if (res.ok) succeeded.push(name);
-        else {
-          // roll back only the failed override; succeeded ones stay optimistic
-          // until the single invalidate reconciles them with disk truth.
-          dispatch({
-            type: "clearDeployOverride",
-            key: deployKey(name, agentId, scope),
-          });
-          failures.push(`${name}: ${res.stderr.trim() || "failed"}`);
-        }
-      }
+      const clearAll = () => {
+        for (const key of keys)
+          dispatch({ type: "clearDeployOverride", key });
+      };
 
+      // ONE batch call: `skl use a b c --agent X [scope]`.
+      const args = [
+        verb,
+        ...names,
+        "--agent",
+        agentId,
+        ...scopeFlags(scope, scopePath),
+      ];
+      const res = await runAction(args);
+
+      // qk.library is KEPT (NOT dropped per FIX B): the library feed carries the
+      // deployment-derived `deployCount`, which the "Deployed" sort renders — so
+      // it must refetch after a deploy or that sort order goes stale.
       await invalidate([qk.agents, qk.where, qk.library]);
 
       // RISK 2: clear-on-success. After the single invalidate, server truth is
-      // authoritative for every succeeded skill, so drop their optimistic
-      // overrides — leaving them would mask a later external state change (a CLI
-      // `drop`, another surface) behind a stale 'on'/'off' entry and grow the
-      // override map unbounded. Failed overrides were already rolled back above.
-      for (const name of succeeded)
-        dispatch({
-          type: "clearDeployOverride",
-          key: deployKey(name, agentId, scope),
-        });
+      // authoritative, so drop every optimistic override — leaving them would
+      // mask a later external state change behind a stale entry and grow the
+      // override map unbounded. On failure the refetch shows the real (possibly
+      // partial) on-disk truth, so clearing all is still correct.
+      clearAll();
 
-      if (failures.length) {
+      if (!res.ok) {
         dispatch({
           type: "setError",
-          error: `${verb} failed — ${failures.join("; ")}`,
+          error: res.stderr.trim() || `${cmdEcho(args)} failed`,
         });
+        return;
       }
-      if (!succeeded.length) return;
 
       const undo = () => {
-        for (const name of succeeded)
-          dispatch({
-            type: "clearDeployOverride",
-            key: deployKey(name, agentId, scope),
-          });
+        clearAll();
         dispatch({ type: "hideToast" });
         void runInverse(
-          succeeded.map((name) => [
-            on ? "drop" : "use",
-            name,
-            "--agent",
-            agentId,
-            ...scopeFlags(scope, scopePath),
-          ]),
+          [
+            [
+              on ? "drop" : "use",
+              ...names,
+              "--agent",
+              agentId,
+              ...scopeFlags(scope, scopePath),
+            ],
+          ],
           [qk.agents, qk.where, qk.library],
         );
       };
@@ -267,14 +258,10 @@ export function useCommands() {
         type: "showToast",
         toast: {
           msg:
-            succeeded.length > 1
-              ? `${word} ${succeeded.length} skills · ${agentId} (${scope})`
-              : `${word} ${succeeded[0]} · ${agentId} (${scope})`,
-          cmd: succeeded
-            .map((n) =>
-              cmdEcho([verb, n, "--agent", agentId, ...scopeFlags(scope, scopePath)]),
-            )
-            .join(" ; "),
+            names.length > 1
+              ? `${word} ${names.length} skills · ${agentId} (${scope})`
+              : `${word} ${names[0]} · ${agentId} (${scope})`,
+          cmd: cmdEcho(args),
           undo,
         },
       });
@@ -318,36 +305,29 @@ export function useCommands() {
   );
 
   // ── Retire (one or many) — reversible ───────────────────────────────────
+  // ONE multi-name `skl retire a b c` call (the engine reindexes the library
+  // ONCE at the end — the per-call reindex was the cost). Exit 0 iff all names
+  // retired. The whole batch is the undo unit: on failure the refetch shows real
+  // on-disk truth, so a coarse revert-all is correct and simpler.
   const retire = useCallback(
     async (names: string[]) => {
       if (!names.length) return;
       dispatch({ type: "setRetired", names, value: true });
-      // one verb per name; track which actually failed so we only roll those back.
-      const failures: string[] = [];
-      const failed: string[] = [];
-      for (const name of names) {
-        const res = await runAction(["retire", name]);
-        if (!res.ok) {
-          failed.push(name);
-          failures.push(`${name}: ${res.stderr.trim() || "failed"}`);
-        }
-      }
-      if (failures.length) {
-        // Only revert the names that failed; names that succeeded are real on
-        // disk. Always invalidate so the UI re-syncs to actual truth.
-        dispatch({ type: "setRetired", names: failed, value: false });
-        await invalidate([qk.library, qk.where, qk.agents]);
-        dispatch({ type: "setError", error: `retire failed — ${failures.join("; ")}` });
+      const res = await runAction(["retire", ...names]);
+      await invalidate([qk.library, qk.where, qk.agents]);
+      if (!res.ok) {
+        dispatch({ type: "setRetired", names, value: false });
+        dispatch({
+          type: "setError",
+          error: res.stderr.trim() || `retire failed`,
+        });
         return;
       }
-      const rollback = () =>
-        dispatch({ type: "setRetired", names, value: false });
-      await invalidate([qk.library, qk.where, qk.agents]);
       const undo = () => {
-        rollback();
+        dispatch({ type: "setRetired", names, value: false });
         dispatch({ type: "hideToast" });
         void runInverse(
-          names.map((name) => ["unretire", name]),
+          [["unretire", ...names]],
           [qk.library, qk.where, qk.agents],
         );
       };
@@ -360,45 +340,33 @@ export function useCommands() {
         },
       });
     },
-    [dispatch, invalidate],
+    [dispatch, invalidate, runInverse],
   );
 
   // ── Unretire (one or many) — reversible (inverse of retire) ─────────────
-  // Mirrors `retire`: optimistically promotes each name back to live
-  // (setUnretired true), runs `skl unretire <name>` per name, invalidates the
-  // library/where/agents feeds, and offers an Undo that re-retires. On partial
-  // failure only the failed names are reverted; the rest are real on disk and
-  // reconciled by the invalidate.
+  // Mirrors `retire`: ONE multi-name `skl unretire a b c` call (single reindex),
+  // optimistically promotes every name back to live (setUnretired true),
+  // invalidates the library/where/agents feeds, and offers an Undo that
+  // re-retires the whole batch. On failure the refetch reconciles to disk truth.
   const unretire = useCallback(
     async (names: string[]) => {
       if (!names.length) return;
       dispatch({ type: "setUnretired", names, value: true });
-      const failures: string[] = [];
-      const failed: string[] = [];
-      for (const name of names) {
-        const res = await runAction(["unretire", name]);
-        if (!res.ok) {
-          failed.push(name);
-          failures.push(`${name}: ${res.stderr.trim() || "failed"}`);
-        }
-      }
-      if (failures.length) {
-        dispatch({ type: "setUnretired", names: failed, value: false });
-        await invalidate([qk.library, qk.where, qk.agents]);
+      const res = await runAction(["unretire", ...names]);
+      await invalidate([qk.library, qk.where, qk.agents]);
+      if (!res.ok) {
+        dispatch({ type: "setUnretired", names, value: false });
         dispatch({
           type: "setError",
-          error: `unretire failed — ${failures.join("; ")}`,
+          error: res.stderr.trim() || `unretire failed`,
         });
         return;
       }
-      const rollback = () =>
-        dispatch({ type: "setUnretired", names, value: false });
-      await invalidate([qk.library, qk.where, qk.agents]);
       const undo = () => {
-        rollback();
+        dispatch({ type: "setUnretired", names, value: false });
         dispatch({ type: "hideToast" });
         void runInverse(
-          names.map((name) => ["retire", name]),
+          [["retire", ...names]],
           [qk.library, qk.where, qk.agents],
         );
       };
