@@ -7,7 +7,7 @@
 // The `{kind:"needs"}` filter and the `attention` sort both consult the agents
 // report (anomaly state lives there, not on Skill), which this component owns.
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useDeferredValue, useMemo } from "react";
 import { useStore } from "../state/store";
 import { GLOBAL_SCOPE } from "../state/store";
 import { useLibrary, useAgents, useWhere } from "../state/queries";
@@ -81,6 +81,11 @@ export function SkillList() {
   // EXACTLY the same set the sidebar badge counts, so the pipeline filters by the
   // ONE needsAttentionNames set and it bypasses the project-installed scope slice
   // below (otherwise the count and the rows would diverge again — Bug 3).
+  // ponytail: defer the search term feeding the heavy filter/sort/group view so
+  // keystrokes keep the input snappy (the list re-renders at low priority). Native
+  // React 19 — no store split / debounce util needed. Upgrade to a selector-based
+  // store only if click-driven re-renders also measurably jank.
+  const deferredSearch = useDeferredValue(state.search);
   const needsFilter = state.filter?.kind === "needs";
   const retiredFilter = state.filter?.kind === "retired";
   // Memoized so the Set isn't rebuilt (and the view memo below isn't busted) on
@@ -99,7 +104,7 @@ export function SkillList() {
     () =>
       libraryView(skills, {
         filter: state.filter,
-        search: state.search,
+        search: deferredSearch,
         sort: state.sort,
         sortDir: state.sortDir,
         group: state.group,
@@ -111,7 +116,7 @@ export function SkillList() {
     [
       skills,
       state.filter,
-      state.search,
+      deferredSearch,
       state.sort,
       state.sortDir,
       state.group,
