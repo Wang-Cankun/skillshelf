@@ -10,6 +10,8 @@ export interface Aggregates {
   vendored: number;
   local: number;
   untagged: number;
+  /** count of server-retired skills — drives the "🗄 Retired" smart row. */
+  retired: number;
   /** domain -> count, sorted desc by count */
   domains: { domain: string; count: number }[];
   domainMax: number;
@@ -31,7 +33,8 @@ export function aggregates(skills: Skill[]): Aggregates {
     .map(([domain, count]) => ({ domain, count }))
     .sort((a, b) => b.count - a.count || a.domain.localeCompare(b.domain));
   const domainMax = domains.reduce((m, d) => Math.max(m, d.count), 0);
-  return { total: live.length, vendored, local, untagged, domains, domainMax };
+  const retired = skills.reduce((n, s) => (s.retired ? n + 1 : n), 0);
+  return { total: live.length, vendored, local, untagged, retired, domains, domainMax };
 }
 
 function matchesFilter(
@@ -48,6 +51,10 @@ function matchesFilter(
   // `needsAttentionNames` set and passes it in, so the pipeline filters by the
   // SAME predicate the sidebar badge counts (Bug 3). No `where` → empty set.
   if (filter.kind === "needs") return needsNames?.has(s.name) ?? false;
+  // `retired` is a row-SET selector (handled by the retired predicate in
+  // libraryView, which inverts the live exclusion); it imposes no extra
+  // per-skill column filter here, so match everything.
+  if (filter.kind === "retired") return true;
   return true;
 }
 
@@ -111,17 +118,27 @@ export function libraryView(
     sortDir: SortDir;
     group: GroupMode;
     retired: Record<string, boolean>;
+    /** optimistic "promote back to live" override (decision #3/#7): an
+     *  unretired skill drops out of the Retired view and reappears in live
+     *  views immediately, before the refetch confirms. */
+    unretired: Record<string, boolean>;
     removedHard: Record<string, boolean>;
     /** source-of-truth set for the `{kind:"needs"}` filter (ADR-0010 §6). null
      *  when the deployment feed isn't loaded yet → the needs filter matches none. */
     needsNames?: Set<string> | null;
   },
 ): LibraryView {
+  // A row is "retired" when server truth or the optimistic retire override says
+  // so, UNLESS an optimistic unretire promotes it back (decision #3). removedHard
+  // is always excluded everywhere.
+  const isRetired = (s: Skill) =>
+    (s.retired || opts.retired[s.name]) && !opts.unretired[s.name];
+  const wantRetired = opts.filter?.kind === "retired";
   let rows = skills.filter(
     (s) =>
-      !s.retired &&
-      !opts.retired[s.name] &&
       !opts.removedHard[s.name] &&
+      // retired view: ONLY retired rows; every other filter: EXCLUDE retired.
+      (wantRetired ? isRetired(s) : !isRetired(s)) &&
       matchesFilter(s, opts.filter, opts.needsNames ?? null) &&
       matchesSearch(s, opts.search),
   );

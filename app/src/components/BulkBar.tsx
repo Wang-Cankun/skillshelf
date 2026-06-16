@@ -29,6 +29,7 @@ export function BulkBar() {
 
   const on = state.bulkMode === "enable";
   const agents = report.agents;
+  const isRetired = state.filter?.kind === "retired";
 
   // delta 1 — bundle label + drift hint when a domain filter is active.
   const domainFilter =
@@ -95,6 +96,28 @@ export function BulkBar() {
         ) : null}
       </span>
 
+      {isRetired ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => {
+              void commands.unretire(names);
+              dispatch({ type: "clearSelection" });
+            }}
+            style={darkBtn}
+          >
+            Unretire
+          </button>
+          <button
+            onClick={() =>
+              dispatch({ type: "askConfirm", name: names[0], names })
+            }
+            style={removeBtn}
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+      <>
       {/* delta 2 — Enable | Remove segmented control */}
       <div style={{ display: "flex", gap: 4 }}>
         <button
@@ -178,6 +201,8 @@ export function BulkBar() {
           Retire
         </button>
       </div>
+      </>
+      )}
 
       <span style={{ flex: 1 }} />
       <span
@@ -214,6 +239,18 @@ const darkBtn: React.CSSProperties = {
   background: "#2C2C30",
   color: "#FFFFFF",
   border: "1px solid #3C3C40",
+  borderRadius: 7,
+  padding: "5px 11px",
+  fontSize: 12,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  whiteSpace: "nowrap",
+};
+
+const removeBtn: React.CSSProperties = {
+  background: "#3A1212",
+  color: "#FFFFFF",
+  border: "1px solid #5B1A1A",
   borderRadius: 7,
   padding: "5px 11px",
   fontSize: 12,

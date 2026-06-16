@@ -102,7 +102,9 @@ async function invokeJson<T>(args: string[], schema: ZodType<T>): Promise<T> {
 }
 
 export async function loadLibrary(): Promise<Skill[]> {
-  if (IS_TAURI) return invokeJson(["ls", "--json"], LibrarySchema);
+  // `--all` includes retired rows so the Retired view (decision #1) can render
+  // them; live views filter retired out in libraryView (select.ts).
+  if (IS_TAURI) return invokeJson(["ls", "--all", "--json"], LibrarySchema);
   // browser: augment captured rows with §7.1 fields from where + lockfile.
   return augmentLibrary(realLibrary, realWhere);
 }

@@ -363,6 +363,60 @@ export function useCommands() {
     [dispatch, invalidate],
   );
 
+  // ── Unretire (one or many) — reversible (inverse of retire) ─────────────
+  // Mirrors `retire`: optimistically promotes each name back to live
+  // (setUnretired true), runs `skl unretire <name>` per name, invalidates the
+  // library/where/agents feeds, and offers an Undo that re-retires. On partial
+  // failure only the failed names are reverted; the rest are real on disk and
+  // reconciled by the invalidate.
+  const unretire = useCallback(
+    async (names: string[]) => {
+      if (!names.length) return;
+      dispatch({ type: "setUnretired", names, value: true });
+      const failures: string[] = [];
+      const failed: string[] = [];
+      for (const name of names) {
+        const res = await runAction(["unretire", name]);
+        if (!res.ok) {
+          failed.push(name);
+          failures.push(`${name}: ${res.stderr.trim() || "failed"}`);
+        }
+      }
+      if (failures.length) {
+        dispatch({ type: "setUnretired", names: failed, value: false });
+        await invalidate([qk.library, qk.where, qk.agents]);
+        dispatch({
+          type: "setError",
+          error: `unretire failed — ${failures.join("; ")}`,
+        });
+        return;
+      }
+      const rollback = () =>
+        dispatch({ type: "setUnretired", names, value: false });
+      await invalidate([qk.library, qk.where, qk.agents]);
+      const undo = () => {
+        rollback();
+        dispatch({ type: "hideToast" });
+        void runInverse(
+          names.map((name) => ["retire", name]),
+          [qk.library, qk.where, qk.agents],
+        );
+      };
+      dispatch({
+        type: "showToast",
+        toast: {
+          msg:
+            names.length > 1
+              ? `${names.length} skills unretired`
+              : `Unretired ${names[0]}`,
+          cmd: cmdEcho(["unretire", ...names]),
+          undo,
+        },
+      });
+    },
+    [dispatch, invalidate, runInverse],
+  );
+
   // ── Untag a domain — reversible ─────────────────────────────────────────
   const untag = useCallback(
     async (name: string, domain: string) => {
@@ -517,6 +571,7 @@ export function useCommands() {
     addProject,
     removeProject,
     retire,
+    unretire,
     untag,
     tag,
     hardRemove,

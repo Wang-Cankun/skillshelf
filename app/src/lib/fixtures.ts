@@ -244,6 +244,37 @@ export const realLibrary: Skill[] = [
     "modifiedAt": "2026-05-06T15:45:00.000Z",
     "createdAt": "2026-02-25T10:10:00.000Z",
     "deployCount": 1
+  },
+  // ── Retired fixtures (decision #10) — exercise the Retired view. Retired
+  //    skills are deployed nowhere (deployCount:0) and excluded from live views;
+  //    they only appear under the {kind:"retired"} filter.
+  {
+    "name": "json-validator",
+    "description": "Validate JSON documents against a schema. Superseded by json-schema-gen, which both infers and validates. Kept retired for reference. Triggers on \"validate json\", \"check schema\".",
+    "primaryDomain": "data",
+    "domains": ["data"],
+    "path": `${LIB}/json-validator`,
+    "retired": true,
+    "mode": "owned",
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-02-14T09:00:00.000Z",
+    "createdAt": "2026-01-10T08:00:00.000Z",
+    "deployCount": 0
+  },
+  {
+    "name": "toc-builder",
+    "description": "A legacy duplicate of markdown-toc that built a table of contents for markdown files. Replaced by markdown-toc and retired. Triggers on \"build toc\", \"table of contents\".",
+    "primaryDomain": "docs",
+    "domains": ["docs"],
+    "path": `${LIB}/toc-builder`,
+    "retired": true,
+    "mode": "owned",
+    "linkTarget": null,
+    "source": "local",
+    "modifiedAt": "2026-01-22T11:00:00.000Z",
+    "createdAt": "2025-12-01T10:00:00.000Z",
+    "deployCount": 0
   }
 ];
 
