@@ -3,7 +3,7 @@
 **A package manager for your agent skills — one canonical library, loaded on demand, never all at once.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Bun](https://img.shields.io/badge/Bun-%E2%89%A51.0-black?logo=bun)](https://bun.sh)
+[![Bun](https://img.shields.io/badge/Bun-%E2%89%A51.2-black?logo=bun)](https://bun.sh)
 [![CI](https://img.shields.io/github/actions/workflow/status/Wang-Cankun/skillshelf/ci.yml?branch=main)](https://github.com/Wang-Cankun/skillshelf/actions)
 [![npm](https://img.shields.io/npm/v/skillshelf.svg)](https://www.npmjs.com/package/skillshelf)
 
@@ -46,7 +46,7 @@ matrix (Global + the projects where it's pinned), plus lifecycle actions.
 
 ## Install
 
-skillshelf runs on [Bun](https://bun.sh) (>= 1.0). No other runtime dependencies.
+skillshelf runs on [Bun](https://bun.sh) (>= 1.2). No other runtime dependencies.
 
 > **Bun is required, not optional.** The `skl` bin is a TypeScript entrypoint with a
 > `#!/usr/bin/env bun` shebang — there is no compiled Node build. `npm i -g skillshelf`

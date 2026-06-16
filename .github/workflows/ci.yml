@@ -12,10 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Cover both platforms skillshelf's symlink/realpath plumbing runs on,
-        # and pin the declared engines floor (1.0.0) alongside latest.
+        # Cover both platforms skillshelf's symlink/realpath plumbing runs on.
         os: [ubuntu-latest, macos-latest]
-        bun: ["1.0.0", "latest"]
+        bun: ["latest"]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
