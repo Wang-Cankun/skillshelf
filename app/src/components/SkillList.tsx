@@ -16,6 +16,7 @@ import { effState } from "../lib/agents";
 import type { AgentsReport, DeployStateName, Skill } from "../lib/types";
 import { MONO } from "../lib/tokens";
 import { SkillRow } from "./SkillRow";
+import { RetiredRow } from "./RetiredRow";
 
 const EMPTY_AGENTS: AgentsReport = { agents: [], scopes: [], deployments: {} };
 
@@ -80,6 +81,7 @@ export function SkillList() {
   // ONE needsAttentionNames set and it bypasses the project-installed scope slice
   // below (otherwise the count and the rows would diverge again — Bug 3).
   const needsFilter = state.filter?.kind === "needs";
+  const retiredFilter = state.filter?.kind === "retired";
   const needsNames =
     needsFilter && where ? needsAttentionNames(skills, where) : null;
 
@@ -91,6 +93,7 @@ export function SkillList() {
     sortDir: state.sortDir,
     group: state.group,
     retired: state.retired,
+    unretired: state.unretired,
     removedHard: state.removedHard,
     needsNames,
   });
@@ -99,6 +102,7 @@ export function SkillList() {
   //    (it has no agents report). Re-bucket after filtering each bucket's rows.
   const projectInstalled =
     !needsFilter &&
+    !retiredFilter &&
     state.scope !== GLOBAL_SCOPE &&
     state.range === "installed";
 
@@ -190,7 +194,9 @@ export function SkillList() {
           <div style={{ padding: "28px 14px", fontSize: 12.5, color: "#9A9AA2" }}>
             {needsFilter
               ? "Nothing needs attention here."
-              : projectInstalled
+              : retiredFilter
+                ? "Nothing retired."
+                : projectInstalled
                 ? "No skills installed in this project yet — switch to All to deploy some."
                 : "No skills match."}
           </div>
@@ -218,9 +224,13 @@ export function SkillList() {
                   </span>
                 </div>
               ) : null}
-              {bucket.rows.map((skill) => (
-                <SkillRow key={skill.name} skill={skill} />
-              ))}
+              {bucket.rows.map((skill) =>
+                retiredFilter ? (
+                  <RetiredRow key={skill.name} skill={skill} />
+                ) : (
+                  <SkillRow key={skill.name} skill={skill} />
+                ),
+              )}
             </div>
           ))
         )}

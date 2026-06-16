@@ -36,6 +36,8 @@ export type Filter =
   | { kind: "untagged" }
   // ADR-0010 §6 — the demoted Inbox becomes a smart filter ("Needs attention").
   | { kind: "needs" }
+  // Retired view — shows ONLY retired skills; every other filter excludes them.
+  | { kind: "retired" }
   | null;
 
 /** An open anomaly-resolution request (delta 3 / ADR-0010 §4 part c). Set when a
@@ -102,6 +104,9 @@ export interface State {
   // optimistic overrides (rolled back on mutation error)
   deployOverrides: Record<string, "on" | "off">; // `${skill}|${agent}|${scope}`
   retired: Record<string, boolean>;
+  /** optimistic "promote back to live" — set true while an `unretire` is in
+   *  flight so a server-retired skill reappears in live views immediately. */
+  unretired: Record<string, boolean>;
   removedTags: Record<string, string[]>;
   removedHard: Record<string, boolean>;
 
@@ -118,7 +123,11 @@ export interface State {
 
   // global affordances
   toast: Toast | null;
-  confirm: { name: string } | null;
+  /** open type-to-confirm hard-remove request. `name` is the primary/display
+   *  skill; `names` (when present) carries the full set for a BULK remove so
+   *  RemoveModal can loop `hardRemove` over them. Single-name removes omit
+   *  `names` and stay backward-compatible (consumers fall back to `[name]`). */
+  confirm: { name: string; names?: string[] } | null;
   confirmText: string;
   error: string | null;
 }
@@ -137,6 +146,7 @@ export const initialState: State = {
   dryRun: false,
   deployOverrides: {},
   retired: {},
+  unretired: {},
   removedTags: {},
   removedHard: {},
   drawer: null,
@@ -169,6 +179,7 @@ export type Action =
   | { type: "setDeployOverride"; key: string; value: "on" | "off" }
   | { type: "clearDeployOverride"; key: string }
   | { type: "setRetired"; names: string[]; value: boolean }
+  | { type: "setUnretired"; names: string[]; value: boolean }
   | { type: "addRemovedTag"; name: string; domain: string }
   | { type: "removeRemovedTag"; name: string; domain: string }
   | { type: "setRemovedHard"; name: string; value: boolean }
@@ -187,7 +198,7 @@ export type Action =
   // global affordances
   | { type: "showToast"; toast: Toast }
   | { type: "hideToast" }
-  | { type: "askConfirm"; name: string }
+  | { type: "askConfirm"; name: string; names?: string[] }
   | { type: "cancelConfirm" }
   | { type: "setConfirmText"; text: string }
   | { type: "setError"; error: string | null };
@@ -273,6 +284,14 @@ export function reducer(state: State, action: Action): State {
       }
       return { ...state, retired };
     }
+    case "setUnretired": {
+      const unretired = { ...state.unretired };
+      for (const n of action.names) {
+        if (action.value) unretired[n] = true;
+        else delete unretired[n];
+      }
+      return { ...state, unretired };
+    }
     case "addRemovedTag": {
       const cur = state.removedTags[action.name] ?? [];
       return {
@@ -331,7 +350,11 @@ export function reducer(state: State, action: Action): State {
     case "hideToast":
       return { ...state, toast: null };
     case "askConfirm":
-      return { ...state, confirm: { name: action.name }, confirmText: "" };
+      return {
+        ...state,
+        confirm: { name: action.name, names: action.names },
+        confirmText: "",
+      };
     case "cancelConfirm":
       return { ...state, confirm: null, confirmText: "" };
     case "setConfirmText":

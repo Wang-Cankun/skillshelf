@@ -13,6 +13,11 @@ export function RemoveModal() {
 
   if (!confirm) return null;
   const name = confirm.name;
+  // Bulk remove (retired view) carries the full set in `names`; single removes
+  // omit it and fall back to `[name]`. The type-to-confirm gate arms against the
+  // primary/display name in both cases.
+  const names = confirm.names ?? [name];
+  const bulk = names.length > 1;
   const armed = state.confirmText === name;
 
   return (
@@ -66,7 +71,9 @@ export function RemoveModal() {
           >
             ⚠
           </span>
-          <span style={{ fontSize: 15, fontWeight: 650 }}>Remove {name}?</span>
+          <span style={{ fontSize: 15, fontWeight: 650 }}>
+            {bulk ? `Remove ${names.length} skills?` : `Remove ${name}?`}
+          </span>
         </div>
         <p
           style={{
@@ -76,8 +83,9 @@ export function RemoveModal() {
             margin: "0 0 12px",
           }}
         >
-          This deletes the skill folder from disk and drops its tags +
-          provenance.{" "}
+          {bulk
+            ? "This deletes these skill folders from disk and drops their tags + provenance. "
+            : "This deletes the skill folder from disk and drops its tags + provenance. "}
           <b style={{ color: "#3F3F46" }}>This cannot be undone.</b> To retire
           instead (reversible), close this and use Retire.
         </p>
@@ -93,7 +101,8 @@ export function RemoveModal() {
             marginBottom: 13,
           }}
         >
-          <span style={{ color: "#A1A1AA" }}>$</span> skl rm {name}
+          <span style={{ color: "#A1A1AA" }}>$</span> skl rm{" "}
+          {names.join(" ")}
         </div>
         <div
           style={{ fontSize: 11.5, color: "#71717A", marginBottom: 6 }}
@@ -140,7 +149,15 @@ export function RemoveModal() {
             Cancel
           </button>
           <button
-            onClick={armed ? () => commands.hardRemove(name) : undefined}
+            onClick={
+              armed
+                ? () => {
+                    // hardRemove is single-name (and cancels the modal on its
+                    // first call); loop over the captured set for bulk removes.
+                    for (const n of names) commands.hardRemove(n);
+                  }
+                : undefined
+            }
             disabled={!armed}
             style={
               armed

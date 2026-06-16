@@ -70,6 +70,7 @@ export function Sidebar() {
   const localFilter: Filter = { kind: "source", value: "local" };
   const untaggedFilter: Filter = { kind: "untagged" };
   const needsFilter: Filter = { kind: "needs" };
+  const retiredFilter: Filter = { kind: "retired" };
 
   interface SmartRow {
     glyph: string;
@@ -111,6 +112,14 @@ export function Sidebar() {
       color: C.amber,
       onClick: () => setFilter(untaggedFilter),
       active: filterActive(untaggedFilter),
+    },
+    {
+      glyph: "🗄",
+      label: "Retired",
+      count: agg.retired,
+      color: C.faint,
+      onClick: () => setFilter(retiredFilter),
+      active: filterActive(retiredFilter),
     },
     {
       glyph: "◇",

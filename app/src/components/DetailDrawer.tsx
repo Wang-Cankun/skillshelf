@@ -75,6 +75,11 @@ export function DetailDrawer() {
     );
 
   const isVendored = skill?.source === "vendored";
+  // Retired = server truth OR optimistic retire, unless optimistically unretired.
+  // A retired skill can't be deployed (footgun), so the drawer swaps its
+  // DEPLOYMENTS matrix for a muted note and its LIFECYCLE Retire → Unretire.
+  const isRetired =
+    (skill?.retired || state.retired[name]) && !state.unretired[name];
   const removedTags = state.removedTags[name] ?? [];
   const domains = (skill?.domains ?? []).filter(
     (d) => !removedTags.includes(d),
@@ -641,7 +646,33 @@ export function DetailDrawer() {
             {/* AGENTS × SCOPE sub-matrix (delta 3, anti-sparse): one row per
                 scope where this skill lives (Global + deployed projects only),
                 columns = agents, cells = the shared AgentToggle (size 30).
-                "+ Add to project…" is the only way to surface a fresh row. */}
+                "+ Add to project…" is the only way to surface a fresh row.
+                Retired skills aren't deployed anywhere, so the matrix is
+                replaced with a muted note (deploying a retired skill is a
+                footgun — unretire first). */}
+            {isRetired ? (
+              <div
+                style={{
+                  padding: "15px 16px",
+                  borderBottom: "1px solid #EFEFF1",
+                }}
+              >
+                <div style={{ ...CAPTION, marginBottom: 9 }}>DEPLOYMENTS</div>
+                <div
+                  style={{
+                    background: "#F6F6F7",
+                    border: "1px solid #ECECEE",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    fontSize: 11.5,
+                    lineHeight: 1.55,
+                    color: "#71717A",
+                  }}
+                >
+                  Retired — not deployed anywhere. Unretire to deploy.
+                </div>
+              </div>
+            ) : (
             <div
               style={{ padding: "15px 16px", borderBottom: "1px solid #EFEFF1" }}
             >
@@ -754,6 +785,7 @@ export function DetailDrawer() {
                 warning cells open a resolve flow · live from skl where
               </div>
             </div>
+            )}
 
             {/* TAGS */}
             <div
@@ -795,12 +827,21 @@ export function DetailDrawer() {
                 <button style={lifeBtn} disabled title="coming soon">
                   Rename
                 </button>
-                <button
-                  onClick={() => commands.retire([name])}
-                  style={lifeBtn}
-                >
-                  Retire
-                </button>
+                {isRetired ? (
+                  <button
+                    onClick={() => commands.unretire([name])}
+                    style={lifeBtn}
+                  >
+                    Unretire
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => commands.retire([name])}
+                    style={lifeBtn}
+                  >
+                    Retire
+                  </button>
+                )}
                 <button
                   onClick={() => dispatch({ type: "askConfirm", name })}
                   style={{
@@ -826,7 +867,8 @@ export function DetailDrawer() {
                   whiteSpace: "nowrap",
                 }}
               >
-                <span style={{ color: "#A1A1AA" }}>$</span> skl retire {name}
+                <span style={{ color: "#A1A1AA" }}>$</span> skl{" "}
+                {isRetired ? "unretire" : "retire"} {name}
               </div>
             </div>
           </div>
