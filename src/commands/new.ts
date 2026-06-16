@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import type { Ctx } from "../types.ts";
 import { serializeFrontmatter } from "../lib/frontmatter.ts";
 import { ensureDir } from "../lib/fs.ts";
+import { entryStatus } from "../core/library.ts";
 
 export const meta = {
   name: "new",
@@ -118,6 +119,17 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // Flat, non-semantic layout (ADR-0001): always <library>/<name>/.
     const skillDir = join(libraryPath, name);
     const bodyPath = join(skillDir, "SKILL.md");
+
+    // Retired-aware guard: refuse if the name exists ONLY as a retired tombstone
+    // (<library>/_retired/<name>). Scaffolding a fresh active copy beside it would
+    // strand a duplicate and break `skl unretire`; this fires regardless of --force.
+    const status = entryStatus(libraryPath, name);
+    if (status.retired && !status.active) {
+      ctx.error(
+        `skl new: a retired '${name}' exists — run \`skl unretire ${name}\` first (or choose another name)`,
+      );
+      return 1;
+    }
 
     if (existsSync(bodyPath) && !args.force) {
       ctx.error(

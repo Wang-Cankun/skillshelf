@@ -100,6 +100,20 @@ describe("skl link --from (LINKED mode)", () => {
     expect((await lstat(join(library, "claim-log"))).isSymbolicLink()).toBe(false);
   });
 
+  test("refuses to shelve over a retired tombstone (points at unretire)", async () => {
+    // "claim-log" exists only as a retired tombstone — no active library entry.
+    await makeSkillDir(join(library, "_retired"), "claim-log");
+    const src = await makeSkillDir(devRepo, "claim-log");
+    const { ctx, errors } = makeCtx(library);
+
+    const code = await run(["claim-log", "--from", src], ctx);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("skl unretire claim-log");
+    // No active symlink created beside the tombstone.
+    expect(existsSync(join(library, "claim-log"))).toBe(false);
+    expect(existsSync(join(library, "_retired", "claim-log"))).toBe(true);
+  });
+
   test("--force replaces an owned copy with the symlink and reports discarded", async () => {
     await makeSkillDir(library, "claim-log");
     const src = await makeSkillDir(devRepo, "claim-log");

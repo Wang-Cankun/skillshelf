@@ -39,6 +39,7 @@ import {
   safeSymlink,
   realpathOrSelfAsync,
 } from "../lib/fs.ts";
+import { entryStatus } from "../core/library.ts";
 
 export const meta = {
   name: "link",
@@ -164,6 +165,16 @@ async function runFrom(flags: Flags, ctx: Ctx): Promise<number> {
         else ctx.log(`link: library/${name} already points at ${fromPath}`);
         return 0;
       }
+    }
+
+    // Retired-aware guard: refuse if the name exists ONLY as a retired tombstone
+    // (<library>/_retired/<name>). Shelving a symlink beside it would strand a duplicate
+    // and break `skl unretire`; --force replaces an ACTIVE entry, not a retired one, so
+    // this fires regardless. The user must unretire first.
+    const status = entryStatus(libraryPath, name);
+    if (status.retired && !status.active) {
+      ctx.error(`skl link: a retired '${name}' exists — run \`skl unretire ${name}\` first.`);
+      return 1;
     }
 
     // An existing library entry won't be clobbered silently.

@@ -18,32 +18,13 @@ import { isSymlink, ensureDir } from "../lib/fs.ts";
 import { parseFrontmatter, serializeFrontmatter } from "../lib/frontmatter.ts";
 import { readTaxonomy, writeTaxonomy } from "./taxonomy.ts";
 import { readLockfile, writeLockfile } from "./provenance.ts";
-import { loadLibrary } from "./library.ts";
+import { loadLibrary, entryStatus, RETIRED_DIR, assertSafeName } from "./library.ts";
 import { writeIndex } from "./indexgen.ts";
 
-const RETIRED_DIR = "_retired";
-
-/**
- * Reject a skill name that is not a single path segment — the choke point that keeps
- * a crafted/typo'd/agent-supplied `name` (e.g. "../../etc") from escaping the library
- * when it reaches `join(libraryPath, name)` and then `rm`/`rename`. A name with no path
- * separator and no `.`/`..` cannot resolve outside its parent dir, so containment is
- * guaranteed without over-restricting otherwise-unusual existing slugs. Throws on a bad
- * name; every name-keyed mutation funnels through locateEntry, so validating here covers
- * removeSkill / retireSkill / unretireSkill / renameSkill in one place.
- */
-export function assertSafeName(name: string): void {
-  if (
-    name === "" ||
-    name === "." ||
-    name === ".." ||
-    name.includes("/") ||
-    name.includes("\\") ||
-    name.includes("\0")
-  ) {
-    throw new Error(`invalid skill name '${name}' — must be a single name, no path separators or '..'`);
-  }
-}
+// assertSafeName + RETIRED_DIR live in library.ts beside entryStatus (the single
+// existence-resolution primitive) and are re-exported here so existing importers that
+// reach for them via lifecycle.ts (e.g. add.ts) keep working.
+export { assertSafeName, RETIRED_DIR };
 
 /** Regenerate INDEX.md from the current library state. Returns the path written. */
 export async function reindexLibrary(libraryPath: string): Promise<string> {
@@ -63,14 +44,20 @@ export interface EntryLocation {
   isLink: boolean;
 }
 
-/** Locate a skill entry across the active and retired locations. */
+/**
+ * Locate a skill entry across the active and retired locations. The active/retired
+ * existence rule is NOT re-implemented here — it delegates to entryStatus (the single
+ * source of truth, which also runs assertSafeName), then enriches the two booleans with
+ * the resolved path (active preferred) and whether that path is a symlink, the extra the
+ * write mutations need.
+ */
 export function locateEntry(libraryPath: string, name: string): EntryLocation {
-  assertSafeName(name);
-  const activePath = join(libraryPath, name);
-  const retiredPath = join(libraryPath, RETIRED_DIR, name);
-  const active = existsSync(activePath) || isSymlink(activePath);
-  const retired = existsSync(retiredPath) || isSymlink(retiredPath);
-  const path = active ? activePath : retired ? retiredPath : null;
+  const { active, retired } = entryStatus(libraryPath, name);
+  const path = active
+    ? join(libraryPath, name)
+    : retired
+      ? join(libraryPath, RETIRED_DIR, name)
+      : null;
   const isLink = path ? isSymlink(path) : false;
   return { active, retired, path, isLink };
 }
@@ -181,7 +168,14 @@ export async function renameSkill(
 ): Promise<RenameResult> {
   const loc = locateEntry(libraryPath, from);
   if (!loc.path) throw new Error(`'${from}' is not in the library`);
-  if (locateEntry(libraryPath, to).path) {
+  const dest = locateEntry(libraryPath, to);
+  if (dest.path) {
+    // A retired-only target is a tombstone, not a usable name: point at `skl unretire`
+    // (renaming onto it would either collide or shadow the retired copy) rather than the
+    // generic "choose another name". An active target keeps the original message.
+    if (dest.retired && !dest.active) {
+      throw new Error(`a retired '${to}' exists — run \`skl unretire ${to}\` first (or choose another name)`);
+    }
     throw new Error(`'${to}' already exists in the library — choose another name`);
   }
 

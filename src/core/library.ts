@@ -123,6 +123,60 @@ export function entryModeInfo(libraryPath: string, name: string): EntryModeInfo 
   return owned ? { mode: "owned", linkTarget: null } : { mode: "linked", linkTarget: real };
 }
 
+/** Directory holding retired (soft-deleted) tombstones, relative to the library root. */
+export const RETIRED_DIR = "_retired";
+
+/**
+ * Reject a skill name that is not a single path segment — the choke point that keeps a
+ * crafted/typo'd/agent-supplied `name` (e.g. "../../etc") from escaping the library when
+ * it reaches `join(libraryPath, name)` and then `rm`/`rename`/copy. A name with no path
+ * separator and no `.`/`..` cannot resolve outside its parent dir, so containment is
+ * guaranteed without over-restricting otherwise-unusual existing slugs. Throws on a bad
+ * name. Lives here (not in lifecycle.ts) so it sits beside entryStatus — the single
+ * existence-resolution primitive both the read guards (add/import/new/link) and the write
+ * mutations (lifecycle.ts re-exports it) funnel through.
+ */
+export function assertSafeName(name: string): void {
+  if (
+    name === "" ||
+    name === "." ||
+    name === ".." ||
+    name.includes("/") ||
+    name.includes("\\") ||
+    name.includes("\0")
+  ) {
+    throw new Error(`invalid skill name '${name}' — must be a single name, no path separators or '..'`);
+  }
+}
+
+/** Whether a name occupies the active and/or retired slot in the library. */
+export interface EntryStatus {
+  /** <library>/<name> exists (real dir or symlink) */
+  active: boolean;
+  /** <library>/_retired/<name> exists (real dir or symlink) */
+  retired: boolean;
+}
+
+/**
+ * Single source of truth for "is this name taken?" across BOTH locations a skill can
+ * live: the active slot <library>/<name> and the retired tombstone
+ * <library>/_retired/<name>. Existence = existsSync OR isSymlink, so a LINKED entry (a
+ * symlink whose target may be absent) still counts as present. Name-validated via
+ * assertSafeName so a path-escaping `name` can never be joined; collision guards in
+ * add/import/new/link and the write mutations in lifecycle.ts (which delegates locateEntry
+ * to this) both resolve existence here, so the active+retired rule lives in exactly one
+ * place. Kept dependency-free of lifecycle.ts to avoid an import cycle.
+ */
+export function entryStatus(libraryPath: string, name: string): EntryStatus {
+  assertSafeName(name);
+  const activePath = join(libraryPath, name);
+  const retiredPath = join(libraryPath, RETIRED_DIR, name);
+  return {
+    active: existsSync(activePath) || isSymlink(activePath),
+    retired: existsSync(retiredPath) || isSymlink(retiredPath),
+  };
+}
+
 /** All unique domains across the library (sorted). */
 export function listDomains(skills: Skill[]): string[] {
   const set = new Set<string>();
