@@ -96,19 +96,19 @@ jobs:
           # All optional: if unset, the macOS app ships UNSIGNED. Set these
           # via `gh secret set` to enable signing + notarization. See
           # docs/RELEASING.md → "Add macOS signing + notarization".
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}                     # base64 of the .p12 Developer ID cert
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}   # password for the .p12
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}           # "Developer ID Application: NAME (TEAMID)"
-          APPLE_ID: ${{ secrets.APPLE_ID }}                                       # Apple ID email for notarization
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}                           # app-specific password for that Apple ID
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}                             # Apple Developer Team ID
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}                     # base64 of the .p12 Developer ID cert
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}   # password for the .p12
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}           # "Developer ID Application: NAME (TEAMID)"
+          # APPLE_ID: ${{ secrets.APPLE_ID }}                                       # Apple ID email for notarization
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}                           # app-specific password for that Apple ID
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}                             # Apple Developer Team ID
 
           # --- Tauri updater signing --------------------------------------
           # Optional: if unset, update artifacts/latest.json are NOT signed and
           # the in-app updater stays inert. Set these to activate the updater.
           # See docs/RELEASING.md → "Activate the updater".
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
           tagName: ${{ github.ref_name }}
