@@ -19,7 +19,7 @@ struct SklResult {
 const ALLOWED_VERBS: &[&str] = &[
     "ls", "search", "show", "scan", "where", "status", "import", "add",
     "tag", "untag", "retag", "rename", "retire", "unretire", "rm",
-    "use", "drop", "link", "roots", "outdated", "update", "refresh",
+    "use", "drop", "link", "roots", "projects", "outdated", "update", "refresh",
     "infer", "index", "new", "init",
     // ADR-0008: multi-agent + drawer feeds. `agents`/`show` back the new
     // `--json` loaders; `diff` backs a future near-dup affordance (deferred in
@@ -143,6 +143,7 @@ fn run_skl(args: Vec<String>) -> Result<SklResult, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![run_skl])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

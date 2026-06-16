@@ -11,3 +11,8 @@ dist/
 
 # generated eval reports (regenerate with evals/grade_and_report.py)
 skills/skl/evals/results/
+
+# heavy design artifacts (kept locally; lightweight ADR/brief/impl-plan .md stay tracked)
+docs/design/skillshelf-function1.zip
+docs/design/_fn1_preview/
+docs/design/_runtime_shots/

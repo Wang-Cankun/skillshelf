@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,5 +89,34 @@ describe("skl use/drop — single-skill deploy (friction #2)", () => {
     const code = await useRun(["does-not-exist", "--json"], ctx);
     expect(code).toBe(1);
     expect((json[0] as { error: string }).error).toBe("empty-bundle");
+  });
+
+  test("use/drop --project against a fresh EMPTY project dir creates + symmetrically removes (ADR-0010 §5a)", async () => {
+    // A brand-new project dir with no .claude/skills yet — the GUI deploy path.
+    const fresh = join(tmp, "fresh-project");
+    await mkdir(fresh, { recursive: true });
+
+    const { ctx, json } = makeCtx(library);
+    const code = await useRun(["alpha", "--agent", "claude", "--project", fresh, "--json"], ctx);
+    expect(code).toBe(0);
+    const out = json[0] as {
+      scope: string;
+      agent: string;
+      skillsDir: string;
+      linked: Array<{ name: string; status: string }>;
+    };
+    expect(out.agent).toBe("claude");
+    expect(out.scope).toBe("fresh-project"); // scope = project basename
+    expect(out.skillsDir).toBe(join(fresh, ".claude", "skills"));
+    expect(existsSync(join(fresh, ".claude", "skills"))).toBe(true);
+    expect(existsSync(join(fresh, ".claude", "skills", "alpha"))).toBe(true);
+    expect(out.linked[0]!.status).toBe("linked");
+
+    const { ctx: ctx2, json: json2 } = makeCtx(library);
+    const dcode = await dropRun(["alpha", "--agent", "claude", "--project", fresh, "--json"], ctx2);
+    expect(dcode).toBe(0);
+    const dout = json2[0] as { removed: number; results: Array<{ status: string }> };
+    expect(dout.removed).toBe(1);
+    expect(existsSync(join(fresh, ".claude", "skills", "alpha"))).toBe(false);
   });
 });

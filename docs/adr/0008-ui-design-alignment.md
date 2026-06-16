@@ -6,6 +6,12 @@ design against `Workbench.dc.html` and added the Drawer + multi-agent)
 
 ## Status
 
+**Partially superseded by [ADR-0010](0010-library-first-management-skill-agent-scope.md)** — its
+information architecture (the `Inbox / Matrix / Library` three-tab shell and the Domain↔Agent
+Matrix grid) and its **"project-linking-is-CLI-only" rule** are obsolete (the latter judged
+mistaken; the GUI now deploys at project scope). The data/bridge layer and `skl --json` contracts
+below remain in force.
+
 Accepted — supersedes the *visual/layout* of the first UI build (`e5ee101`). Implements the
 visual + feature target set by the **remade design mockup** and `feature-scope-v2.md`. Does NOT
 change ADR-0007 (fact-vs-inference, function-first).

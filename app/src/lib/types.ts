@@ -138,6 +138,34 @@ export interface AgentInfo {
   global: string; // ~/.<id>/skills
   projConvention: string; // .<id>/skills
   installed: boolean;
+  /**
+   * true if the agent auto-loads its GLOBAL skills dir (~/.<id>/skills) in EVERY
+   * project, so a global-only skill is effectively active everywhere with no
+   * project symlink (ADR-0010 "inherited from Global" model). Default true (the
+   * ~/.x/skills convention); a custom agent may be false. Drives the derived
+   * 'inherited' cell state — an agent with inheritsGlobal=false never inherits.
+   */
+  inheritsGlobal: boolean;
+  // ── ADR-0010 §9 additions (custom-agent registration, delta 4) ───────────
+  /** provider-icons key (svg picker); falls back to agent-icons/<id> then letter. */
+  icon?: string;
+  /** hex tint for the chip/letter fallback when no svg matches. */
+  color?: string;
+  /** true = user-registered via the agents config block (not a built-in seed). */
+  custom?: boolean;
+}
+
+/**
+ * Resolved config slice the GUI needs: the user `agents` block (delta 4) and the
+ * persisted nav-projects list (§5a). Mirrors `skl projects --json` (`{projects}`)
+ * plus the custom-agent entries the engine merges into `agents --json`.
+ * NAVIGATION state only — never deployment truth (derive-from-FS invariant).
+ */
+export interface AppConfig {
+  /** user-registered custom agents (from the config `agents` block). */
+  agents: AgentInfo[];
+  /** persisted absolute project dirs selectable as scopes. */
+  projects: string[];
 }
 
 /** Per (skill, agent) deployment truth: global state + per-project states. */

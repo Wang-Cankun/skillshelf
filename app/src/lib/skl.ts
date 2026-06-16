@@ -16,6 +16,8 @@ import type {
   ScanReport,
   StatusReport,
   AgentsReport,
+  AgentInfo,
+  AppConfig,
   ShowReport,
   OutdatedReport,
 } from "./types";
@@ -25,17 +27,37 @@ import {
   ScanReportSchema,
   StatusReportSchema,
   AgentsReportSchema,
+  ConfigSchema,
   RawShowSchema,
   OutdatedSchema,
 } from "./schemas";
-import { realLibrary, realWhere, realScan, realStatus } from "./fixtures";
+import { realLibrary, realWhere, realScan, realStatus, realConfig } from "./fixtures";
 import { augmentLibrary, deriveShow, normalizeShow, deriveOutdated } from "./derive";
 import { deriveAgentsReport } from "./agents";
-import { visibleAgents } from "./prefs";
+import { resolveVisibleAgents } from "./prefs";
 import type { ZodType } from "zod";
+
+/** Basename of an absolute project dir — the scope-name the agents report keys
+ *  by (RISK 4: config carries absolute paths; report scopes are basenames). */
+export function projectScopeName(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
+}
 
 export const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/**
+ * Normalize agents parsed from a `--json` payload to a guaranteed
+ * `AgentInfo.inheritsGlobal: boolean` (ADR-0010). The schema keeps the field
+ * optional so an older skl that omits it still validates; here a missing value
+ * defaults to true — the ~/.x/skills inheritance convention — so every consumer
+ * (cellStateFor, effectiveCounts, the matrix) sees a defined flag.
+ */
+function normalizeAgents(
+  agents: ReadonlyArray<Omit<AgentInfo, "inheritsGlobal"> & { inheritsGlobal?: boolean }>,
+): AgentInfo[] {
+  return agents.map((a) => ({ ...a, inheritsGlobal: a.inheritsGlobal ?? true }));
+}
 
 /**
  * Structured result of running a `skl` action. Mirrors the Rust `SklResult`
@@ -131,13 +153,109 @@ export async function loadOutdated(): Promise<OutdatedReport> {
   return deriveOutdated(augmentLibrary(realLibrary, realWhere));
 }
 
+export async function loadConfig(): Promise<AppConfig> {
+  if (IS_TAURI) {
+    // `skl projects --json` -> `{ projects: string[] }` for the nav scopes, and
+    // the custom-agent registry is recovered from `agents --json`: the engine
+    // tags every agent that came from a config `agents` entry with `custom:true`
+    // (src/core/agents.ts), so filtering on that flag reconstructs config.agents
+    // — the round-trip the `agents add/rm` write verb persists (ADR-0010 delta 4).
+    const [{ projects }, report] = await Promise.all([
+      invokeJson(["projects", "--json"], ConfigSchema),
+      invokeJson(["agents", "--json"], AgentsReportSchema),
+    ]);
+    const agents = normalizeAgents(report.agents).filter((a) => a.custom === true);
+    return { projects, agents };
+  }
+  return realConfig;
+}
+
 export async function loadAgents(): Promise<AgentsReport> {
-  const report = IS_TAURI
-    ? await invokeJson(["agents", "--json"], AgentsReportSchema)
-    : // browser: reconstruct the agents report from the real `where` feed.
-      deriveAgentsReport(realWhere);
-  // UI display filter (prefs.ts) — hide agents this install doesn't use.
-  return { ...report, agents: visibleAgents(report.agents) };
+  if (IS_TAURI) {
+    // The engine already merges the config `agents` block + persisted-project
+    // scopes into `agents --json` (S1), so only the display filter remains.
+    const report = await invokeJson(["agents", "--json"], AgentsReportSchema);
+    return { ...report, agents: resolveVisibleAgents(normalizeAgents(report.agents)) };
+  }
+  // browser: reconstruct from the real `where` feed, and inject the custom
+  // agents + persisted-but-empty project scopes the engine would have merged.
+  const cfg = realConfig;
+  const report = deriveAgentsReport(realWhere, {
+    agents: cfg.agents,
+    extraScopes: cfg.projects.map(projectScopeName),
+  });
+  return { ...report, agents: resolveVisibleAgents(report.agents, cfg.agents) };
+}
+
+// ── Config mutations (delta 4 + §5a). Routed through runAction so browser dev
+//    gets a dry-run echo and Tauri runs the real verb. `projects add/rm` and
+//    `agents add/rm` are real engine verbs that persist into config.json; in the
+//    browser they degrade to a dry-run echo (nothing mutated). ─────────────────
+
+/** Persist a project dir to the nav-scopes list (`skl projects add <path>`). */
+export function addProjectCmd(path: string) {
+  return runAction(["projects", "add", path]);
+}
+
+/** Remove a project dir from the nav-scopes list (`skl projects rm <path>`). */
+export function removeProjectCmd(path: string) {
+  return runAction(["projects", "rm", path]);
+}
+
+/**
+ * Register (or override) a custom agent in config.json via `skl agents add`
+ * (ADR-0010 delta 4). A matching id overrides; a new id appends. The persisted
+ * entry is recovered on the next `agents --json` read (tagged `custom:true`), so
+ * the popover's invalidate(qk.config/qk.agents) round-trips to real truth instead
+ * of vanishing. In the browser this is a dry-run echo (nothing mutated).
+ */
+export function addAgentCmd(entry: AppConfig["agents"][number]) {
+  const args = [
+    "agents",
+    "add",
+    entry.id,
+    "--name",
+    entry.name,
+    "--global",
+    entry.global,
+    "--proj-convention",
+    entry.projConvention,
+  ];
+  if (entry.icon) args.push("--icon", entry.icon);
+  if (entry.color) args.push("--color", entry.color);
+  // Global→project inheritance (ADR-0010): default TRUE. Only forward the opt-out
+  // flag when the entry diverges from the default — `--inherits-global` is implicit
+  // — so the engine persists inheritsGlobal:false and the checkbox actually sticks
+  // in the Tauri path (not just in browser fixtures).
+  if (entry.inheritsGlobal === false) args.push("--no-inherits-global");
+  return runAction(args);
+}
+
+/** Remove a custom agent from config.json via `skl agents rm <id>` (delta 4). */
+export function removeAgentCmd(id: string) {
+  return runAction(["agents", "rm", id]);
+}
+
+/**
+ * Persist a per-agent Hide toggle (ADR-0010 delta 4 / RISK 8). Hiding writes a
+ * `hidden:true` config override via `skl agents add --hidden` — the engine's
+ * mergeAgents drops it, so the agent leaves the matrix, count bar, and rows
+ * everywhere (the same path config `hidden` already feeds). Un-hiding removes the
+ * override with `skl agents rm`. The seed's name/paths are echoed so a hide
+ * override of a seed round-trips with a sensible label. Browser dev degrades to a
+ * dry-run echo (nothing mutated) like the other config mutations.
+ */
+export function setAgentHiddenCmd(
+  agent: AppConfig["agents"][number],
+  hidden: boolean,
+) {
+  if (!hidden) return removeAgentCmd(agent.id);
+  const args = ["agents", "add", agent.id, "--name", agent.name, "--hidden"];
+  if (agent.global) args.push("--global", agent.global);
+  if (agent.projConvention) args.push("--proj-convention", agent.projConvention);
+  if (agent.icon) args.push("--icon", agent.icon);
+  if (agent.color) args.push("--color", agent.color);
+  return runAction(args);
 }
 
 export async function loadShow(

@@ -7,7 +7,14 @@
 //   realWhere    -> `skl where --json`
 //   realScan     -> `skl scan --json`
 //   realStatus   -> `skl status --json`
-import type { Skill, DeploymentReport, ScanReport, StatusReport } from "./types";
+import type {
+  Skill,
+  DeploymentReport,
+  ScanReport,
+  StatusReport,
+  AppConfig,
+  AgentInfo,
+} from "./types";
 
 const LIB = "/Users/dev/.skillshelf/library";
 const CLAUDE = "/Users/dev/.claude/skills";
@@ -16,6 +23,16 @@ const PI = "/Users/dev/.pi/skills";
 const WEBAPP = "/Users/dev/Projects/webapp/.claude/skills";
 const PIPELINE = "/Users/dev/Projects/data-pipeline/.claude/skills";
 const DEVKIT = "/Users/dev/Projects/devkit/skills";
+// Custom-agent (pi) project surface — exercises delta 4 in a project scope.
+const WEBAPP_PI = "/Users/dev/Projects/webapp/.pi/skills";
+
+// Absolute project roots (NOT the .<agent>/skills surface) — these are what the
+// scope switcher persists and what GUI deploy must pass as `--project <path>`
+// (RISK 4: scope identity is the absolute path; display uses the basename).
+export const PROJECT_WEBAPP = "/Users/dev/Projects/webapp";
+export const PROJECT_PIPELINE = "/Users/dev/Projects/data-pipeline";
+// Persisted-but-EMPTY project (§5a): selectable as a scope, zero deployments.
+export const PROJECT_SCRATCH = "/Users/dev/Projects/scratch";
 
 export const realLibrary: Skill[] = [
   {
@@ -231,13 +248,13 @@ export const realLibrary: Skill[] = [
 ];
 
 export const realWhere: DeploymentReport = {
-  "surfaces": [CLAUDE, CODEX, PI, WEBAPP, PIPELINE, DEVKIT],
+  "surfaces": [CLAUDE, CODEX, PI, WEBAPP, WEBAPP_PI, PIPELINE, DEVKIT],
   "sites": [
     { "name": "api-mock", "surface": CLAUDE, "path": `${CLAUDE}/api-mock`, "kind": "linked", "target": `${LIB}/api-mock`, "inLibrary": true, "drift": false },
     { "name": "api-mock", "surface": WEBAPP, "path": `${WEBAPP}/api-mock`, "kind": "linked", "target": `${LIB}/api-mock`, "inLibrary": true, "drift": false },
+    { "name": "api-mock", "surface": WEBAPP_PI, "path": `${WEBAPP_PI}/api-mock`, "kind": "linked", "target": `${LIB}/api-mock`, "inLibrary": true, "drift": false },
     { "name": "markdown-toc", "surface": CLAUDE, "path": `${CLAUDE}/markdown-toc`, "kind": "linked", "target": `${LIB}/markdown-toc`, "inLibrary": true, "drift": false },
     { "name": "json-schema-gen", "surface": CLAUDE, "path": `${CLAUDE}/json-schema-gen`, "kind": "linked", "target": `${LIB}/json-schema-gen`, "inLibrary": true, "drift": false },
-    { "name": "link-checker", "surface": CLAUDE, "path": `${CLAUDE}/link-checker`, "kind": "linked", "target": `${LIB}/link-checker`, "inLibrary": true, "drift": false },
     { "name": "db-doctor", "surface": CLAUDE, "path": `${CLAUDE}/db-doctor`, "kind": "linked", "target": `${LIB}/db-doctor`, "inLibrary": true, "drift": false },
     { "name": "sample-guide", "surface": CLAUDE, "path": `${CLAUDE}/sample-guide`, "kind": "linked", "target": `${LIB}/sample-guide`, "inLibrary": true, "drift": false },
     { "name": "sample-chatroom", "surface": CLAUDE, "path": `${CLAUDE}/sample-chatroom`, "kind": "linked", "target": `${LIB}/sample-chatroom`, "inLibrary": true, "drift": false },
@@ -248,12 +265,78 @@ export const realWhere: DeploymentReport = {
     { "name": "db-migrate", "surface": DEVKIT, "path": `${DEVKIT}/db-migrate`, "kind": "source", "target": null, "inLibrary": true, "drift": false }
   ],
   "problems": [
+    // ── ADR-0010 anomaly coverage: one of each derived non-clean state ──────
+    // drift — link present but target content diverged (csv-profiler @ webapp).
     { "name": "csv-profiler", "surface": WEBAPP, "path": `${WEBAPP}/csv-profiler`, "kind": "linked", "target": `${LIB}/csv-profiler`, "inLibrary": true, "drift": true },
+    // dead — broken symlink at GLOBAL scope (link-checker @ Global/claude).
+    { "name": "link-checker", "surface": CLAUDE, "path": `${CLAUDE}/link-checker`, "kind": "dead", "target": `${LIB}/link-checker`, "inLibrary": true, "drift": false },
+    // dead — broken symlink at a PROJECT scope (db-snapshot @ data-pipeline).
     { "name": "db-snapshot", "surface": PIPELINE, "path": `${PIPELINE}/db-snapshot`, "kind": "dead", "target": `${LIB}/db-snapshot`, "inLibrary": true, "drift": false },
+    // copy — hand-edited real file shadowing the library (db-snapshot @ webapp).
+    { "name": "db-snapshot", "surface": WEBAPP, "path": `${WEBAPP}/db-snapshot`, "kind": "copy", "target": null, "inLibrary": true, "drift": false },
+    // copy via foreign-link — points outside the library (image-optimizer @ webapp).
     { "name": "image-optimizer", "surface": WEBAPP, "path": `${WEBAPP}/image-optimizer`, "kind": "foreign-link", "target": "/Users/dev/Projects/vendor/skills/image-optimizer", "inLibrary": true, "drift": false },
+    // copy — unmanaged content not in the library (legacy-helper @ data-pipeline).
     { "name": "legacy-helper", "surface": PIPELINE, "path": `${PIPELINE}/legacy-helper`, "kind": "copy", "target": null, "inLibrary": false, "drift": false },
+    // aliased — deployed under a different name than the library skill (md-toc → markdown-toc).
     { "name": "md-toc", "surface": CLAUDE, "path": `${CLAUDE}/md-toc`, "kind": "aliased", "target": `${LIB}/markdown-toc`, "inLibrary": true, "drift": false }
   ]
+};
+
+// ── Custom-agent fixtures (delta 4). Two agents demo the two merge paths:
+//    • `pi` SEED-OVERRIDES the app seed of the same id (app/src/lib/agents.ts) —
+//      it has NO svg in agent-icons/, so the icon util falls back to the first
+//      letter + an auto-derived colour.
+//    • `hermes` is a NET-NEW id present in NEITHER the app NOR the engine seed
+//      list — it exercises delta 4's APPEND path (a custom agent that becomes a
+//      brand-new deployable column). Its icon comes from the provider-icons
+//      picker key (`icon:"hermes"` → agent-icons/provider-icons/hermes.png).
+//    Both are marked `custom:true` and merged into the registry via mergeAgents. ─
+export const CUSTOM_AGENTS: AgentInfo[] = [
+  {
+    id: "pi",
+    name: "Pi",
+    short: "Pi",
+    global: "~/.pi/skills",
+    projConvention: ".pi/skills",
+    installed: true,
+    custom: true,
+    // pi follows the ~/.x/skills inheritance convention (ADR-0010) — a global
+    // deploy is effectively active in every project, so its non-pinned project
+    // cells read as 'inherited' wherever it has an active Global state.
+    inheritsGlobal: true,
+  },
+  {
+    id: "hermes",
+    name: "Hermes",
+    short: "Hermes",
+    global: "~/.hermes/skills",
+    projConvention: ".hermes/skills",
+    installed: true,
+    custom: true,
+    icon: "hermes",
+    // hermes does NOT auto-load its global dir per project — it demos the
+    // opt-out: a global-only skill stays grey/absent in hermes project cells
+    // (cellStateFor returns 'absent', never 'inherited', for this agent).
+    inheritsGlobal: false,
+  },
+];
+
+// ── ADR-0010 inheritance demo case ──────────────────────────────────────────
+// The seed agent `claude` (inheritsGlobal:true) has several skills deployed at
+// GLOBAL scope but NOT pinned in the `webapp` project, e.g. `markdown-toc`
+// (CLAUDE global = clean; absent in WEBAPP). In the webapp scope that cell reads
+// as 'inherited' (tinted + dashed ring, "active here via Global"). This is the
+// canonical demoable inherited case the three-state cell renders. (json-schema-
+// gen, db-doctor, sample-guide, sample-chatroom are likewise global-only for
+// claude and inherit into webapp.)
+
+// ── Persisted nav-config fixture (§5a). `scratch` is added-but-empty: it must
+//    appear as a selectable scope with ZERO deployments (no fabricated state).
+//    `webapp`/`data-pipeline` carry real per-skill project deployments above. ─
+export const realConfig: AppConfig = {
+  agents: CUSTOM_AGENTS,
+  projects: [PROJECT_WEBAPP, PROJECT_PIPELINE, PROJECT_SCRATCH],
 };
 
 export const realScan: ScanReport = {

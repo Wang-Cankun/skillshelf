@@ -1,9 +1,12 @@
-// UI + optimistic state for the Workbench (ADR-0008). A useReducer + context
-// (the deferred-Zustand decision in §0): view/filter/sort/group/selection/
-// matrix-mode/matrix-agent live here, as do the OPTIMISTIC overrides (deploy toggles,
-// retired, removed tags, hard-removed) that the command layer applies before a
-// real `skl` verb confirms — and rolls back on error. Server truth itself lives
-// in TanStack Query (queries.ts); selectors merge the two.
+// UI + optimistic state for the Workbench (ADR-0008/0010). A useReducer +
+// context (the deferred-Zustand decision in §0). ADR-0010 collapses the old
+// three-tab `view` shell into a single library list sliced by `scope` (Global
+// or a project) and `range` (installed-here vs all). The Matrix is retired and
+// the Inbox is folded into the left-rail `{kind:"needs"}` filter. The OPTIMISTIC
+// overrides (deploy toggles, retired, removed tags, hard-removed) the command
+// layer applies before a real `skl` verb confirms — and rolls back on error —
+// stay here. Server truth itself lives in TanStack Query (queries.ts); selectors
+// merge the two.
 
 import {
   createContext,
@@ -12,19 +15,63 @@ import {
   type ReactNode,
   type Dispatch,
 } from "react";
+import type { DeployStateName } from "../lib/types";
 
-export type View = "inbox" | "matrix" | "library";
-export type SortKey = "modified" | "name" | "domain" | "deploys";
+// ── Scope (ADR-0010 §2/§5) — replaces `view`. "Global" or a project; the GUI
+//    keys scopes by the ABSOLUTE project path (RISK 4) and displays a basename.
+//    For Global, scope === "Global" and scopePath is null.
+export const GLOBAL_SCOPE = "Global";
+// ── Range (ADR-0010 §10) — the project view's "Installed here ↔ All skills".
+export type Range = "installed" | "all";
+export type SortKey = "name" | "attention" | "deployed";
 export type SortDir = "asc" | "desc";
 export type GroupMode = "list" | "domain" | "family";
-export type MatrixMode = "domain" | "agent";
 export type DrawerTab = "rendered" | "raw" | "expl";
+/** Bulk bar mode (delta 2): enable links, remove unlinks (destructive tint). */
+export type BulkMode = "enable" | "remove";
 
 export type Filter =
   | { kind: "source"; value: "vendored" | "local" }
   | { kind: "domain"; value: string }
   | { kind: "untagged" }
+  // ADR-0010 §6 — the demoted Inbox becomes a smart filter ("Needs attention").
+  | { kind: "needs" }
   | null;
+
+/** An open anomaly-resolution request (delta 3 / ADR-0010 §4 part c). Set when a
+ *  warning-glyph cell is clicked; ResolvePopover renders off it. `scopePath` is
+ *  the absolute project dir for project scopes (null for Global). */
+export interface ResolveTarget {
+  skill: string;
+  agent: string;
+  scope: string;
+  scopePath: string | null;
+  state: DeployStateName;
+  /** true when this `drift` cell is really an `aliased` site (wrong deploy name).
+   *  The matrix folds aliased→drift; this carries the pre-fold distinction so
+   *  ResolvePopover can offer "Realign name" (delta 3-c). `aliasTarget` is the
+   *  library skill the alias points at, for the realign command. */
+  aliased?: boolean;
+  aliasTarget?: string | null;
+  /** on-disk path of the standalone `copy` site (recovered via copySiteFor), so
+   *  ResolvePopover can run real `skl link --at <path>` / `skl import --from
+   *  <path>` verbs for the copy anomaly (Bug 1). null/absent when unknown. */
+  copyPath?: string | null;
+}
+
+/** An open "active via Global" info+action request (ADR-0010 inheritance §3).
+ *  Set when an INHERITED cell is clicked. InheritedPopover renders off it. Unlike
+ *  a pinned/absent cell, an inherited cell is NOT a toggle — you cannot locally
+ *  disable a global skill — so this opens an info popover with explicit choices
+ *  ("Pin to this project" / "Manage in Global") instead of flipping a symlink.
+ *  `scopePath` is the absolute project dir (never null here — inheritance is a
+ *  project-only notion, so scope !== Global). */
+export interface InheritedTarget {
+  skill: string;
+  agent: string;
+  scope: string;
+  scopePath: string | null;
+}
 
 export interface Toast {
   msg: string;
@@ -34,17 +81,22 @@ export interface Toast {
 }
 
 export interface State {
-  view: View;
+  // ── navigation (ADR-0010) ──────────────────────────────────────────────
+  /** active scope: "Global" or a project basename; identity is `scopePath`. */
+  scope: string;
+  /** absolute project dir for the active scope (null when scope === Global). */
+  scopePath: string | null;
+  /** project view range; ignored for Global (always the full library). */
+  range: Range;
+
   filter: Filter;
   search: string;
   sort: SortKey;
   sortDir: SortDir;
   group: GroupMode;
   selected: Record<string, boolean>;
-  matrixMode: MatrixMode;
-  /** Deployment-grid agent (columns = locations). The agent axis is the sparse
-   *  one for most users, so it's a picker (default claude), not the columns. */
-  matrixAgent: string;
+  /** bulk-bar intent (delta 2); the bar shows when `selected` is non-empty. */
+  bulkMode: BulkMode;
   dryRun: boolean;
 
   // optimistic overrides (rolled back on mutation error)
@@ -58,6 +110,12 @@ export interface State {
   drawerTab: DrawerTab;
   drawerFile: string;
 
+  // anomaly-resolution popover (delta 3 part c)
+  resolve: ResolveTarget | null;
+
+  // "active via Global" inherited-cell popover (ADR-0010 inheritance §3)
+  inherited: InheritedTarget | null;
+
   // global affordances
   toast: Toast | null;
   confirm: { name: string } | null;
@@ -66,15 +124,16 @@ export interface State {
 }
 
 export const initialState: State = {
-  view: "inbox",
+  scope: GLOBAL_SCOPE,
+  scopePath: null,
+  range: "installed",
   filter: null,
   search: "",
-  sort: "modified",
-  sortDir: "desc",
+  sort: "name",
+  sortDir: "asc",
   group: "list",
   selected: {},
-  matrixMode: "domain",
-  matrixAgent: "claude",
+  bulkMode: "enable",
   dryRun: false,
   deployOverrides: {},
   retired: {},
@@ -83,6 +142,8 @@ export const initialState: State = {
   drawer: null,
   drawerTab: "rendered",
   drawerFile: "SKILL.md",
+  resolve: null,
+  inherited: null,
   toast: null,
   confirm: null,
   confirmText: "",
@@ -90,28 +151,40 @@ export const initialState: State = {
 };
 
 export type Action =
-  | { type: "setView"; view: View }
-  | { type: "setFilter"; filter: Filter; view?: View }
+  // navigation
+  | { type: "setScope"; scope: string; scopePath?: string | null }
+  | { type: "setRange"; range: Range }
+  | { type: "setFilter"; filter: Filter }
   | { type: "setSearch"; search: string }
   | { type: "setSort"; sort: SortKey }
   | { type: "toggleSortDir" }
   | { type: "setGroup"; group: GroupMode }
+  // selection + bulk
   | { type: "toggleSelect"; name: string }
   | { type: "setSelectedMany"; names: string[]; value: boolean }
   | { type: "clearSelection" }
-  | { type: "setMatrixMode"; mode: MatrixMode }
-  | { type: "setMatrixAgent"; agent: string }
+  | { type: "setBulkMode"; mode: BulkMode }
   | { type: "toggleDryRun" }
+  // optimistic overrides
   | { type: "setDeployOverride"; key: string; value: "on" | "off" }
   | { type: "clearDeployOverride"; key: string }
   | { type: "setRetired"; names: string[]; value: boolean }
   | { type: "addRemovedTag"; name: string; domain: string }
   | { type: "removeRemovedTag"; name: string; domain: string }
   | { type: "setRemovedHard"; name: string; value: boolean }
+  // drawer
   | { type: "openDrawer"; name: string }
   | { type: "closeDrawer" }
   | { type: "setDrawerTab"; tab: DrawerTab }
   | { type: "setDrawerFile"; file: string }
+  // resolve flow
+  | { type: "openResolve"; target: ResolveTarget }
+  | { type: "closeResolve" }
+  | { type: "applyResolve" }
+  // inherited-cell info popover
+  | { type: "openInherited"; target: InheritedTarget }
+  | { type: "closeInherited" }
+  // global affordances
   | { type: "showToast"; toast: Toast }
   | { type: "hideToast" }
   | { type: "askConfirm"; name: string }
@@ -130,14 +203,23 @@ function withoutKey<T>(obj: Record<string, T>, key: string) {
 
 export function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "setView":
-      return { ...state, view: action.view };
-    case "setFilter":
+    case "setScope":
+      // Switching scope clears selection + filter (ADR-0010 integration sweep):
+      // a project's row set + smart filters don't carry across scopes.
       return {
         ...state,
-        filter: action.filter,
-        view: action.view ?? "library",
+        scope: action.scope,
+        scopePath:
+          action.scope === GLOBAL_SCOPE ? null : action.scopePath ?? null,
+        // Global is always the full library; projects default to "installed".
+        range: action.scope === GLOBAL_SCOPE ? "all" : "installed",
+        selected: {},
+        filter: null,
       };
+    case "setRange":
+      return { ...state, range: action.range };
+    case "setFilter":
+      return { ...state, filter: action.filter };
     case "setSearch":
       return { ...state, search: action.search };
     case "setSort":
@@ -165,10 +247,8 @@ export function reducer(state: State, action: Action): State {
     }
     case "clearSelection":
       return { ...state, selected: {} };
-    case "setMatrixMode":
-      return { ...state, matrixMode: action.mode };
-    case "setMatrixAgent":
-      return { ...state, matrixAgent: action.agent };
+    case "setBulkMode":
+      return { ...state, bulkMode: action.mode };
     case "toggleDryRun":
       return { ...state, dryRun: !state.dryRun };
     case "setDeployOverride":
@@ -235,6 +315,17 @@ export function reducer(state: State, action: Action): State {
       return { ...state, drawerTab: action.tab };
     case "setDrawerFile":
       return { ...state, drawerFile: action.file };
+    case "openResolve":
+      return { ...state, resolve: action.target };
+    case "closeResolve":
+    case "applyResolve":
+      // applyResolve just closes the popover; the command layer runs the chosen
+      // verb (or echoes a deferred one). It never blind-toggles (ADR-0010 §4).
+      return { ...state, resolve: null };
+    case "openInherited":
+      return { ...state, inherited: action.target };
+    case "closeInherited":
+      return { ...state, inherited: null };
     case "showToast":
       return { ...state, toast: action.toast };
     case "hideToast":

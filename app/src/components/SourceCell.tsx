@@ -85,7 +85,9 @@ export function SourceCell({
   variant,
 }: {
   skill: Skill;
-  variant: "library" | "matrix";
+  // "library" = list row (chip pill), "matrix"/"drawer" = compact inline. The
+  // drawer reuses the matrix sizing so the provenance block stays tight.
+  variant: "library" | "matrix" | "drawer";
 }) {
   const isVendor = skill.source === "vendored";
   const isGithub = skill.channel === "github" && !!skill.origin;
@@ -111,7 +113,7 @@ export function SourceCell({
           color: "#2563EB",
           fontFamily: MONO,
           fontSize: 10.5,
-          maxWidth: 140,
+          maxWidth: variant === "drawer" ? 220 : 140,
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",

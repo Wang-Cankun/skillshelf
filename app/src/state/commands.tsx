@@ -11,9 +11,15 @@
 
 import { useCallback } from "react";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { runAction, cmdEcho } from "../lib/skl";
+import {
+  runAction,
+  cmdEcho,
+  addProjectCmd,
+  removeProjectCmd,
+} from "../lib/skl";
 import { useStore } from "./store";
 import { qk } from "./queries";
+import { GLOBAL_SCOPE } from "./store";
 import type { OutdatedReport } from "../lib/types";
 
 // Defense-in-depth: the only verbs this MUTATION layer may dispatch through
@@ -22,14 +28,20 @@ import type { OutdatedReport } from "../lib/types";
 // and never touch run(), so they don't appear here. The Rust list is the full
 // authority and must remain a superset of this set; anything routed through
 // run() that isn't here is a programming error, refused before a process spawns.
-const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update"]);
+const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update", "projects", "link", "import"]);
 
 export function deployKey(skill: string, agentId: string, scope: string) {
   return `${skill}|${agentId}|${scope}`;
 }
 
-function scopeFlags(scope: string): string[] {
-  return scope === "Global" ? ["--global"] : ["--project", scope];
+// ADR-0010 §5a / RISK 4: for a project scope pass the ABSOLUTE project dir as
+// `--project <path>` (not the basename) so two same-named dirs don't collide
+// and the engine creates the right surface. `scopePath` falls back to `scope`
+// for callers that only have a basename (and for the no-path test path).
+function scopeFlags(scope: string, scopePath?: string): string[] {
+  return scope === GLOBAL_SCOPE
+    ? ["--global"]
+    : ["--project", scopePath ?? scope];
 }
 
 export function useCommands() {
@@ -109,22 +121,30 @@ export function useCommands() {
     [dispatch, invalidate],
   );
 
-  // ── Link / Unlink an agent (drawer AGENTS rail + matrix) ────────────────
+  // ── Link / Unlink an agent (delta 5: Global AND project scopes) ─────────
+  // ADR-0010 §5a reverses ADR-0008's "project linking is CLI-only": the GUI now
+  // writes project-scope symlinks. For a project scope pass the ABSOLUTE dir as
+  // `scopePath` (RISK 4) — it becomes `--project <path>`; the override key stays
+  // keyed by the basename `scope` so it reconciles with effState/the agents
+  // report (whose scopes are basenames).
   const deploy = useCallback(
-    async (skill: string, agentId: string, scope: string, on: boolean) => {
-      // ADR-0008 invariant: Global is the only GUI mutation target; project
-      // linking stays a CLI job. Enforce in code, not just by UI convention.
-      if (scope !== "Global") {
-        dispatch({
-          type: "setError",
-          error: "project-scope linking is a CLI operation",
-        });
-        return;
-      }
+    async (
+      skill: string,
+      agentId: string,
+      scope: string,
+      on: boolean,
+      scopePath?: string,
+    ) => {
       const key = deployKey(skill, agentId, scope);
       dispatch({ type: "setDeployOverride", key, value: on ? "on" : "off" });
       const verb = on ? "use" : "drop";
-      const args = [verb, skill, "--agent", agentId, ...scopeFlags(scope)];
+      const args = [
+        verb,
+        skill,
+        "--agent",
+        agentId,
+        ...scopeFlags(scope, scopePath),
+      ];
       const rollback = () => dispatch({ type: "clearDeployOverride", key });
       const undo = () => {
         dispatch({ type: "clearDeployOverride", key });
@@ -133,12 +153,12 @@ export function useCommands() {
           skill,
           "--agent",
           agentId,
-          ...scopeFlags(scope),
+          ...scopeFlags(scope, scopePath),
         ];
         dispatch({ type: "hideToast" });
         void runInverse([inv], [qk.agents, qk.where, qk.library]);
       };
-      await run(args, {
+      const ok = await run(args, {
         rollback,
         invalidate: [qk.agents, qk.where, qk.library],
         toast: {
@@ -146,8 +166,155 @@ export function useCommands() {
           undo,
         },
       });
+      // RISK 2: clear-on-success. The optimistic override only papers over the
+      // refetch gap; once `run` has invalidated and server truth is authoritative
+      // it MUST be dropped so the cell tracks reality (a later external `drop`/
+      // surface change would otherwise stay masked by the stale 'on' override).
+      // On failure `rollback` already cleared it; on undo the undo handler clears.
+      if (ok) dispatch({ type: "clearDeployOverride", key });
     },
-    [dispatch, run, invalidate],
+    [dispatch, run, runInverse],
+  );
+
+  // ── Bulk deploy (deltas 1 & 2) — the SOLE deploy-execution point (ADR §11).
+  // Loops one `use`/`drop` per skill, applies each optimistic override, then
+  // emits ONE combined toast and invalidates ONCE. On any failure the failed
+  // skill's override is rolled back and the error surfaced; succeeded skills
+  // are real on disk and reflected after the single invalidate. Undo reverses
+  // every successful override and runs the inverse vectors in one batch.
+  const bulkDeploy = useCallback(
+    async (
+      names: string[],
+      agentId: string,
+      scope: string,
+      on: boolean,
+      scopePath?: string,
+    ) => {
+      if (!names.length) return;
+      dispatch({ type: "setError", error: null });
+      const verb = on ? "use" : "drop";
+      if (!ALLOWED.has(verb)) return; // unreachable; defense-in-depth.
+
+      // Optimistic pass: light every override up front (cc-switch ergonomics).
+      const keys = names.map((n) => deployKey(n, agentId, scope));
+      for (const key of keys)
+        dispatch({ type: "setDeployOverride", key, value: on ? "on" : "off" });
+
+      const succeeded: string[] = [];
+      const failures: string[] = [];
+      for (const name of names) {
+        const args = [
+          verb,
+          name,
+          "--agent",
+          agentId,
+          ...scopeFlags(scope, scopePath),
+        ];
+        const res = await runAction(args);
+        if (res.ok) succeeded.push(name);
+        else {
+          // roll back only the failed override; succeeded ones stay optimistic
+          // until the single invalidate reconciles them with disk truth.
+          dispatch({
+            type: "clearDeployOverride",
+            key: deployKey(name, agentId, scope),
+          });
+          failures.push(`${name}: ${res.stderr.trim() || "failed"}`);
+        }
+      }
+
+      await invalidate([qk.agents, qk.where, qk.library]);
+
+      // RISK 2: clear-on-success. After the single invalidate, server truth is
+      // authoritative for every succeeded skill, so drop their optimistic
+      // overrides — leaving them would mask a later external state change (a CLI
+      // `drop`, another surface) behind a stale 'on'/'off' entry and grow the
+      // override map unbounded. Failed overrides were already rolled back above.
+      for (const name of succeeded)
+        dispatch({
+          type: "clearDeployOverride",
+          key: deployKey(name, agentId, scope),
+        });
+
+      if (failures.length) {
+        dispatch({
+          type: "setError",
+          error: `${verb} failed — ${failures.join("; ")}`,
+        });
+      }
+      if (!succeeded.length) return;
+
+      const undo = () => {
+        for (const name of succeeded)
+          dispatch({
+            type: "clearDeployOverride",
+            key: deployKey(name, agentId, scope),
+          });
+        dispatch({ type: "hideToast" });
+        void runInverse(
+          succeeded.map((name) => [
+            on ? "drop" : "use",
+            name,
+            "--agent",
+            agentId,
+            ...scopeFlags(scope, scopePath),
+          ]),
+          [qk.agents, qk.where, qk.library],
+        );
+      };
+      const word = on ? "Enabled" : "Removed";
+      dispatch({
+        type: "showToast",
+        toast: {
+          msg:
+            succeeded.length > 1
+              ? `${word} ${succeeded.length} skills · ${agentId} (${scope})`
+              : `${word} ${succeeded[0]} · ${agentId} (${scope})`,
+          cmd: succeeded
+            .map((n) =>
+              cmdEcho([verb, n, "--agent", agentId, ...scopeFlags(scope, scopePath)]),
+            )
+            .join(" ; "),
+          undo,
+        },
+      });
+    },
+    [dispatch, invalidate, runInverse],
+  );
+
+  // ── Add / remove a persisted nav project (§5a) ──────────────────────────
+  // Pure navigation state (never deployment truth). Invalidates qk.config (the
+  // scope list) and qk.agents (the report unions empty-project scopes in S1).
+  const addProject = useCallback(
+    async (path: string): Promise<boolean> => {
+      const res = await addProjectCmd(path);
+      if (!res.ok) {
+        dispatch({
+          type: "setError",
+          error: res.stderr.trim() || `projects add ${path} failed`,
+        });
+        return false;
+      }
+      await invalidate([qk.config, qk.agents]);
+      return true;
+    },
+    [dispatch, invalidate],
+  );
+
+  const removeProject = useCallback(
+    async (path: string): Promise<boolean> => {
+      const res = await removeProjectCmd(path);
+      if (!res.ok) {
+        dispatch({
+          type: "setError",
+          error: res.stderr.trim() || `projects rm ${path} failed`,
+        });
+        return false;
+      }
+      await invalidate([qk.config, qk.agents]);
+      return true;
+    },
+    [dispatch, invalidate],
   );
 
   // ── Retire (one or many) — reversible ───────────────────────────────────
@@ -327,5 +494,34 @@ export function useCommands() {
     [run, qc],
   );
 
-  return { deploy, retire, untag, tag, hardRemove, autoFix, update };
+  // ── Resolve a `copy` anomaly (ADR-0010 §4c, Bug 1) — NOT invertible ──────
+  // Runs an exact pre-built `link`/`import` vector (the resolve popover builds it
+  // from the recovered on-disk copy path). Both verbs mutate the filesystem in a
+  // way `skl` exposes no clean inverse for (link discards the copy; import adopts
+  // it into the library), so there is no Undo — the action labels carry the
+  // consequence. Invalidates the deployment + library feeds so the cell re-derives.
+  const resolveCopy = useCallback(
+    async (args: string[], msg: string): Promise<boolean> => {
+      return run(args, {
+        rollback: () => {},
+        invalidate: [qk.where, qk.agents, qk.library],
+        toast: { msg, undo: null },
+      });
+    },
+    [run],
+  );
+
+  return {
+    deploy,
+    bulkDeploy,
+    addProject,
+    removeProject,
+    retire,
+    untag,
+    tag,
+    hardRemove,
+    autoFix,
+    update,
+    resolveCopy,
+  };
 }
