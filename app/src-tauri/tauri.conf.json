@@ -24,6 +24,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png"],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Wang-Cankun/skillshelf/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

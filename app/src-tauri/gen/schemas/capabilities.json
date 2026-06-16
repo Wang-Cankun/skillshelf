@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"default capability for the main window","local":true,"windows":["main"],"permissions":["core:default","opener:default","opener:allow-open-path","opener:allow-reveal-item-in-dir","dialog:allow-open"]}}
+{"default":{"identifier":"default","description":"default capability for the main window","local":true,"windows":["main"],"permissions":["core:default","opener:default","opener:allow-open-path","opener:allow-reveal-item-in-dir","dialog:allow-open","updater:default","process:default"]}}

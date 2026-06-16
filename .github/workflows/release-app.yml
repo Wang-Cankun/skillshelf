@@ -1,0 +1,119 @@
+# Desktop app release pipeline (Tauri v2).
+#
+# IMPORTANT — two independent release tracks for this repo:
+#   * npm CLI release   -> git tag `v*`     (handled elsewhere; `npm publish`)
+#   * DESKTOP app release -> git tag `app-v*` (THIS workflow; GitHub Release)
+# The desktop app versions independently of the npm CLI. Never tag the desktop
+# app with `v*` or you will collide with the CLI release. See docs/RELEASING.md.
+#
+# Out of the box this runs UNSIGNED: every signing/updater secret below may be
+# UNSET, in which case tauri-action simply produces unsigned installers. Adding
+# the secrets (see docs/RELEASING.md) activates signing + the updater with no
+# workflow changes.
+
+name: Release App
+
+on:
+  push:
+    tags:
+      - "app-v*"
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: release (${{ matrix.platform }})
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon
+          - platform: macos-latest
+            rust-target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          # Intel macOS
+          - platform: macos-13
+            rust-target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          # Linux
+          - platform: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            args: ""
+          # Windows
+          - platform: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsoup-3.0-dev \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+          key: ${{ matrix.platform }}
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: bun install
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # GitHub Release upload token (always present in Actions).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- macOS code signing (Developer ID) --------------------------
+          # All optional: if unset, the macOS app ships UNSIGNED. Set these
+          # via `gh secret set` to enable signing + notarization. See
+          # docs/RELEASING.md → "Add macOS signing + notarization".
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}                     # base64 of the .p12 Developer ID cert
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}   # password for the .p12
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}           # "Developer ID Application: NAME (TEAMID)"
+          APPLE_ID: ${{ secrets.APPLE_ID }}                                       # Apple ID email for notarization
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}                           # app-specific password for that Apple ID
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}                             # Apple Developer Team ID
+
+          # --- Tauri updater signing --------------------------------------
+          # Optional: if unset, update artifacts/latest.json are NOT signed and
+          # the in-app updater stays inert. Set these to activate the updater.
+          # See docs/RELEASING.md → "Activate the updater".
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: "skillshelf ${{ github.ref_name }}"
+          releaseBody: "See the assets below to download and install this version."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

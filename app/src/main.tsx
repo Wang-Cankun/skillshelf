@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import App from "./App";
 import { StoreProvider } from "./state/store";
+import { checkForUpdates } from "./lib/updater";
+
+// Best-effort desktop auto-update check. Inert in the browser and until the
+// updater is activated (see docs/RELEASING.md); never blocks startup.
+void checkForUpdates();
 
 const queryClient = new QueryClient({
   defaultOptions: {
