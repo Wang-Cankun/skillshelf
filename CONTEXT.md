@@ -27,12 +27,30 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   than vercel's grouping-only use (ADR-0012, amending ADR-0006 §6).
   _Avoid_: "all skills" (means the published set, not every `SKILL.md` on disk)
 
+- **Orphaned** — a tracked (OWNED) skill whose upstream subpath has vanished: the repo still
+  clones, but no skill with the same `name` exists anywhere in the fresh checkout. `update`
+  reports it and **keeps the library copy** — it never auto-deletes (ADR-0004, ADR-0013). The
+  copy is now effectively local until the user `skl remove`s it or it reappears upstream.
+  _Avoid_: "deleted", "missing" (the library copy is intact; only the *upstream* is gone)
+
+- **Relocated** — a tracked skill found at a **new subpath under the same `name`** (an upstream
+  directory rename). `update` auto-follows it: re-points the lock entry's `source` subpath and
+  reports the move, then runs the normal body 3-way (ADR-0013). Distinct from a *frontmatter-name*
+  rename, which is indistinguishable from remove+add and surfaces as **Orphaned**.
+
 ## Verbs (and the curator boundary)
 
 - **Add** — vendor a skill *into the library* (`skl add`): copy + record provenance. This is
   curation, not deployment. "Install" in skillshelf means *this* — it never implies activation.
 - **Use** — *activate* a library skill at an agent surface (`skl use`): symlink it into
   `~/.claude/skills` (or another agent dir). Accepts skill names (exact) or a bundle tag.
+- **Update** — re-pull the upstream **body** of tracked OWNED skills (`skl update [name]`),
+  preserving domain tags. It **reconciles per source repo** (groups entries, clones each repo
+  once, ADR-0013), so it also *reports* structural drift it sees in that checkout — **Relocated**
+  (auto-followed), **Orphaned** (kept, flagged), and new published skills not yet tracked — but it
+  **never installs**. Discovering/installing new skills is `add`'s job (`skl add <repo> --all`);
+  `update` only ever refreshes what you already track. Floating-HEAD: it tracks the default branch,
+  not version tags.
 - **Curator boundary** — `add` only ever writes the library; `use` only ever writes agent dirs.
   skillshelf deliberately does **not** offer one-shot install-and-activate (the `vercel-labs/skills`
   installer model); getting-and-activating in one command is out of scope by ADR-0003. To install
