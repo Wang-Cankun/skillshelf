@@ -271,6 +271,12 @@ function LibraryToolbar() {
             {isProject ? "Pinned here" : "Installed"}
           </button>
           <button
+            onClick={() => dispatch({ type: "setRange", range: "uninstalled" })}
+            style={pill(state.range === "uninstalled")}
+          >
+            {isProject ? "Not pinned" : "Uninstalled"}
+          </button>
+          <button
             onClick={() => dispatch({ type: "setRange", range: "all" })}
             style={pill(state.range === "all")}
           >
