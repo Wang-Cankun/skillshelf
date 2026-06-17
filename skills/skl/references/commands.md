@@ -181,14 +181,22 @@ bytes). A **LINKED** entry `rm`s freely (only the symlink goes; the dev repo is 
 upstream for the latest ref and report stale ones. Per-skill fields: channel, source,
 `installedRef`, `latestRef`, status (`stale`/`current`/`unknown`/`linked`/`diverged`).
 `--check-local` also computes `localEdits` offline. **LINKED entries report as `linked` and are
-never probed** — their own git owns versioning.
+never probed** — their own git owns versioning. Cheap SHA-compare only (no checkout): rename /
+removed-upstream / new-upstream are **`update`-time** discoveries, never surfaced here (ADR-0013).
 
 ## update
-`skl update [name] [--force] [--dry-run] [--json]` — Re-pull upstream `SKILL.md` + bundled files
-for OWNED tracked skills; **taxonomy tags are never touched**. Three-way logic: if the local body
-still equals the installed baseline hash, it pulls cleanly; if the user hand-edited (local ≠
-baseline), it shows a diff and requires `--force` to clobber. **LINKED entries are skipped
-entirely** — following the symlink to pull would overwrite the user's dev repo. `--dry-run` previews.
+`skl update [name] [--repo <source>] [--force] [--dry-run] [--json]` — Re-pull upstream `SKILL.md` +
+bundled files for OWNED tracked skills; **taxonomy tags are never touched**. **Reconciles per source
+repo** (clones each once, ADR-0013): besides the body 3-way it follows upstream **renames** (a tracked
+skill found at a new subpath under the same `name` → re-points provenance, result carries
+`relocatedFrom`), surfaces **removed** skills (`orphaned` — the library copy is **kept, never
+deleted**), and reports a repo's untracked published skills (`newAvailable`) **without installing
+them** (that stays `add`'s job — the curator boundary). Three-way body logic: local body == installed
+baseline hash → pulls cleanly; user hand-edited (local ≠ baseline) → shows a diff and requires
+`--force` to clobber. **LINKED entries are skipped entirely** — following the symlink would overwrite
+the user's dev repo (ADR-0004). `--repo <source>` scopes the run to one vendor (e.g.
+`github:owner/repo`), the unit the desktop app drives; `--dry-run` previews. Exit: `0` clean, `2` if
+any diverged (non-fatal), `1` on error.
 
 ## infer
 `skl infer [--emit | --apply <file.json> | --provider <name>] [--base-url <url>] [--model <id>] [--include-retired] [--json]`
