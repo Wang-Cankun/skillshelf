@@ -35,8 +35,8 @@ and `INDEX.md` in sync — hand-edits drift).
 
 1. **Never pull upstream into a LINKED entry.** `update`/`outdated` skip linked entries on purpose —
    following the symlink would clobber the user's live dev repo. "Skipped (linked)" is correct.
-2. **`add` writes the library; `use`/`drop` move to agent dirs.** Installing and deploying are two
-   steps: `add` then `use`. `add` never makes a skill active.
+2. **Curator boundary** — `add` writes the library; `use`/`drop` write agent dirs. Installing and
+   deploying are two steps (`add` then `use`); `add` never makes a skill active.
 3. **Never clobber real files.** `use` won't overwrite a real file in a skills dir; `import`/`link`
    won't write through symlinks or into the library. If a command refuses, surface it — don't force.
 4. **`import` decides no domain** — adopt first (`scan`→`import`), tag after (`tag`/`infer`).
@@ -61,7 +61,7 @@ Full flags in `references/commands.md`; multi-step recipes in `references/workfl
 | Create a new skill | `skl new <name> --domain <d> --desc "…"` |
 | Tag / organize | `skl tag` · `untag` · `retag` · `infer` |
 | Rename / remove | `skl rename <old> <new>` (re-`use`) · `skl retire` (soft) · `skl rm` (hard) |
-| Check / apply updates | `skl outdated [name]` · `skl update [name]` |
+| Check / reconcile updates (renames, removals, new upstream) | `skl outdated [name]` · `skl update [name] [--repo <repo>]` |
 | First-time setup | `skl init` |
 
 Broad request ("my skills are a mess")? Start read-only (`ls`/`where`/`scan`) to inventory, show
