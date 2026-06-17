@@ -103,7 +103,7 @@ fn augmented_path() -> String {
 /// Spawn failure (or an unresolvable binary) is returned as an `Err` carrying a
 /// helpful "skl not found" message.
 #[tauri::command]
-fn run_skl(args: Vec<String>) -> Result<SklResult, String> {
+async fn run_skl(args: Vec<String>) -> Result<SklResult, String> {
     // Enforce the subcommand allowlist on the first positional arg.
     match args.first() {
         None => return Err("no `skl` subcommand provided".to_string()),
@@ -120,28 +120,31 @@ fn run_skl(args: Vec<String>) -> Result<SklResult, String> {
          /usr/local/bin/skl."
             .to_string()
     })?;
+    let path = augmented_path();
 
-    let output = Command::new(skl)
-        .args(&args)
-        .env("PATH", augmented_path())
-        .output()
-        .map_err(|e| {
-            format!(
-                "skl not found: failed to spawn `{}`: {e}",
-                skl.display()
-            )
-        })?;
+    // `skl` calls can take seconds (e.g. `update` clones a repo). A synchronous
+    // command body runs on the main thread and FREEZES the webview for that whole
+    // time, so run the blocking spawn off-thread and await it.
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = Command::new(skl)
+            .args(&args)
+            .env("PATH", path)
+            .output()
+            .map_err(|e| format!("skl not found: failed to spawn `{}`: {e}", skl.display()))?;
 
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|e| format!("`skl` produced non-UTF-8 stdout: {e}"))?;
-    let stderr = String::from_utf8(output.stderr)
-        .map_err(|e| format!("`skl` produced non-UTF-8 stderr: {e}"))?;
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| format!("`skl` produced non-UTF-8 stdout: {e}"))?;
+        let stderr = String::from_utf8(output.stderr)
+            .map_err(|e| format!("`skl` produced non-UTF-8 stderr: {e}"))?;
 
-    Ok(SklResult {
-        ok: output.status.success(),
-        stdout,
-        stderr,
+        Ok(SklResult {
+            ok: output.status.success(),
+            stdout,
+            stderr,
+        })
     })
+    .await
+    .map_err(|e| format!("run_skl task failed: {e}"))?
 }
 
 // ---------------------------------------------------------------------------

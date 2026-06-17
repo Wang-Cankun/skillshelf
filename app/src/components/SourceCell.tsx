@@ -16,9 +16,10 @@
 
 import { useCommands } from "../state/commands";
 import { useOutdated } from "../state/queries";
+import { useStore } from "../state/store";
 import { openExternal } from "../lib/shell";
 import { MONO } from "../lib/tokens";
-import type { OutdatedStatus, Skill } from "../lib/types";
+import type { OutdatedStatus, UpdateOutcome, Skill } from "../lib/types";
 
 /** Build a name→status lookup from the (possibly-unfetched) outdated cache. */
 export function useOutdatedStatus(): (name: string) => OutdatedStatus | undefined {
@@ -27,9 +28,36 @@ export function useOutdatedStatus(): (name: string) => OutdatedStatus | undefine
   return (name: string) => byName.get(name);
 }
 
+/** Build a name→outcome lookup from the session update-report (ADR-0013). This
+ *  is the ONLY surface that can see "orphaned" — the outdated FACT layer
+ *  structurally cannot (decision 5). null report → every lookup undefined. */
+export function useUpdateReportStatus(): (name: string) => UpdateOutcome | undefined {
+  const results = useStore().state.updateReport?.results ?? [];
+  const byName = new Map(results.map((r) => [r.name, r.outcome]));
+  return (name: string) => byName.get(name);
+}
+
 function UpdateBadge({ skill }: { skill: Skill }) {
   const commands = useCommands();
+  const { dispatch } = useStore();
   const statusOf = useOutdatedStatus();
+  const updateOutcomeOf = useUpdateReportStatus();
+  // Orphaned is checked FIRST and REPLACES the (now-stale) ↑/⚠ badge: the
+  // subpath is gone upstream, so updating is meaningless — offer Remove instead
+  // (reuse the type-to-confirm flow → hardRemove). The library copy is KEPT
+  // (non-destructive, ADR-0013); this badge just surfaces the drift.
+  if (updateOutcomeOf(skill.name) === "orphaned") {
+    return (
+      <button
+        onClick={() => dispatch({ type: "askConfirm", name: skill.name })}
+        title={`${skill.name} no longer published upstream — remove?`}
+        aria-label={`orphaned ${skill.name}`}
+        style={badgeStyle("#71717A")}
+      >
+        ⊘
+      </button>
+    );
+  }
   const status = statusOf(skill.name);
   if (status === "stale") {
     return (

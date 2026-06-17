@@ -15,7 +15,7 @@ import {
   type ReactNode,
   type Dispatch,
 } from "react";
-import type { DeployStateName } from "../lib/types";
+import type { DeployStateName, UpdateReport } from "../lib/types";
 
 // ── Scope (ADR-0010 §2/§5) — replaces `view`. "Global" or a project; the GUI
 //    keys scopes by the ABSOLUTE project path (RISK 4) and displays a basename.
@@ -27,7 +27,7 @@ export const GLOBAL_SCOPE = "Global";
 export type Range = "installed" | "all" | "uninstalled";
 export type SortKey = "name" | "attention" | "deployed";
 export type SortDir = "asc" | "desc";
-export type GroupMode = "list" | "domain" | "family";
+export type GroupMode = "list" | "domain" | "family" | "vendor";
 export type DrawerTab = "rendered" | "raw" | "expl";
 /** Bulk bar mode (delta 2): enable links, remove unlinks (destructive tint). */
 export type BulkMode = "enable" | "remove";
@@ -131,6 +131,13 @@ export interface State {
   confirm: { name: string; names?: string[] } | null;
   confirmText: string;
   error: string | null;
+
+  // ── ADR-0013 — last `update`/`updateVendor` --json report. Session-scoped
+  //    (matches the outdated cache lifespan); last-run-wins replace. Drives the
+  //    orphaned ⊘ SourceCell badge + the UpdateResultsBanner (counts, relocated
+  //    lines, diverged rows, per-repo newAvailable "Add new" buttons). null = no
+  //    update run this session (banner + orphaned badges hidden).
+  updateReport: UpdateReport | null;
 }
 
 export const initialState: State = {
@@ -158,6 +165,7 @@ export const initialState: State = {
   confirm: null,
   confirmText: "",
   error: null,
+  updateReport: null,
 };
 
 export type Action =
@@ -200,7 +208,10 @@ export type Action =
   | { type: "askConfirm"; name: string; names?: string[] }
   | { type: "cancelConfirm" }
   | { type: "setConfirmText"; text: string }
-  | { type: "setError"; error: string | null };
+  | { type: "setError"; error: string | null }
+  // ADR-0013 update report (last-run-wins replace; null clears the banner)
+  | { type: "setUpdateReport"; report: UpdateReport }
+  | { type: "clearUpdateReport" };
 
 function withKey<T>(obj: Record<string, T>, key: string, value: T) {
   return { ...obj, [key]: value };
@@ -358,6 +369,10 @@ export function reducer(state: State, action: Action): State {
       return { ...state, confirmText: action.text };
     case "setError":
       return { ...state, error: action.error };
+    case "setUpdateReport":
+      return { ...state, updateReport: action.report };
+    case "clearUpdateReport":
+      return { ...state, updateReport: null };
     default:
       return state;
   }

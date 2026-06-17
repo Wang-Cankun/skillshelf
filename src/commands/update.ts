@@ -19,7 +19,8 @@ import type { Ctx, LockEntry } from "../types.ts";
 import { readLockfile, recordEntry } from "../core/provenance.ts";
 import {
   parseStoredSource,
-  fetchSource,
+  fetchRepo,
+  discoverSkills,
   cleanupStaging,
   readSkillBody,
   unifiedDiff,
@@ -31,10 +32,10 @@ import { loadLibrary, findByName, entryMode } from "../core/library.ts";
 export const meta = {
   name: "update",
   summary: "Re-pull upstream body, preserve domain tags, diff if local body diverged",
-  usage: "skl update [name] [--force] [--dry-run] [--json]",
+  usage: "skl update [name] [--repo <source>] [--force] [--dry-run] [--json]",
 } as const;
 
-type Outcome = "updated" | "uptodate" | "diverged" | "skipped" | "error";
+type Outcome = "updated" | "uptodate" | "diverged" | "skipped" | "error" | "orphaned";
 
 interface Result {
   name: string;
@@ -45,6 +46,14 @@ interface Result {
   outcome: Outcome;
   note: string;
   diff?: string;
+  /** Set ONLY when a rename was auto-followed; value = the OLD (pre-repoint) source. */
+  relocatedFrom?: string;
+}
+
+/** NEW (ADR-0013): per source repo, published-but-untracked skills discovered this run. */
+interface RepoAdditions {
+  repo: string;
+  names: string[];
 }
 
 /** Body text after frontmatter, for content comparison/hash. */
@@ -85,23 +94,14 @@ async function updateOne(
   ctx: Ctx,
   entry: LockEntry,
   destDir: string,
+  upstream: { skillDir: string; ref: string },
   opts: { force: boolean; dryRun: boolean },
 ): Promise<Result> {
-  const parsed = parseStoredSource(entry.source);
-  const fetched = await fetchSource(parsed);
-  if (!fetched.ok) {
-    await cleanupStaging(fetched.staging);
-    return {
-      name: entry.name,
-      source: entry.source,
-      channel: entry.channel,
-      fromRef: entry.ref,
-      toRef: null,
-      outcome: "error",
-      note: fetched.error,
-    };
-  }
-
+  // ponytail: cloning + cleanup moved to run() (one clone per repo, ADR-0013 decision 1).
+  // updateOne now receives the located skill dir + repo HEAD ref; the 3-way / adopted /
+  // diverged / never-clobber body logic below is verbatim from before, only the
+  // `fetched.skillDir`/`fetched.ref` references are renamed to `upstream.*`.
+  const fetched = upstream;
   try {
     const upstreamText = await readSkillBody(fetched.skillDir);
     const localPath = join(destDir, "SKILL.md");
@@ -293,8 +293,6 @@ async function updateOne(
       outcome: "error",
       note: err instanceof Error ? err.message : String(err),
     };
-  } finally {
-    await cleanupStaging(fetched.staging);
   }
 }
 
@@ -302,12 +300,28 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");
   const force = argv.includes("--force");
   const dryRun = argv.includes("--dry-run");
-  const nameArg = argv.find((a) => !a.startsWith("-")) ?? null;
+  // --repo <source> scopes the run to ONE vendor (the parsed repo key, e.g.
+  // "github:owner/repo"). The group-by-repo machinery is unchanged — this just
+  // pre-filters the entry set so the UI can update a single vendor (one clone,
+  // scoped results) instead of sweeping the whole library.
+  const repoIdx = argv.indexOf("--repo");
+  const repoArg = repoIdx >= 0 ? (argv[repoIdx + 1] ?? null) : null;
+  // The token after --repo is its value, not a positional name. Guard on
+  // repoIdx>=0 — otherwise (no --repo) repoIdx+1===0 would wrongly skip argv[0],
+  // the skill name, making `update <name>` silently sweep the whole library.
+  const nameArg =
+    argv.find(
+      (a, i) => !a.startsWith("-") && !(repoIdx >= 0 && i === repoIdx + 1),
+    ) ?? null;
 
   try {
     const lock = await readLockfile(ctx.config.libraryPath);
     let entries = Object.values(lock.entries);
     if (nameArg) entries = entries.filter((e) => e.name === nameArg);
+    if (repoArg)
+      entries = entries.filter(
+        (e) => parseStoredSource(e.source).source === repoArg,
+      );
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
     // Resolve on-disk dirs via the library so renames/domain folders are honored;
@@ -315,26 +329,42 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // link --from` case) as positive 'skipped (linked)' evidence rather than silence.
     const library = await loadLibrary(ctx.config.libraryPath);
     const lockNames = new Set(entries.map((e) => e.name));
-    const linkedNoLock = library.filter(
-      (s) =>
-        !lockNames.has(s.name) &&
-        (!nameArg || s.name === nameArg) &&
-        entryMode(ctx.config.libraryPath, s.name) === "linked",
-    );
+    const linkedNoLock = repoArg
+      ? [] // a --repo (vendor) run targets vendored github entries only
+      : library.filter(
+          (s) =>
+            !lockNames.has(s.name) &&
+            (!nameArg || s.name === nameArg) &&
+            entryMode(ctx.config.libraryPath, s.name) === "linked",
+        );
 
     if (entries.length === 0 && linkedNoLock.length === 0) {
-      if (json) ctx.json({ ok: true, updated: 0, diverged: 0, results: [] });
+      if (json)
+        ctx.json({
+          ok: true,
+          updated: 0,
+          diverged: 0,
+          errors: 0,
+          orphaned: 0,
+          results: [],
+          newAvailable: [],
+        });
       else if (nameArg) ctx.error(`no tracked skill named "${nameArg}"`);
       else ctx.log("no tracked third-party skills (lockfile is empty)");
       return nameArg && !json ? 1 : 0;
     }
 
     const results: Result[] = [];
+    const newAvailable: RepoAdditions[] = [];
+    // Every name tracked in the WHOLE lockfile (not just this run's filter) — the
+    // additions report (decision 4) lists only published skills NOT in this set.
+    const trackedNames = new Set(Object.values(lock.entries).map((e) => e.name));
+
+    // Group OWNED github/git entries by their parsed source repo ("github:owner/repo"
+    // or "git:/abs/path", no subpath) so each repo is cloned ONCE (decision 1). LINKED
+    // entries skip grouping entirely (ADR-0004 never-clobber), reported as skipped first.
+    const byRepo = new Map<string, LockEntry[]>();
     for (const entry of entries) {
-      // LINKED entries (library/<name> is a symlink to an external dev repo) own their
-      // own versioning via their own git. Re-pulling upstream would follow the symlink
-      // and clobber the dev repo, so skip them outright (ADR-0004). A stale lock entry
-      // can exist if an OWNED import was later converted with `skl link --from --force`.
       if (entryMode(ctx.config.libraryPath, entry.name) === "linked") {
         results.push({
           name: entry.name,
@@ -347,9 +377,114 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         });
         continue;
       }
-      const skill = findByName(library, entry.name);
-      const destDir = skill?.path ?? join(ctx.config.libraryPath, entry.name);
-      results.push(await updateOne(ctx, entry, destDir, { force, dryRun }));
+      const parsed = parseStoredSource(entry.source);
+      // Repo key with NO subpath: github → parsed.source; git → `git:<localPath>`.
+      const repoKey =
+        parsed.channel === "git" ? `git:${parsed.localPath}` : parsed.source;
+      (byRepo.get(repoKey) ?? byRepo.set(repoKey, []).get(repoKey)!).push(entry);
+    }
+
+    for (const group of byRepo.values()) {
+      const parsed = parseStoredSource(group[0]!.source);
+      const repo = await fetchRepo(parsed);
+      if (!repo.ok) {
+        // A genuine clone/fetch failure → one "error" per member; no newAvailable.
+        for (const entry of group) {
+          results.push({
+            name: entry.name,
+            source: entry.source,
+            channel: entry.channel,
+            fromRef: entry.ref,
+            toRef: null,
+            outcome: "error",
+            note: repo.error,
+          });
+        }
+        continue;
+      }
+
+      try {
+        // Whole-checkout enumeration (reused, not reinvented). Index by subpath + by
+        // frontmatter name so a member's subpath lookup / rename-follow is O(1).
+        const discovered = await discoverSkills(repo.checkout);
+        const bySubpath = new Map(discovered.map((d) => [d.subpath, d]));
+        const byName = new Map(discovered.map((d) => [d.name, d]));
+
+        for (const entry of group) {
+          const subpath = parseStoredSource(entry.source).subpath;
+          const skill = findByName(library, entry.name);
+          const destDir = skill?.path ?? join(ctx.config.libraryPath, entry.name);
+
+          const hit = bySubpath.get(subpath);
+          if (hit) {
+            // (a) NORMAL: subpath still present → existing body 3-way verbatim.
+            results.push(
+              await updateOne(
+                ctx,
+                entry,
+                destDir,
+                { skillDir: hit.dir, ref: repo.ref },
+                { force, dryRun },
+              ),
+            );
+            continue;
+          }
+
+          const moved = byName.get(entry.name);
+          if (moved) {
+            // (b) RELOCATE: subpath gone but same frontmatter name at a new subpath.
+            // Re-point the source subpath (NOT gated by --force) then run the normal
+            // body 3-way against the new dir.
+            const newSource =
+              parsed.channel === "git"
+                ? `git:${parsed.localPath}${moved.subpath ? `#${moved.subpath}` : ""}`
+                : `${parsed.source}${moved.subpath ? `/${moved.subpath}` : ""}`;
+            const relocatedEntry: LockEntry = { ...entry, source: newSource };
+            const result = await updateOne(
+              ctx,
+              relocatedEntry,
+              destDir,
+              { skillDir: moved.dir, ref: repo.ref },
+              { force, dryRun },
+            );
+            result.relocatedFrom = entry.source;
+            result.note = `followed rename: ${subpath} → ${moved.subpath}; ${result.note}`;
+            // updateOne persists the re-point only when its body path calls recordEntry
+            // (the "updated"/graduated paths). For "uptodate"/"diverged" it does NOT
+            // write, so persist the source re-point explicitly (unless dry-run).
+            // ponytail: only the no-write outcomes need a manual recordEntry.
+            if (
+              !dryRun &&
+              (result.outcome === "uptodate" || result.outcome === "diverged")
+            ) {
+              await recordEntry(ctx.config.libraryPath, relocatedEntry);
+            }
+            results.push(result);
+            continue;
+          }
+
+          // (c) ORPHANED: subpath gone, no name match → non-destructive surfacing.
+          // The library copy is KEPT; never delete, never recordEntry-remove.
+          results.push({
+            name: entry.name,
+            source: entry.source,
+            channel: entry.channel,
+            fromRef: entry.ref,
+            toRef: repo.ref,
+            outcome: "orphaned",
+            note: "no longer published upstream; library copy kept (skl remove to delete)",
+          });
+        }
+
+        // Additions (decision 4): published skills in the checkout NOT tracked anywhere.
+        const additions = discovered
+          .filter((d) => d.published && !trackedNames.has(d.name))
+          .map((d) => d.name)
+          .sort();
+        if (additions.length) newAvailable.push({ repo: parsed.source, names: additions });
+      } finally {
+        await cleanupStaging(repo.staging); // ONE cleanup per repo
+      }
     }
 
     // LINKED skills with no lock entry: report them as explicitly skipped so the
@@ -370,9 +505,18 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const updated = results.filter((r) => r.outcome === "updated").length;
     const diverged = results.filter((r) => r.outcome === "diverged").length;
     const errored = results.filter((r) => r.outcome === "error").length;
+    const orphaned = results.filter((r) => r.outcome === "orphaned").length;
 
     if (json) {
-      ctx.json({ ok: errored === 0, updated, diverged, errors: errored, results });
+      ctx.json({
+        ok: errored === 0,
+        updated,
+        diverged,
+        errors: errored,
+        orphaned,
+        results,
+        newAvailable,
+      });
     } else {
       for (const r of results) {
         const tag =
@@ -382,9 +526,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
               ? "current  "
               : r.outcome === "diverged"
                 ? "DIVERGED "
-                : r.outcome === "error"
-                  ? "ERROR    "
-                  : "skipped  ";
+                : r.outcome === "orphaned"
+                  ? "orphaned "
+                  : r.outcome === "error"
+                    ? "ERROR    "
+                    : "skipped  ";
         ctx.log(`${tag}  ${r.name.padEnd(28)} ${r.note}`);
         if (r.outcome === "diverged" && r.diff) {
           ctx.log("");
@@ -394,9 +540,15 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
       ctx.log("");
       ctx.log(
-        `${results.length} tracked, ${updated} updated, ${diverged} diverged${errored ? `, ${errored} error(s)` : ""}.`,
+        `${results.length} tracked, ${updated} updated, ${diverged} diverged${orphaned ? `, ${orphaned} orphaned` : ""}${errored ? `, ${errored} error(s)` : ""}.`,
       );
       if (diverged > 0) ctx.log("re-run with --force to overwrite diverged local bodies.");
+      // Additions never install (curator boundary, decision 4); just point at `skl add`.
+      for (const a of newAvailable) {
+        ctx.log(
+          `${a.names.length} new published skill(s) in ${a.repo} not tracked → skl add ${a.repo} --all`,
+        );
+      }
     }
 
     // Non-zero if any error or any unresolved divergence (blocks CI/agents).

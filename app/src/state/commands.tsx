@@ -17,10 +17,11 @@ import {
   addProjectCmd,
   removeProjectCmd,
 } from "../lib/skl";
+import { UpdateReportSchema } from "../lib/schemas";
 import { useStore } from "./store";
 import { qk } from "./queries";
 import { GLOBAL_SCOPE } from "./store";
-import type { OutdatedReport } from "../lib/types";
+import type { OutdatedReport, UpdateReport } from "../lib/types";
 
 // Defense-in-depth: the only verbs this MUTATION layer may dispatch through
 // run()/runInverse(). This is intentionally a SUBSET of the Rust ALLOWED_VERBS
@@ -28,7 +29,7 @@ import type { OutdatedReport } from "../lib/types";
 // and never touch run(), so they don't appear here. The Rust list is the full
 // authority and must remain a superset of this set; anything routed through
 // run() that isn't here is a programming error, refused before a process spawns.
-const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update", "projects", "link", "import"]);
+const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update", "add", "projects", "link", "import"]);
 
 export function deployKey(skill: string, agentId: string, scope: string) {
   return `${skill}|${agentId}|${scope}`;
@@ -472,38 +473,186 @@ export function useCommands() {
   // badge logic in LibraryView/MatrixView; never linked/local). `skl update`
   // re-pulls the upstream body, preserving domain tags (taxonomy.json). It is
   // not cleanly reversible, so there is no Undo.
+  // ADR-0013: STOP discarding the report. We don't route through the generic
+  // run() (which only returns ok) — instead reuse loadOutdated's idiom: update
+  // EXITS 2 on diverged (not a failure; JSON is still on stdout), so we call
+  // runAction directly and treat "stdout parses as JSON" as success. The parsed
+  // report is dispatched into the store (drives the orphaned ⊘ badge + results
+  // banner). name omitted → bare `["update","--json"]` ("Update all", decision 9).
+  // ponytail: browser dry-run stdout is "(dry-run: …)" which won't parse → we
+  // skip the report (banner stays hidden) and keep the optimistic cache patch —
+  // the honest non-Tauri no-op (we cannot clone). ceiling: no --force from UI.
   const update = useCallback(
-    async (name: string, opts?: { silent?: boolean }): Promise<boolean> => {
-      const ok = await run(["update", name], {
-        rollback: () => {},
-        // qk.outdated is a MANUAL (enabled:false) query — invalidating it would
-        // NOT refetch, so the badge would never clear. We patch its cache below.
-        invalidate: [qk.library, qk.where, qk.agents],
-        toast: opts?.silent ? undefined : { msg: `Updated ${name}`, undo: null },
-      });
-      if (ok) {
-        // The skill is now re-pinned to upstream HEAD → mark its outdated row
-        // "current" so the ↑/⚠ badge clears immediately (no re-check needed).
+    async (
+      name?: string,
+      opts?: { silent?: boolean; force?: boolean },
+    ): Promise<boolean> => {
+      dispatch({ type: "setError", error: null });
+      // --force overwrites a diverged local body (discards the user's edits). Only
+      // the diverged-row "overwrite" button passes it, behind an explicit confirm.
+      const force = opts?.force ? ["--force"] : [];
+      const args = name
+        ? ["update", name, ...force, "--json"]
+        : ["update", ...force, "--json"];
+      const res = await runAction(args);
+      let report: UpdateReport | null = null;
+      try {
+        const parsed = UpdateReportSchema.safeParse(JSON.parse(res.stdout));
+        if (parsed.success) report = parsed.data;
+      } catch {
+        // Not JSON (browser dry-run echo). Treat as silent success — no report.
+      }
+      // A genuine non-zero exit WITHOUT a parseable report is a real failure
+      // (clone/fetch error, binary missing). update exits 2 on diverged but
+      // still emits JSON, so a parsed report always wins over res.ok.
+      if (!report && !res.ok) {
+        dispatch({
+          type: "setError",
+          error: res.stderr.trim() || `${cmdEcho(args)} failed`,
+        });
+        return false;
+      }
+      await invalidate([qk.library, qk.where, qk.agents]);
+      if (report) dispatch({ type: "setUpdateReport", report });
+      if (!opts?.silent && name) {
+        // Honest, outcome-aware toast. Saying "Updated" when the outcome was
+        // diverged/orphaned/uptodate misleads (nothing changed, and the banner
+        // still shows it diverged). Reflect THIS skill's actual outcome.
+        const r0 = report?.results.find((r) => r.name === name);
+        const msg =
+          r0?.outcome === "diverged"
+            ? `${name} diverged — local edits block overwrite (use CLI --force)`
+            : r0?.outcome === "orphaned"
+              ? `${name} no longer published upstream`
+              : r0?.outcome === "uptodate"
+                ? `${name} already up to date`
+                : r0?.relocatedFrom
+                  ? `Updated ${name} (followed rename)`
+                  : `Updated ${name}`;
+        dispatch({
+          type: "showToast",
+          toast: { msg, cmd: cmdEcho(args), undo: null },
+        });
+      }
+      // The reconciled skill(s) are now re-pinned to upstream HEAD → patch the
+      // MANUAL outdated cache so the ↑/⚠ badge clears immediately (no re-check).
+      // Scope strictly to the rows THIS run reconciled (updated/uptodate, incl.
+      // an auto-followed rename) — so a per-vendor or per-name run never clears
+      // another vendor's stale badge. Browser (no report) falls back to `name`.
+      const reconciled = new Set(
+        report
+          ? report.results
+              .filter(
+                (r) =>
+                  r.outcome === "updated" ||
+                  r.outcome === "uptodate" ||
+                  r.relocatedFrom != null,
+              )
+              .map((r) => r.name)
+          : name
+            ? [name]
+            : [],
+      );
+      qc.setQueryData<OutdatedReport>(qk.outdated, (prev) =>
+        prev
+          ? {
+              ...prev,
+              rows: prev.rows.map((r) =>
+                reconciled.has(r.name)
+                  ? { ...r, status: "current" as const }
+                  : r,
+              ),
+              stale: prev.rows.filter(
+                (r) => r.status === "stale" && !reconciled.has(r.name),
+              ).length,
+              diverged: prev.rows.filter(
+                (r) => r.status === "diverged" && !reconciled.has(r.name),
+              ).length,
+            }
+          : prev,
+      );
+      return true;
+    },
+    [dispatch, invalidate, qc],
+  );
+
+  // ── Update ONE vendor (owner/repo) — `skl update --repo <source> --json`.
+  //    Replaces the removed library-wide "Update all": one clone, results scoped
+  //    to that vendor (the banner shows only it). Same safe parse-report path as
+  //    update() — the engine REPORTS diverged without --force (never clobbers),
+  //    orphaned is non-destructive. `repo` is the parsed key e.g. github:owner/repo.
+  const updateVendor = useCallback(
+    async (repo: string): Promise<boolean> => {
+      dispatch({ type: "setError", error: null });
+      const args = ["update", "--repo", repo, "--json"];
+      const res = await runAction(args);
+      let report: UpdateReport | null = null;
+      try {
+        const parsed = UpdateReportSchema.safeParse(JSON.parse(res.stdout));
+        if (parsed.success) report = parsed.data;
+      } catch {
+        /* browser dry-run echo — not JSON; no report */
+      }
+      if (!report && !res.ok) {
+        dispatch({
+          type: "setError",
+          error: res.stderr.trim() || `${cmdEcho(args)} failed`,
+        });
+        return false;
+      }
+      await invalidate([qk.library, qk.where, qk.agents]);
+      if (report) {
+        dispatch({ type: "setUpdateReport", report });
+        const reconciled = new Set(
+          report.results
+            .filter(
+              (r) =>
+                r.outcome === "updated" ||
+                r.outcome === "uptodate" ||
+                r.relocatedFrom != null,
+            )
+            .map((r) => r.name),
+        );
         qc.setQueryData<OutdatedReport>(qk.outdated, (prev) =>
           prev
             ? {
                 ...prev,
                 rows: prev.rows.map((r) =>
-                  r.name === name ? { ...r, status: "current" as const } : r,
+                  reconciled.has(r.name)
+                    ? { ...r, status: "current" as const }
+                    : r,
                 ),
                 stale: prev.rows.filter(
-                  (r) => r.name !== name && r.status === "stale",
+                  (r) => r.status === "stale" && !reconciled.has(r.name),
                 ).length,
                 diverged: prev.rows.filter(
-                  (r) => r.name !== name && r.status === "diverged",
+                  (r) => r.status === "diverged" && !reconciled.has(r.name),
                 ).length,
               }
             : prev,
         );
       }
-      return ok;
+      return true;
     },
-    [run, qc],
+    [dispatch, invalidate, qc],
+  );
+
+  // ── Add the NEW (untracked) skills of a source repo (ADR-0013 newAvailable
+  //    button). Adds exactly the listed names via `--skill` — NOT `--all` — so it
+  //    installs only what's new and sidesteps the ADR-0012 `--all` >15 count gate
+  //    (which counts the repo's FULL published set, not the new ones, and would
+  //    otherwise block "Add 6 new" when the repo publishes 17). `--skill` is never
+  //    gated. A separate deliberate click (curator boundary); never auto-run. ────
+  const addAll = useCallback(
+    async (repo: string, names: string[]): Promise<boolean> => {
+      if (names.length === 0) return true;
+      return run(["add", repo, "--skill", names.join(",")], {
+        rollback: () => {},
+        invalidate: [qk.library, qk.where, qk.agents],
+        toast: { msg: `Added ${names.length} new skill(s) from ${repo}`, undo: null },
+      });
+    },
+    [run],
   );
 
   // ── Resolve a `copy` anomaly (ADR-0010 §4c, Bug 1) — NOT invertible ──────
@@ -534,6 +683,8 @@ export function useCommands() {
     tag,
     hardRemove,
     update,
+    updateVendor,
+    addAll,
     resolveCopy,
   };
 }

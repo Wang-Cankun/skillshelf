@@ -176,6 +176,27 @@ export function libraryView(
         count: rs.length,
         rows: rs,
       }));
+  } else if (opts.group === "vendor") {
+    // Group vendored rows by their upstream owner/repo; everything else (local
+    // and unattributed) falls into one "local" bucket. The SkillList header
+    // hangs a per-vendor "Update" action off each github-vendored bucket.
+    const m = new Map<string, Skill[]>();
+    for (const r of rows) {
+      const g = r.source === "vendored" && r.origin ? r.origin : "local";
+      if (!m.has(g)) m.set(g, []);
+      m.get(g)!.push(r);
+    }
+    buckets = [...m.entries()]
+      .sort((a, b) =>
+        // local bucket last; otherwise larger vendors first
+        a[0] === "local" ? 1 : b[0] === "local" ? -1 : b[1].length - a[1].length,
+      )
+      .map(([label, rs]) => ({
+        label,
+        hasLabel: true,
+        count: rs.length,
+        rows: rs,
+      }));
   } else {
     buckets = [{ label: "", hasLabel: false, count: rows.length, rows }];
   }
