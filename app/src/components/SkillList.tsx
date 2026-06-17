@@ -137,6 +137,10 @@ export function SkillList() {
   // (skills symlinked into the Global agent dirs). deployedInScope is scope-generic.
   const installedOnly =
     !needsFilter && !retiredFilter && state.range === "installed";
+  // "uninstalled" range = the complement: skills NOT deployed in the active
+  // scope. Same scope-generic predicate as installedOnly, negated.
+  const uninstalledOnly =
+    !needsFilter && !retiredFilter && state.range === "uninstalled";
 
   const sliceRows = useCallback(
     (rows: Skill[]): Skill[] => {
@@ -144,6 +148,16 @@ export function SkillList() {
       if (installedOnly)
         r = r.filter((s) =>
           deployedInScope(report, state.deployOverrides, s.name, state.scope),
+        );
+      if (uninstalledOnly)
+        r = r.filter(
+          (s) =>
+            !deployedInScope(
+              report,
+              state.deployOverrides,
+              s.name,
+              state.scope,
+            ),
         );
       if (state.sort === "attention") {
         const sign = state.sortDir === "desc" ? -1 : 1;
@@ -159,6 +173,7 @@ export function SkillList() {
     },
     [
       installedOnly,
+      uninstalledOnly,
       report,
       state.deployOverrides,
       state.scope,
@@ -246,6 +261,8 @@ export function SkillList() {
                 ? "Nothing retired."
                 : installedOnly
                 ? "No skills installed here yet — switch to All skills to deploy some."
+                : uninstalledOnly
+                ? "Everything in the library is installed here."
                 : "No skills match."}
           </div>
         ) : (

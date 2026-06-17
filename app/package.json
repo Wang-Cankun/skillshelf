@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "tauri:build:debug": "tauri build --debug --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",

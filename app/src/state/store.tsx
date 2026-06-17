@@ -22,7 +22,9 @@ import type { DeployStateName, UpdateReport } from "../lib/types";
 //    For Global, scope === "Global" and scopePath is null.
 export const GLOBAL_SCOPE = "Global";
 // ── Range (ADR-0010 §10) — the project view's "Installed here ↔ All skills".
-export type Range = "installed" | "all";
+//    "uninstalled" is the complement of "installed": skills NOT deployed in the
+//    active scope (a project's not-yet-pinned set, or Global's not-yet-installed).
+export type Range = "installed" | "all" | "uninstalled";
 export type SortKey = "name" | "attention" | "deployed";
 export type SortDir = "asc" | "desc";
 export type GroupMode = "list" | "domain" | "family" | "vendor";
