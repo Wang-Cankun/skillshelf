@@ -104,6 +104,53 @@ export const OutdatedSchema = z
   })
   .passthrough();
 
+// `update [name] --json` (ADR-0013, FROZEN CONTRACT). One Result per tracked
+// skill (existing rows + orphaned), plus `newAvailable` (per source repo,
+// published-but-untracked skills). errors/orphaned/newAvailable are optional so
+// an OLDER engine that omits them still validates (mirrors OutdatedSchema). The
+// outcome enum is WIDENED with "orphaned" (subpath gone, library copy kept);
+// `relocatedFrom` is an orthogonal flag on a normal body outcome (rename was
+// auto-followed) — never an outcome value.
+export const UpdateResultSchema = z
+  .object({
+    name: z.string(),
+    source: z.string(),
+    channel: z.string(),
+    fromRef: z.string(),
+    toRef: z.string().nullable(),
+    outcome: z.enum([
+      "updated",
+      "uptodate",
+      "diverged",
+      "skipped",
+      "error",
+      "orphaned",
+    ]),
+    note: z.string(),
+    diff: z.string().optional(),
+    relocatedFrom: z.string().optional(),
+  })
+  .passthrough();
+
+export const RepoAdditionsSchema = z
+  .object({
+    repo: z.string(),
+    names: z.array(z.string()),
+  })
+  .passthrough();
+
+export const UpdateReportSchema = z
+  .object({
+    ok: z.boolean(),
+    updated: z.number(),
+    diverged: z.number(),
+    errors: z.number().optional(),
+    orphaned: z.number().optional(),
+    results: z.array(UpdateResultSchema),
+    newAvailable: z.array(RepoAdditionsSchema).optional(),
+  })
+  .passthrough();
+
 const DeployStateNameSchema = z.enum([
   "clean",
   "source",

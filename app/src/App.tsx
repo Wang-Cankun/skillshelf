@@ -10,6 +10,7 @@ import { Sidebar } from "./components/Sidebar";
 import { MainPane } from "./components/MainPane";
 import { HealthStrip } from "./components/HealthStrip";
 import { ErrorBanner } from "./components/ErrorBanner";
+import { UpdateResultsBanner } from "./components/UpdateResultsBanner";
 import { Toast } from "./components/Toast";
 import { RemoveModal } from "./components/RemoveModal";
 import { DetailDrawer } from "./components/DetailDrawer";
@@ -54,6 +55,7 @@ export default function App() {
           }}
         >
           <ErrorBanner />
+          <UpdateResultsBanner />
           {loading ? (
             <div style={{ padding: 24, fontSize: 12, color: C.faint }}>
               loading…

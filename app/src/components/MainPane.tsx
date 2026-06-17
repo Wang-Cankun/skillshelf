@@ -191,6 +191,7 @@ function LibraryToolbar() {
     { group: "list", label: "List" },
     { group: "domain", label: "By domain" },
     { group: "family", label: "By family" },
+    { group: "vendor", label: "By vendor" },
   ];
 
   const isProject = state.scope !== GLOBAL_SCOPE;
@@ -331,6 +332,11 @@ function LibraryToolbar() {
             </button>
           ))}
         </div>
+        <span style={{ flex: 1 }} />
+        {/* No library-wide "Update all" — it swept all vendors in one blocking
+            clone (froze the UI) and dumped a wall of results. Update is now
+            per-vendor: switch to "By vendor" and use the per-group Update action
+            (SkillList header → commands.updateVendor). */}
       </div>
     </div>
   );

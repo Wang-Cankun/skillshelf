@@ -67,6 +67,43 @@ export interface OutdatedReport {
   rows: OutdatedRow[];
 }
 
+// ── `update [name] --json` (ADR-0013): reconciles per-repo, reports structural
+//    drift. "orphaned" = tracked subpath gone, library copy KEPT (non-destructive);
+//    `relocatedFrom` = a rename was auto-followed (orthogonal flag on a normal
+//    body outcome, never an outcome value); `newAvailable` = published-but-untracked
+//    skills per source repo (update NEVER installs them). ────────────────────────
+export type UpdateOutcome =
+  | "updated"
+  | "uptodate"
+  | "diverged"
+  | "skipped"
+  | "error"
+  | "orphaned";
+export interface UpdateResult {
+  name: string;
+  source: string;
+  channel: string;
+  fromRef: string;
+  toRef: string | null;
+  outcome: UpdateOutcome;
+  note: string;
+  diff?: string;
+  relocatedFrom?: string;
+}
+export interface RepoAdditions {
+  repo: string;
+  names: string[];
+}
+export interface UpdateReport {
+  ok: boolean;
+  updated: number;
+  diverged: number;
+  errors?: number;
+  orphaned?: number;
+  results: UpdateResult[];
+  newAvailable?: RepoAdditions[];
+}
+
 export interface ScanPerRoot {
   root: string;
   candidates: number;

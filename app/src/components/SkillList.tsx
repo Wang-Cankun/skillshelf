@@ -7,8 +7,9 @@
 // The `{kind:"needs"}` filter and the `attention` sort both consult the agents
 // report (anomaly state lives there, not on Skill), which this component owns.
 
-import { useCallback, useDeferredValue, useMemo } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { useStore } from "../state/store";
+import { useCommands } from "../state/commands";
 import { useLibrary, useAgents, useWhere } from "../state/queries";
 import { libraryView } from "../lib/select";
 import { needsAttentionNames } from "../lib/derive";
@@ -71,6 +72,9 @@ const headStyle: React.CSSProperties = {
 
 export function SkillList() {
   const { state, dispatch } = useStore();
+  const commands = useCommands();
+  // Which vendor's "Update" is in flight (one clone at a time → no UI freeze).
+  const [busyVendor, setBusyVendor] = useState<string | null>(null);
   const skills = useLibrary().data ?? [];
   const report = useAgents().data ?? EMPTY_AGENTS;
   const where = useWhere().data;
@@ -266,6 +270,49 @@ export function SkillList() {
                   <span style={{ fontFamily: MONO, color: "#C7C7CC" }}>
                     {bucket.rows.length}
                   </span>
+                  {(() => {
+                    // Per-vendor update: github-vendored bucket only (--repo needs
+                    // a github source). One clone, results scoped to this vendor.
+                    const v = bucket.rows[0];
+                    if (
+                      state.group !== "vendor" ||
+                      bucket.label === "local" ||
+                      v?.source !== "vendored" ||
+                      v?.channel !== "github" ||
+                      !v?.origin
+                    )
+                      return null;
+                    const repo = `github:${v.origin}`;
+                    const busy = busyVendor === repo;
+                    return (
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          setBusyVendor(repo);
+                          void commands
+                            .updateVendor(repo)
+                            .finally(() => setBusyVendor(null));
+                        }}
+                        title={`Update ${bucket.rows.length} skill(s) from ${v.origin} (skl update --repo)`}
+                        style={{
+                          marginLeft: 4,
+                          background: "#FFFFFF",
+                          border: "1px solid #2563EB",
+                          borderRadius: 6,
+                          padding: "1px 8px",
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          letterSpacing: 0,
+                          color: "#2563EB",
+                          cursor: busy ? "default" : "pointer",
+                          opacity: busy ? 0.6 : 1,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {busy ? "updating…" : `Update ${bucket.rows.length}`}
+                      </button>
+                    );
+                  })()}
                 </div>
               ) : null}
               {bucket.rows.map((skill) =>
