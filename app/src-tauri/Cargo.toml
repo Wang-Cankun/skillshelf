@@ -1,6 +1,6 @@
 [package]
 name = "skillshelf-app"
-version = "0.2.0"
+version = "0.3.0"
 description = "skillshelf workbench"
 authors = ["skillshelf"]
 edition = "2021"
