@@ -9,22 +9,29 @@
 import type {
   AgentInfo,
   AgentsReport,
-  AgentDeployment,
   DeployStateName,
   DeploymentReport,
   DeploymentSite,
 } from "./types";
+// The surface→agent→scope fold is the node-free shared module (src/core/agent-matrix.ts),
+// imported via the `@core` Vite alias so the browser bundle stays node-free and this
+// dev fallback computes the SAME matrix as the engine. Do NOT re-implement these here.
+import {
+  agentIdForSurface as agentIdForSurfaceCore,
+  scopeForSurface as scopeForSurfaceCore,
+  foldAgentMatrix,
+} from "@core/agent-matrix.ts";
 
 // Registry seeds — the agents this user actually deploys to: Claude Code,
-// Codex, and Pi. `installed` is overridden at runtime if the real feed knows
-// better; these are the defaults. (To add more agents, append here AND extend
-// the inferHome regex below + the Rust agent surface set.)
+// Codex, Pi, and Oh My Pi. `installed` is overridden at runtime if the real feed
+// knows better; these are the defaults. (To add more agents, append here AND
+// extend the inferHome regex below + the Rust agent surface set.)
 //
 // This list INTENTIONALLY diverges from the ENGINE seed list in
-// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini; no `pi`). The
-// engine errs toward broad on-disk detection; the app shows the user's real 2–3
-// agents and reconstructs the report in the browser dev fallback. The two are
-// NOT meant to match — net-new/overridden agents flow through the config `agents`
+// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, omp; no `pi`).
+// The engine errs toward broad on-disk detection; the app shows the user's real
+// agents and reconstructs the report in the browser dev fallback. The two are NOT
+// meant to match — net-new/overridden agents flow through the config `agents`
 // block (delta 4) on both sides. Keep this comment in sync with its twin over
 // AGENT_SEEDS in src/core/agents.ts when changing either list.
 export const AGENT_SEEDS: AgentInfo[] = [
@@ -52,6 +59,15 @@ export const AGENT_SEEDS: AgentInfo[] = [
     short: "Pi",
     global: "~/.pi/skills",
     projConvention: ".pi/skills",
+    installed: true,
+    inheritsGlobal: true,
+  },
+  {
+    id: "omp",
+    name: "Oh My Pi",
+    short: "OMP",
+    global: "~/.omp/agent/skills",
+    projConvention: ".omp/agent/skills",
     installed: true,
     inheritsGlobal: true,
   },
@@ -83,18 +99,15 @@ export function mergeAgents(
   return order.map((id) => byId.get(id)!);
 }
 
-/** Detect which agent a surface path belongs to (by its `.<id>` segment). */
+/**
+ * Detect which agent a surface path belongs to (by its `.<id>` segment). App
+ * wrapper around the shared agent-matrix core that defaults the id set to the
+ * built-in app seeds; aliasedSiteFor/copySiteFor below resolve seed surfaces so
+ * the seed list suffices there. (deriveAgentsReport routes through the fold with
+ * the MERGED seeds+custom ids so a custom surface like `pi` is detected too.)
+ */
 export function agentIdForSurface(surface: string): string | null {
-  for (const id of AGENT_IDS) {
-    if (
-      surface.includes(`/.${id}/`) ||
-      surface.endsWith(`/.${id}/skills`) ||
-      surface.includes(`/.${id}/skills`)
-    ) {
-      return id;
-    }
-  }
-  return null;
+  return agentIdForSurfaceCore(surface, AGENT_IDS);
 }
 
 /**
@@ -131,51 +144,19 @@ function inferHome(surfaces: string[]): string | null {
 
 /**
  * Resolve a surface to a scope name: "Global" when the agent dir sits directly
- * under HOME, else the enclosing project's directory name.
+ * under HOME, else the enclosing project's directory name. App wrapper that
+ * resolves the agent id then delegates to the shared agent-matrix core; for a
+ * NON-agent surface (no id) it keeps the app's own `/skills` strip fallback
+ * (the shared core is only ever called with a real agent id).
  */
 export function scopeForSurface(surface: string, home: string | null): string {
   const id = agentIdForSurface(surface);
-  if (id && home && surface.startsWith(`${home}/.${id}/`)) return "Global";
-  // strip a trailing `/.<id>/skills` or `/skills` to get the project root.
-  let root = surface;
-  if (id) {
-    const idx = surface.indexOf(`/.${id}/`);
-    if (idx >= 0) root = surface.slice(0, idx);
-  } else {
-    root = surface.replace(/\/skills?$/, "");
-  }
+  if (id) return scopeForSurfaceCore(surface, id, home);
+  // No agent id: strip a trailing `/skills` and take the basename.
+  const root = surface.replace(/\/skills?$/, "");
   const base = root.split("/").filter(Boolean).pop();
   return base || "Global";
 }
-
-function stateForSite(site: DeploymentSite): DeployStateName {
-  switch (site.kind) {
-    case "linked":
-      return site.drift ? "drift" : "clean";
-    case "source":
-      return "source";
-    case "copy":
-      return "copy";
-    case "foreign-link":
-      return "copy";
-    case "aliased":
-      return "drift";
-    case "dead":
-      return "dead";
-    default:
-      return "absent";
-  }
-}
-
-// rank to keep the "strongest" signal if two sites collide on the same key.
-const RANK: Record<DeployStateName, number> = {
-  dead: 5,
-  drift: 4,
-  copy: 3,
-  source: 2,
-  clean: 1,
-  absent: 0,
-};
 
 /**
  * Build an AgentsReport from a DeploymentReport (the dev/browser fallback for
@@ -192,44 +173,25 @@ export function deriveAgentsReport(
   opts: { agents?: AgentInfo[]; extraScopes?: string[] } = {},
 ): AgentsReport {
   const home = inferHome(where.surfaces);
-  const deployments: Record<string, Record<string, AgentDeployment>> = {};
-  const scopeSet = new Set<string>(["Global"]);
-  for (const sc of opts.extraScopes ?? [])
-    if (sc && sc !== "Global") scopeSet.add(sc);
-
-  const allSites = [...where.sites, ...where.problems];
-  for (const site of allSites) {
-    const id = agentIdForSurface(site.surface);
-    if (!id) continue;
-    const scope = scopeForSurface(site.surface, home);
-    if (scope !== "Global") scopeSet.add(scope);
-    const state = stateForSite(site);
-
-    const perAgent = (deployments[site.name] ??= {});
-    const dep = (perAgent[id] ??= {});
-    if (scope === "Global") {
-      if (!dep.g || RANK[state] > RANK[dep.g]) dep.g = state;
-    } else {
-      dep.p ??= {};
-      const cur = dep.p[scope];
-      if (!cur || RANK[state] > RANK[cur]) dep.p[scope] = state;
-    }
-  }
+  // Merge seeds + custom agents FIRST and pass the merged id set as `agentIds`,
+  // so a custom surface (e.g. a `pi` project dir) is detected by the fold — a
+  // small correctness improvement matching the engine. extraScopes (§5a) union
+  // in as empty scope rows with NO fabricated deployments.
+  const merged = mergeAgents(AGENT_SEEDS, opts.agents);
+  const { scopes, deployments } = foldAgentMatrix([...where.sites, ...where.problems], {
+    home,
+    agentIds: merged.map((a) => a.id),
+    extraScopes: opts.extraScopes,
+  });
 
   // installed = an agent has at least one resolvable site, OR its seed default.
   const seen = new Set<string>();
   for (const byAgent of Object.values(deployments))
     for (const id of Object.keys(byAgent)) seen.add(id);
-  const agents = mergeAgents(AGENT_SEEDS, opts.agents).map((a) => ({
+  const agents = merged.map((a) => ({
     ...a,
     installed: a.installed || seen.has(a.id),
   }));
-
-  // Stable scope ordering: Global first, then project names alphabetically.
-  const scopes = [
-    "Global",
-    ...[...scopeSet].filter((s) => s !== "Global").sort(),
-  ];
 
   return { agents, scopes, deployments };
 }

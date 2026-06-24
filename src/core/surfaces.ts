@@ -37,6 +37,7 @@ export function knownAgentSurfaces(home: string = homedir()): AgentSurface[] {
     // matrix advertises must have its global surface scanned, or `installed`
     // can disagree with the (empty) matrix. See agents.test.ts coverage check.
     { agent: "gemini", path: join(home, ".gemini", "skills") },
+    { agent: "omp", path: join(home, ".omp", "agent", "skills") },
   ];
 }
 

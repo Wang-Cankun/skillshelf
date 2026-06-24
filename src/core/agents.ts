@@ -11,15 +11,21 @@ import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import { existsSync } from "node:fs";
 import type { AgentConfigEntry, DeploymentReport, DeploymentSite } from "../types.ts";
+// The surface→agent→scope fold lives in the node-free shared module so the app's
+// browser fallback and this engine compute identical matrices. See agent-matrix.ts.
+import {
+  agentIdForSurface as agentIdForSurfaceCore,
+  scopeForSurface,
+  stateForSite,
+  foldAgentMatrix,
+} from "./agent-matrix.ts";
+import type { DeployState, AgentDeployment } from "./agent-matrix.ts";
 
-/** Deployment state of one (skill, agent, scope) cell. */
-export type DeployState =
-  | "clean"
-  | "source"
-  | "drift"
-  | "copy"
-  | "dead"
-  | "absent";
+// Re-export the shared fold primitives so existing importers (agents.test.ts,
+// ls.ts, etc.) keep resolving them from ./agents.ts — they now delegate to
+// agent-matrix.ts (do NOT edit them here; edit the shared module).
+export { scopeForSurface, stateForSite };
+export type { DeployState, AgentDeployment };
 
 /** A known agent + its skill-dir conventions (aligned with the cross-agent ecosystem). */
 export interface AgentInfo {
@@ -51,12 +57,6 @@ export interface AgentInfo {
   custom?: boolean;
 }
 
-/** Per (skill, agent): global state + per-project states. Omitted keys = absent. */
-export interface AgentDeployment {
-  g?: DeployState;
-  p?: Record<string, DeployState>;
-}
-
 export interface AgentsReport {
   agents: AgentInfo[];
   /** ["Global", ...sorted project names that have a deployment] */
@@ -72,61 +72,47 @@ interface AgentSeed {
   short: string;
 }
 // ENGINE seed list — the full set of agents `skl` can DETECT on disk (claude,
-// codex, cursor, opencode, gemini; no `pi`). This INTENTIONALLY diverges from the
-// app-side seed list in `app/src/lib/agents.ts` (claude, codex, pi), which shows
-// only the agents a given user actually deploys to and reconstructs the report in
-// the browser dev fallback. The two lists are NOT meant to match: the engine
-// errs toward broad detection, the app toward the user's real surfaces, and
-// custom/overridden agents flow through config (delta 4) on both sides. If you
-// add/remove an id here, decide deliberately whether the app list should follow —
-// see the matching comment over AGENT_SEEDS in app/src/lib/agents.ts.
+// codex, cursor, opencode, gemini, omp; no `pi` — `pi` is a user-facing alias for
+// `omp` in the app). This INTENTIONALLY diverges from the app-side seed list in
+// `app/src/lib/agents.ts` (claude, codex, pi, omp), which shows only the agents a
+// given user actually deploys to and reconstructs the report in the browser dev
+// fallback. The two lists are NOT meant to match: the engine errs toward broad
+// detection, the app toward the user's real surfaces, and custom/overridden agents
+// flow through config (delta 4) on both sides. If you add/remove an id here, decide
+// deliberately whether the app list should follow — see the matching comment over
+// AGENT_SEEDS in app/src/lib/agents.ts.
 const AGENT_SEEDS: AgentSeed[] = [
   { id: "claude", name: "Claude Code", short: "Claude" },
   { id: "codex", name: "Codex", short: "Codex" },
   { id: "cursor", name: "Cursor", short: "Cursor" },
   { id: "opencode", name: "OpenCode", short: "OpenCode" },
   { id: "gemini", name: "Gemini", short: "Gemini" },
+  { id: "omp", name: "Oh My Pi", short: "OMP" },
 ];
 
 const AGENT_IDS = AGENT_SEEDS.map((a) => a.id);
 
+/**
+ * Which agent owns a surface path, or null. Engine wrapper around the shared
+ * agent-matrix core that defaults `ids` to the built-in registry; computeAgentsReport
+ * passes a widened set (seeds + custom config agents) so custom-agent surfaces are
+ * detected too. (The shared core has no default — the app always passes its own ids.)
+ */
+export function agentIdForSurface(
+  surface: string,
+  ids: readonly string[] = AGENT_IDS,
+): string | null {
+  return agentIdForSurfaceCore(surface, ids);
+}
+
+/** Relative subdirectory under .<id>/ where skills live (agent/skills for omp, skills otherwise). */
+function skillsSuffix(id: string): string {
+  return id === "omp" ? join("agent", "skills") : "skills";
+}
+
 /** Absolute path to an agent's global skills dir. */
 function globalDir(id: string, home: string): string {
-  return join(home, `.${id}`, "skills");
-}
-
-/**
- * Which agent owns a surface path (by its `/.<id>/` dotdir segment), or null.
- * `ids` defaults to the built-in registry; computeAgentsReport passes a widened set
- * (seeds + custom config agents) so custom-agent surfaces are detected too.
- */
-export function agentIdForSurface(surface: string, ids: readonly string[] = AGENT_IDS): string | null {
-  for (const id of ids) {
-    if (surface.includes(`${sep}.${id}${sep}`) || surface.endsWith(`${sep}.${id}`)) {
-      return id;
-    }
-  }
-  return null;
-}
-
-/**
- * Scope of a surface for a given agent: "Global" when the surface sits directly
- * under $HOME (e.g. ~/.claude/skills); otherwise the enclosing project's dir name.
- * Uses the real $HOME (no heuristic — this runs in the engine, not the browser).
- */
-export function scopeForSurface(
-  surface: string,
-  agentId: string,
-  home: string,
-): string {
-  const homeDot = join(home, `.${agentId}`);
-  if (surface === homeDot || surface.startsWith(homeDot + sep)) return "Global";
-  // strip from the `/.<id>` segment to get the project root, then take its name.
-  const marker = `${sep}.${agentId}`;
-  const idx = surface.indexOf(marker);
-  const root = idx >= 0 ? surface.slice(0, idx) : surface;
-  const base = root.split(sep).filter(Boolean).pop();
-  return base || "Global";
+  return join(home, `.${id}`, skillsSuffix(id));
 }
 
 /**
@@ -137,47 +123,6 @@ export function scopeForSurface(
 export function isCleanSite(site: DeploymentSite): boolean {
   return site.kind === "linked" || site.kind === "source";
 }
-
-/**
- * Codex keeps its own vendored imports under `~/.codex/vendor_imports/...`.
- * Those are codex-internal copies, not skillshelf deployment targets, and they'd
- * otherwise collapse into the real `~/.codex/skills` Global cell — so the agent
- * matrix excludes them (they still show up in `skl where` for sprawl visibility).
- */
-function isAgentMatrixSurface(surface: string): boolean {
-  return !surface.includes(`${sep}vendor_imports${sep}`);
-}
-
-/** Map a site's classification to a deployment state. */
-export function stateForSite(site: DeploymentSite): DeployState {
-  switch (site.kind) {
-    case "linked":
-      return "clean";
-    case "source":
-      return "source";
-    case "copy":
-      return site.drift ? "drift" : "copy";
-    case "foreign-link":
-      return "copy";
-    case "aliased":
-      // name mismatch — a real misconfiguration, not a clean deploy.
-      return "drift";
-    case "dead":
-      return "dead";
-    default:
-      return "absent";
-  }
-}
-
-// Keep the strongest signal if two sites collide on the same (skill,agent,scope).
-const RANK: Record<DeployState, number> = {
-  dead: 5,
-  drift: 4,
-  copy: 3,
-  source: 2,
-  clean: 1,
-  absent: 0,
-};
 
 /**
  * Fold a DeploymentReport (from `inventoryDeployments`) into the agent matrix.
@@ -195,38 +140,14 @@ export function computeAgentsReport(
   const merged = mergeAgents(opts.agents ?? []);
   const ids = merged.map((a) => a.id);
 
-  const deployments: Record<string, Record<string, AgentDeployment>> = {};
-  const scopeSet = new Set<string>(["Global"]);
-
-  // Persisted-but-empty project scopes (ADR-0010 §5a): union them in so an added
-  // project still appears as a drawer/scope row. They get NO deployments — cells
-  // stay all-absent, derived from reality, never fabricated.
-  for (const s of opts.extraScopes ?? []) {
-    if (s && s !== "Global") scopeSet.add(s);
-  }
-
-  for (const site of report.sites) {
-    if (!isAgentMatrixSurface(site.surface)) continue;
-    const agentId = agentIdForSurface(site.surface, ids);
-    if (!agentId) continue;
-    const scope = scopeForSurface(site.surface, agentId, home);
-    if (scope !== "Global") scopeSet.add(scope);
-    const state = stateForSite(site);
-
-    // Keyed by the deployed link name (site.name). For an `aliased` site this is
-    // the wrong-name alias, not a library skill — intentional: it raises the alarm
-    // under the name you'd `ls` in the surface; `skl where --problems` is the
-    // canonical place to see the real skill it points at.
-    const perAgent = (deployments[site.name] ??= {});
-    const dep = (perAgent[agentId] ??= {});
-    if (scope === "Global") {
-      if (!dep.g || RANK[state] > RANK[dep.g]) dep.g = state;
-    } else {
-      dep.p ??= {};
-      const cur = dep.p[scope];
-      if (!cur || RANK[state] > RANK[cur]) dep.p[scope] = state;
-    }
-  }
+  // Persisted-but-empty project scopes (ADR-0010 §5a) are unioned in by the fold
+  // via `extraScopes` so an added project still appears as a drawer/scope row;
+  // they get NO deployments — cells stay all-absent, derived from reality.
+  const { scopes, deployments } = foldAgentMatrix(report.sites, {
+    home,
+    agentIds: ids,
+    extraScopes: opts.extraScopes,
+  });
 
   // Ids that came from a config `agents` entry (custom agent or seed override) so
   // the GUI can recover the custom registry from the report (loadConfig filters on
@@ -240,8 +161,8 @@ export function computeAgentsReport(
     id: a.id,
     name: a.name,
     short: a.short,
-    global: a.global ?? `~/.${a.id}/skills`,
-    projConvention: a.projConvention ?? `.${a.id}/skills`,
+    global: a.global ?? `~/.${a.id}/${skillsSuffix(a.id)}`,
+    projConvention: a.projConvention ?? `.${a.id}/${skillsSuffix(a.id)}`,
     installed: existsSync(globalDir(a.id, home)),
     // Default true (the ~/.x/skills inheritance convention all seeds follow); a
     // custom config entry may opt out with inheritsGlobal:false. `?? true` keeps
@@ -251,11 +172,6 @@ export function computeAgentsReport(
     ...(a.color ? { color: a.color } : {}),
     ...(customIds.has(a.id) ? { custom: true } : {}),
   }));
-
-  const scopes = [
-    "Global",
-    ...[...scopeSet].filter((s) => s !== "Global").sort(),
-  ];
 
   return { agents, scopes, deployments };
 }
@@ -290,7 +206,7 @@ export function agentDeployDir(
   // a named project: resolve as an absolute path, or a dir under cwd.
   const proj = scope.project;
   const root = proj.startsWith(sep) ? proj : join(cwd, proj);
-  return join(root, `.${agentId}`, "skills");
+  return join(root, `.${agentId}`, skillsSuffix(agentId));
 }
 
 /** True if `id` is a known agent. */
@@ -350,7 +266,7 @@ export function resolveReadTarget(
   let extraSurfaces: string[] = [];
   if (projectDir) {
     const ids = agentId ? [agentId] : AGENT_IDS;
-    extraSurfaces = ids.map((id) => join(projectDir, `.${id}`, "skills"));
+    extraSurfaces = ids.map((id) => join(projectDir, `.${id}`, skillsSuffix(id)));
   }
 
   return { rest, agentId, projectDir, extraSurfaces };
@@ -422,7 +338,7 @@ export function parseDeployTarget(
     scope = project.split(sep).filter(Boolean).pop() || project;
   } else {
     // default: the cwd project's dir for this agent (legacy behaviour for claude).
-    dir = join(cwd, `.${effectiveAgent}`, "skills");
+    dir = join(cwd, `.${effectiveAgent}`, skillsSuffix(effectiveAgent));
     scope = cwd.split(sep).filter(Boolean).pop() || "project";
   }
 
