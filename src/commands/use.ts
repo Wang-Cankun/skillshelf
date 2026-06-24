@@ -11,6 +11,7 @@ import { resolveBundle } from "../core/bundle.ts";
 import { activeSkills, findByName } from "../core/library.ts";
 import { parseDeployTarget } from "../core/agents.ts";
 import { safeSymlink, isSymlink, realpathOrSelf, realpathOrSelfAsync } from "../lib/fs.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "use",
@@ -79,8 +80,15 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // Single-name BACKWARD COMPAT: when exactly one positional was given and it
     // resolved to nothing, emit the byte-identical 'empty-bundle' shape/behaviour.
     if (!multi && union.length === 0) {
+      // Error path: the ctx.error stays in run() (render is display-only and never
+      // handles error output); only the --json payload routes through render(), so its
+      // shape stays byte-identical while the human side keeps emitting ctx.error.
       if (json) {
-        ctx.json({ bundle: bundleName, kind: "bundle", linked: [], skillsDir: target.dir, error: "empty-bundle" });
+        const result: CommandResult = {
+          json: { bundle: bundleName, kind: "bundle", linked: [], skillsDir: target.dir, error: "empty-bundle" },
+          human: () => {},
+        };
+        render(ctx, json, result);
       } else {
         ctx.error(`No active skill or bundle matches '${bundleName}'.`);
       }
@@ -121,27 +129,29 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
     const conflicts = results.filter((r) => r.status === "conflict");
 
-    if (json) {
-      const payload: Record<string, unknown> = { bundle: bundle.name, kind: resolved.kind, skillsDir, agent: target.agentId, scope: target.scope, linked: results };
-      // Only the MULTI-name shape is extended; single-name JSON stays byte-identical.
-      if (multi) payload.unresolved = unresolved;
-      ctx.json(payload);
-    } else {
-      const label = resolved.kind === "skill" ? `Skill '${bundle.name}'` : `Bundle '${bundle.name}'`;
-      ctx.log(`${label} -> ${skillsDir}`);
-      for (const r of results) {
-        const tag =
-          r.status === "linked" ? "linked" : r.status === "already" ? "ok" : "SKIP (real file present)";
-        ctx.log(`  ${r.name}  [${tag}]`);
-      }
-      for (const u of unresolved) {
-        ctx.log(`  ${u}  [UNRESOLVED (no active skill or bundle)]`);
-      }
-      ctx.log("");
-      if (target.scope !== "Global") {
-        ctx.log(`Reminder: add '${target.agentId === "claude" ? ".claude" : "." + target.agentId}/skills/' to this project's .gitignore so these symlinks aren't committed.`);
-      }
-    }
+    const payload: Record<string, unknown> = { bundle: bundle.name, kind: resolved.kind, skillsDir, agent: target.agentId, scope: target.scope, linked: results };
+    // Only the MULTI-name shape is extended; single-name JSON stays byte-identical.
+    if (multi) payload.unresolved = unresolved;
+    const result: CommandResult = {
+      json: payload,
+      human: (emit) => {
+        const label = resolved.kind === "skill" ? `Skill '${bundle.name}'` : `Bundle '${bundle.name}'`;
+        emit(`${label} -> ${skillsDir}`);
+        for (const r of results) {
+          const tag =
+            r.status === "linked" ? "linked" : r.status === "already" ? "ok" : "SKIP (real file present)";
+          emit(`  ${r.name}  [${tag}]`);
+        }
+        for (const u of unresolved) {
+          emit(`  ${u}  [UNRESOLVED (no active skill or bundle)]`);
+        }
+        emit("");
+        if (target.scope !== "Global") {
+          emit(`Reminder: add '${target.agentId === "claude" ? ".claude" : "." + target.agentId}/skills/' to this project's .gitignore so these symlinks aren't committed.`);
+        }
+      },
+    };
+    render(ctx, json, result);
 
     // Exit non-zero if any positional was unresolved OR any slot was a real-file
     // conflict — successful links are still applied (partial success is real on disk).

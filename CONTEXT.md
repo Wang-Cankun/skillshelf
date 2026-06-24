@@ -50,7 +50,10 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   (auto-followed), **Orphaned** (kept, flagged), and new published skills not yet tracked — but it
   **never installs**. Discovering/installing new skills is `add`'s job (`skl add <repo> --all`);
   `update` only ever refreshes what you already track. Floating-HEAD: it tracks the default branch,
-  not version tags.
+  not version tags. The per-skill **verdict** (current / stale / diverged / edited / adopted / orphaned)
+  is computed by one shared classifier, `src/core/reconcile.ts` — which is why `update` (online) and
+  `outdated --check-local` (offline) can give the *same* skill different-but-correct answers: the first
+  asks "do I differ from upstream now?", the second "have I edited since install?" (ADR-0014).
 - **Curator boundary** — `add` only ever writes the library; `use` only ever writes agent dirs.
   skillshelf deliberately does **not** offer one-shot install-and-activate (the `vercel-labs/skills`
   installer model); getting-and-activating in one command is out of scope by ADR-0003. To install

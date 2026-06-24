@@ -39,7 +39,8 @@ import {
   safeSymlink,
   realpathOrSelfAsync,
 } from "../lib/fs.ts";
-import { entryStatus } from "../core/library.ts";
+import { isRetiredOnly } from "../core/vendor.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "link",
@@ -161,18 +162,21 @@ async function runFrom(flags: Flags, ctx: Ctx): Promise<number> {
       const cur = await realpathOrSelfAsync(libDir);
       if (cur === fromReal) {
         const summary = { ok: true, name, from: fromPath, to: libDir, status: "already" as const, mode: "linked" as const, discarded: false };
-        if (flags.json) ctx.json(summary);
-        else ctx.log(`link: library/${name} already points at ${fromPath}`);
+        const result: CommandResult = {
+          json: summary,
+          human: (emit) => emit(`link: library/${name} already points at ${fromPath}`),
+        };
+        render(ctx, flags.json, result);
         return 0;
       }
     }
 
-    // Retired-aware guard: refuse if the name exists ONLY as a retired tombstone
-    // (<library>/_retired/<name>). Shelving a symlink beside it would strand a duplicate
-    // and break `skl unretire`; --force replaces an ACTIVE entry, not a retired one, so
-    // this fires regardless. The user must unretire first.
-    const status = entryStatus(libraryPath, name);
-    if (status.retired && !status.active) {
+    // Retired-aware guard (shared with add/import via core/vendor.ts): refuse if the name
+    // exists ONLY as a retired tombstone (<library>/_retired/<name>). Shelving a symlink
+    // beside it would strand a duplicate and break `skl unretire`; --force replaces an
+    // ACTIVE entry, not a retired one, so this fires regardless. The user must unretire
+    // first. The bespoke wording stays here; the predicate is shared.
+    if (isRetiredOnly(libraryPath, name)) {
       ctx.error(`skl link: a retired '${name}' exists — run \`skl unretire ${name}\` first.`);
       return 1;
     }
@@ -200,12 +204,14 @@ async function runFrom(flags: Flags, ctx: Ctx): Promise<number> {
     await removeEntry(libraryPath, name);
 
     const summary = { ok: true, name, from: fromPath, to: libDir, status: "linked" as const, mode: "linked" as const, discarded };
-    if (flags.json) {
-      ctx.json(summary);
-    } else {
-      ctx.log(`shelved ${name} -> ${fromPath} (LINKED)`);
-      if (discarded) ctx.log("  (discarded the previous owned library copy; library now points at the dev repo)");
-    }
+    const result: CommandResult = {
+      json: summary,
+      human: (emit) => {
+        emit(`shelved ${name} -> ${fromPath} (LINKED)`);
+        if (discarded) emit("  (discarded the previous owned library copy; library now points at the dev repo)");
+      },
+    };
+    render(ctx, flags.json, result);
     return 0;
   } catch (err) {
     ctx.error(`skl link: failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -245,8 +251,11 @@ async function runAt(flags: Flags, ctx: Ctx): Promise<number> {
       const cur = await realpathOrSelfAsync(atPath);
       if (cur === libReal) {
         const summary = { ok: true, name, at: atPath, to: libDir, status: "already" as const, discarded: false };
-        if (flags.json) ctx.json(summary);
-        else ctx.log(`link: ${atPath} already points at the library copy of ${name}`);
+        const result: CommandResult = {
+          json: summary,
+          human: (emit) => emit(`link: ${atPath} already points at the library copy of ${name}`),
+        };
+        render(ctx, flags.json, result);
         return 0;
       }
     }
@@ -314,12 +323,14 @@ async function runAt(flags: Flags, ctx: Ctx): Promise<number> {
     }
 
     const summary = { ok: true, name, at: atPath, to: libDir, status: "linked" as const, discarded };
-    if (flags.json) {
-      ctx.json(summary);
-    } else {
-      ctx.log(`linked ${basename(atPath)} -> ${libDir}`);
-      if (discarded) ctx.log("  (discarded the redundant copy; old path now resolves to the library)");
-    }
+    const result: CommandResult = {
+      json: summary,
+      human: (emit) => {
+        emit(`linked ${basename(atPath)} -> ${libDir}`);
+        if (discarded) emit("  (discarded the redundant copy; old path now resolves to the library)");
+      },
+    };
+    render(ctx, flags.json, result);
     return 0;
   } catch (err) {
     ctx.error(`skl link: failed: ${err instanceof Error ? err.message : String(err)}`);

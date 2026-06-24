@@ -149,6 +149,17 @@ decides what to do by comparing three states, not two:
 After a successful update, the lockfile records the new `ref` and a fresh `installedHash`,
 and clears `localEdits` (the on-disk body equals upstream again).
 
+The verdict itself lives in one pure classifier — **`src/core/reconcile.ts`**
+([ADR-0014](../adr/0014-deep-core-modules-reconcile-agent-matrix-vendor-report.md)) — shared by
+`update`, `outdated`, and `add` so the rule can never drift between them. It exposes two **separately
+named facts**: `editedSinceInstall` (offline — local vs the install baseline) and `differsFromUpstream`
+(online, nullable — local vs current upstream). `update`'s never-clobber gate is the **AND** of both;
+`outdated --check-local` uses only the first (it has no upstream in view). This is why `update` and
+offline `outdated` can legitimately disagree on the *same* on-disk skill — the convergent-edit case (you
+hand-edit a body to exactly what upstream independently moved to) is `editedSinceInstall && !differsFromUpstream`,
+which `update` re-pulls safely but offline `outdated` still reports as edited. Each command projects the
+shared verdict onto its own unchanged public enum.
+
 ### Repo-wide install — one repo, one clone ([ADR-0006](../adr/0006-repo-wide-add.md))
 
 A single GitHub repo often ships *many* skills (e.g. `skills/<name>/SKILL.md` ×21). `skl add`
@@ -418,6 +429,16 @@ informational only (crawl auto-detects layout — nothing consumes them programm
 ## 8. Implementation notes
 
 - **Runtime:** Bun + TypeScript, **zero runtime dependencies** in the core.
+- **Deep core seams** ([ADR-0014](../adr/0014-deep-core-modules-reconcile-agent-matrix-vendor-report.md)):
+  four modules hold the logic the commands used to duplicate inline. **`reconcile.ts`** — the pure verdict
+  classifier (above). **`vendor.ts`** — the library *write* boundary (`installSkill`/`track`/`adopt` + the
+  retired/safe-name/symlink guard suite, once); commands parse + print and never import one another, and
+  `installSkill` calls `reconcile` for its drift verdict. **`agent-matrix.ts`** — the node-free
+  surface→agent→scope fold shared by the engine and the app's browser fallback (the app imports it via a
+  `@core` Vite alias; it must stay free of `node:` imports or the bundle breaks). **`report.ts`** — the
+  display-only render seam (`CommandResult` → `render`), with the verdict→mark ladders as pure functions;
+  JSON payloads move through it verbatim and exit codes stay in each command's `run()`. Adopted on
+  `update`/`outdated`/`add`/`ls`; the rest keep the inline `--json` fork until later passes.
 - **Output:** every command supports `--json` for agent consumption.
 - **Library location:** resolved from `SKILLSHELF_LIBRARY` (used by the test fixtures and by
   any non-default install).

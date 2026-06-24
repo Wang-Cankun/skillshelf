@@ -8,8 +8,19 @@
 // state must not resurface as `pinned` after an unpin).
 
 import { test, expect, describe } from "bun:test";
-import type { AgentInfo, AgentsReport, DeployStateName } from "./types.ts";
-import { cellStateWithOverride, effectiveCounts, cellStateFor } from "./agents.ts";
+import type {
+  AgentInfo,
+  AgentsReport,
+  DeployStateName,
+  DeploymentReport,
+  DeploymentSite,
+} from "./types.ts";
+import {
+  cellStateWithOverride,
+  effectiveCounts,
+  cellStateFor,
+  deriveAgentsReport,
+} from "./agents.ts";
 
 function agent(p: Partial<AgentInfo> & { id: string }): AgentInfo {
   return {
@@ -142,5 +153,37 @@ describe("effectiveCounts stays consistent with the cell after unpin", () => {
     const r = report(a, { g: "clean", p: { Proj: "clean" } });
     const after = effectiveCounts(r, [a], "Proj", [{ name: "s" }], { [KEY]: "off" });
     expect(after.claude).toEqual({ pinned: 0, inherited: 0, effective: 0 });
+  });
+});
+
+describe("deriveAgentsReport — merged-ids routing (parity with engine)", () => {
+  function site(p: Partial<DeploymentSite> & { name: string; surface: string }): DeploymentSite {
+    return {
+      name: p.name,
+      surface: p.surface,
+      path: p.path ?? `${p.surface}/${p.name}`,
+      kind: p.kind ?? "linked",
+      target: p.target ?? null,
+      inLibrary: p.inLibrary ?? true,
+      drift: p.drift ?? false,
+    };
+  }
+
+  test("detects a custom `pi` PROJECT surface when opts.agents includes pi", () => {
+    // pi is an app seed, so use a NET-NEW custom id to prove the merged id set
+    // (seeds + opts.agents) is what the fold detects against.
+    const where: DeploymentReport = {
+      surfaces: [],
+      sites: [site({ name: "x", surface: "/work/proj/.zeta/skills", kind: "linked" })],
+      problems: [],
+    };
+    // Without the custom agent, a `.zeta` surface is not in the id set → undetected.
+    const without = deriveAgentsReport(where);
+    expect(without.deployments.x).toBeUndefined();
+    // With the custom agent merged in, the fold detects it.
+    const withCustom = deriveAgentsReport(where, {
+      agents: [{ id: "zeta", name: "Zeta", short: "Z", global: "~/.zeta/skills", projConvention: ".zeta/skills", installed: false, inheritsGlobal: true }],
+    });
+    expect(withCustom.deployments.x!.zeta!.p!.proj).toBe("clean");
   });
 });

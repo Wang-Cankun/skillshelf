@@ -11,6 +11,7 @@
 // The GUI's `+ Add project` persists through this verb behind the Tauri bridge.
 
 import type { Ctx } from "../types.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "projects",
@@ -27,17 +28,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const unknown = rest.slice(verb === rest[0] ? 1 : 0).find((a) => a.startsWith("-"));
     if (unknown) return usageError(ctx, `unknown argument: ${unknown}`);
     const projects = ctx.config.projects;
-    if (json) {
-      ctx.json({ projects });
-      return 0;
-    }
-    if (projects.length === 0) {
-      ctx.log("No nav projects configured.");
-      ctx.log("Add one with:  skl projects add <path>");
-      return 0;
-    }
-    ctx.log(`Nav projects (${projects.length}):`);
-    for (const p of projects) ctx.log(`  ${p}`);
+    const result: CommandResult = {
+      json: { projects },
+      human: (emit) => {
+        if (projects.length === 0) {
+          emit("No nav projects configured.");
+          emit("Add one with:  skl projects add <path>");
+          return;
+        }
+        emit(`Nav projects (${projects.length}):`);
+        for (const p of projects) emit(`  ${p}`);
+      },
+    };
+    render(ctx, json, result);
     return 0;
   }
 
@@ -45,12 +48,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const path = rest[1];
     if (!path || path.startsWith("-")) return usageError(ctx, "add requires a path");
     const projects = await ctx.addProject(path);
-    if (json) {
-      ctx.json({ projects, added: true });
-      return 0;
-    }
-    ctx.log(`Added project. Nav projects (${projects.length}):`);
-    for (const p of projects) ctx.log(`  ${p}`);
+    const result: CommandResult = {
+      json: { projects, added: true },
+      human: (emit) => {
+        emit(`Added project. Nav projects (${projects.length}):`);
+        for (const p of projects) emit(`  ${p}`);
+      },
+    };
+    render(ctx, json, result);
     return 0;
   }
 
@@ -58,15 +63,17 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const path = rest[1];
     if (!path || path.startsWith("-")) return usageError(ctx, "rm requires a path");
     const { projects, removed } = await ctx.removeProject(path);
-    if (json) {
-      ctx.json({ projects, removed });
-      return 0;
-    }
-    ctx.log(removed ? "Removed project." : "No matching project (nothing removed).");
-    if (projects.length > 0) {
-      ctx.log(`Nav projects (${projects.length}):`);
-      for (const p of projects) ctx.log(`  ${p}`);
-    }
+    const result: CommandResult = {
+      json: { projects, removed },
+      human: (emit) => {
+        emit(removed ? "Removed project." : "No matching project (nothing removed).");
+        if (projects.length > 0) {
+          emit(`Nav projects (${projects.length}):`);
+          for (const p of projects) emit(`  ${p}`);
+        }
+      },
+    };
+    render(ctx, json, result);
     return 0;
   }
 

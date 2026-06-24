@@ -251,6 +251,8 @@ fn watched_dirs() -> Vec<PathBuf> {
         ] {
             dirs.push(home.join(agent).join("skills"));
         }
+        // omp nests skills under agent/skills/ (not .omp/skills/)
+        dirs.push(home.join(".omp").join("agent").join("skills"));
     }
 
     dirs.extend(resolve_projects(cfg.as_ref()));

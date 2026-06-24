@@ -32,6 +32,7 @@ import {
   inferViaApi,
   knownProviders,
 } from "../adapters/inference/api.ts";
+import { render } from "../core/report.ts";
 
 export const meta = {
   name: "infer",
@@ -207,12 +208,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         return 1;
       }
       // emit is inherently machine output; --json is the same single-line form.
-      if (args.json) {
-        ctx.json(payload);
-      } else {
+      render(ctx, args.json, {
+        json: payload,
         // pretty multi-line for a human/agent reading stdout
-        ctx.log(JSON.stringify(payload, null, 2));
-      }
+        human: (emit) => emit(JSON.stringify(payload, null, 2)),
+      });
       if (!args.emit) {
         ctx.error(
           `skl infer: agent context detected — emitted ${payload.corpus.skills.length} skills. ` +
@@ -246,8 +246,8 @@ function reportApply(
   provider?: string,
   model?: string,
 ): number {
-  if (asJson) {
-    ctx.json({
+  render(ctx, asJson, {
+    json: {
       ok: true,
       provider: provider ?? null,
       model: model ?? null,
@@ -259,24 +259,25 @@ function reportApply(
         unmatched: result.unmatched.length,
         skipped: result.skipped.length,
       },
-    });
-    return 0;
-  }
-  if (provider) ctx.log(`Inference via ${provider}${model ? ` (${model})` : ""}:`);
-  for (const a of result.applied) {
-    const addedNote = a.added.length ? `  (+${a.added.join(", ")})` : "  (no change)";
-    ctx.log(`  ${a.name}: ${a.domains.join(", ")}${addedNote}`);
-  }
-  ctx.log(
-    `Applied ${result.applied.length} taxonomy update${
-      result.applied.length === 1 ? "" : "s"
-    }.`,
-  );
-  if (result.unmatched.length) {
-    ctx.log(`Unmatched (no such skill): ${result.unmatched.join(", ")}`);
-  }
-  if (result.skipped.length) {
-    ctx.log(`Skipped (no domains proposed): ${result.skipped.join(", ")}`);
-  }
+    },
+    human: (emit) => {
+      if (provider) emit(`Inference via ${provider}${model ? ` (${model})` : ""}:`);
+      for (const a of result.applied) {
+        const addedNote = a.added.length ? `  (+${a.added.join(", ")})` : "  (no change)";
+        emit(`  ${a.name}: ${a.domains.join(", ")}${addedNote}`);
+      }
+      emit(
+        `Applied ${result.applied.length} taxonomy update${
+          result.applied.length === 1 ? "" : "s"
+        }.`,
+      );
+      if (result.unmatched.length) {
+        emit(`Unmatched (no such skill): ${result.unmatched.join(", ")}`);
+      }
+      if (result.skipped.length) {
+        emit(`Skipped (no domains proposed): ${result.skipped.join(", ")}`);
+      }
+    },
+  });
   return 0;
 }

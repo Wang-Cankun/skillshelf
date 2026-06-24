@@ -112,8 +112,8 @@ describe("computeAgentsReport", () => {
   };
   const r = computeAgentsReport(report, HOME);
 
-  test("registers the 5 known agents (installed=false under a fake HOME)", () => {
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini"]);
+  test("registers the 6 known agents (installed=false under a fake HOME)", () => {
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "omp"]);
     expect(r.agents.every((a) => a.installed === false)).toBe(true);
     expect(r.agents[0]!.global).toBe("~/.claude/skills");
   });
@@ -148,6 +148,7 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
       "cursor",
       "opencode",
       "gemini",
+      "omp",
       "pi",
     ]);
   });
@@ -184,10 +185,9 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
     );
     expect(r.deployments.x!.pi!.p!.proj).toBe("clean");
   });
-
   test("no opts is backward-compatible (seed-only, default extraScopes)", () => {
     const r = computeAgentsReport(baseReport, HOME);
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini"]);
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "omp"]);
   });
 
   test("inheritsGlobal: all seeds default true; report carries the flag", () => {

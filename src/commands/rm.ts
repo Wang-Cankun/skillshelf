@@ -15,6 +15,7 @@ import type { Ctx } from "../types.ts";
 import { locateEntry, removeSkill, reindexLibrary } from "../core/lifecycle.ts";
 import { readTaxonomy } from "../core/taxonomy.ts";
 import { readLockfile } from "../core/provenance.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "rm",
@@ -56,8 +57,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // active and _retired still resolves `path` to the active copy, so a `!loc.retired`
     // term would wrongly drop the guard and delete the live copy without --force.
     if (loc.active && !loc.isLink && !force) {
+      // Refusal is an ERROR path: the human side prints via ctx.error (not ctx.log),
+      // so it stays in run(); only the --json payload routes through render().
       if (json) {
-        ctx.json({ ok: false, name, refused: true, reason: "live-owned-needs-force" });
+        const result: CommandResult = {
+          json: { ok: false, name, refused: true, reason: "live-owned-needs-force" },
+          human: () => {},
+        };
+        render(ctx, json, result);
       } else {
         ctx.error(`skl rm: '${name}' is a live skill — this destroys real bytes.`);
         ctx.error("Retire it first (reversible):  skl retire " + name);
@@ -79,26 +86,31 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     };
 
     if (dryRun) {
-      if (json) ctx.json({ ok: true, dryRun: true, plan });
-      else {
-        ctx.log(`DRY RUN — would remove '${name}':`);
-        ctx.log(`  path:     ${plan.path}${plan.mode === "linked" ? " (symlink only — dev repo untouched)" : ""}`);
-        ctx.log(`  taxonomy: ${plan.taxonomyEntry ? "drop entry" : "none"}`);
-        ctx.log(`  lockfile: ${plan.lockEntry ? "drop entry" : "none"}`);
-        ctx.log("Re-run without --dry-run to apply.");
-      }
+      const result: CommandResult = {
+        json: { ok: true, dryRun: true, plan },
+        human: (emit) => {
+          emit(`DRY RUN — would remove '${name}':`);
+          emit(`  path:     ${plan.path}${plan.mode === "linked" ? " (symlink only — dev repo untouched)" : ""}`);
+          emit(`  taxonomy: ${plan.taxonomyEntry ? "drop entry" : "none"}`);
+          emit(`  lockfile: ${plan.lockEntry ? "drop entry" : "none"}`);
+          emit("Re-run without --dry-run to apply.");
+        },
+      };
+      render(ctx, json, result);
       return 0;
     }
 
-    const result = await removeSkill(ctx.libraryPath, name);
+    const removed = await removeSkill(ctx.libraryPath, name);
     await reindexLibrary(ctx.libraryPath);
-    if (json) {
-      ctx.json({ ok: true, ...result });
-    } else {
-      ctx.log(`removed ${name}${result.wasLink ? " (symlink only — dev repo untouched)" : ""}`);
-      if (result.taxonomyDropped) ctx.log("  dropped taxonomy entry");
-      if (result.lockDropped) ctx.log("  dropped lockfile entry");
-    }
+    const result: CommandResult = {
+      json: { ok: true, ...removed },
+      human: (emit) => {
+        emit(`removed ${name}${removed.wasLink ? " (symlink only — dev repo untouched)" : ""}`);
+        if (removed.taxonomyDropped) emit("  dropped taxonomy entry");
+        if (removed.lockDropped) emit("  dropped lockfile entry");
+      },
+    };
+    render(ctx, json, result);
     return 0;
   } catch (err) {
     ctx.error(`skl rm: ${err instanceof Error ? err.message : String(err)}`);

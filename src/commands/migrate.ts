@@ -3,9 +3,9 @@
 //
 //   skl migrate [--from <path>] [--dry-run] [--resolve] [--force] [--json]
 //
-// A thin adapter over `track`: it reads a foreign (vendor) lockfile, maps each vendor
+// A thin adapter over `adopt`: it reads a foreign (vendor) lockfile, maps each vendor
 // entry to an `skl` source, and — for skills already in the library — calls the same
-// `trackOne` logic `skl track` uses. It NEVER installs/downloads: a skill not in the
+// core/vendor.ts `adopt` logic `skl track` uses. It NEVER installs/downloads: a skill not in the
 // library is REPORTED ONLY (with the `skl add <src>` line to bring it in). The vendor's
 // own hashes/refs are NOT reused (a vendor tree-SHA is not skl's body sha256, and a
 // vendor branch is not a commit) — so every adopted entry is `adopted: true` unless
@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import type { Ctx } from "../types.ts";
 import { loadLibrary, findByName } from "../core/library.ts";
 import { readLockfile } from "../core/provenance.ts";
-import { trackOne } from "./track.ts";
+import { adopt } from "../core/vendor.ts";
 
 export const meta = {
   name: "migrate",
@@ -199,7 +199,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         continue;
       }
 
-      const res = await trackOne(libraryPath, library, {
+      const res = await adopt(libraryPath, library, {
         name,
         source,
         resolve: flags.resolve,

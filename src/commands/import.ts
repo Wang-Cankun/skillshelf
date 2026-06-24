@@ -34,8 +34,8 @@ import {
   isSymlink,
   realpathOrSelfAsync,
 } from "../lib/fs.ts";
-import { entryStatus } from "../core/library.ts";
 import { SLUG_RE } from "../core/lifecycle.ts";
+import { isRetiredOnly } from "../core/vendor.ts";
 
 export const meta = {
   name: "import",
@@ -202,12 +202,12 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // Flat, non-semantic layout (ADR-0001): always <library>/<name>/.
     const destDir = join(libraryPath, targetName);
 
-    // Retired-aware guard: refuse if the name exists ONLY as a retired tombstone
-    // (<library>/_retired/<name>). Importing beside it would strand a duplicate and
-    // break `skl unretire`; --force overwrites an ACTIVE copy, not a retired one, so
-    // this fires regardless. The user must unretire first (or import under --as).
-    const status = entryStatus(libraryPath, targetName);
-    if (status.retired && !status.active) {
+    // Retired-aware guard (shared with add/link via core/vendor.ts): refuse if the name
+    // exists ONLY as a retired tombstone (<library>/_retired/<name>). Importing beside it
+    // would strand a duplicate and break `skl unretire`; --force overwrites an ACTIVE
+    // copy, not a retired one, so this fires regardless. The user must unretire first (or
+    // import under --as). The bespoke wording stays here; the predicate is shared.
+    if (isRetiredOnly(libraryPath, targetName)) {
       ctx.error(
         `skl import: a retired '${targetName}' exists — run \`skl unretire ${targetName}\` first (or import under another name with --as <slug>)`,
       );

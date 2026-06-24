@@ -18,28 +18,31 @@
 //
 // Read-only commands take --json; add is a write, but still emits a --json summary.
 
-import { join, basename, dirname, sep } from "node:path";
-import { existsSync } from "node:fs";
-import type { Ctx, Skill, LockEntry } from "../types.ts";
+import { basename } from "node:path";
+import type { Ctx, Skill } from "../types.ts";
 import {
   parseSource,
   fetchSource,
   fetchRepo,
   discoverSkills,
   discoverSingleLenient,
-  copySkillDir,
   cleanupStaging,
   readSkillBody,
   type DiscoveredSkill,
   type ParsedSource,
 } from "../core/fetch.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
-import { hashContent } from "../core/crawl.ts";
-import { recordEntry } from "../core/provenance.ts";
-import { setDomainsForName } from "../core/taxonomy.ts";
-import { assertSafeName, SLUG_RE } from "../core/lifecycle.ts";
-import { loadLibrary, findByName, entryStatus } from "../core/library.ts";
-import { ensureDir, isSymlink, realpathOrSelf } from "../lib/fs.ts";
+import { SLUG_RE } from "../core/lifecycle.ts";
+import { loadLibrary, findByName } from "../core/library.ts";
+import {
+  installSkill,
+  destDirFor,
+  driftVerdict,
+  writesThroughSymlink,
+  type InstallOutcome,
+  type Verdict,
+} from "../core/vendor.ts";
+import { render, addDryRunVerdictMark, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "add",
@@ -116,256 +119,11 @@ function parseFlags(argv: string[]): Flags {
   return f;
 }
 
-/** Body text after frontmatter — the unit drift/install hashes operate on. */
-function bodyOf(text: string): string {
-  return parseFrontmatter(text).body;
-}
-
-/** The library destination dir for a slug (under its domain folder, if any). */
-function destDirFor(libraryPath: string, domainFolder: string | null, name: string): string {
-  return domainFolder ? join(libraryPath, domainFolder, name) : join(libraryPath, name);
-}
-
-/** The nearest ancestor of `p` (incl. `p`) that exists on disk; falls back to `p`. */
-function nearestExisting(p: string): string {
-  let cur = p;
-  while (!existsSync(cur) && !isSymlink(cur)) {
-    const parent = dirname(cur);
-    if (parent === cur) return cur;
-    cur = parent;
-  }
-  return cur;
-}
-
-/**
- * True if writing to `destDir` would resolve OUTSIDE the library — i.e. the nearest
- * existing component on the way to destDir is (or is reached through) a symlink whose
- * realpath escapes the library. Catches a symlinked DOMAIN folder (`library/<d> ->
- * /external`) that the leaf-only `isSymlink(destDir)` check misses, so `--force` can't
- * clobber an external tree through a symlinked parent (ADR-0004). Both sides anchor to
- * their nearest existing ancestor, so a fresh (not-yet-created) library is not a false
- * positive — its anchor is the shared parent, which contains itself.
- */
-function destEscapesLibrary(libraryPath: string, destDir: string): boolean {
-  const libReal = realpathOrSelf(nearestExisting(libraryPath));
-  const destReal = realpathOrSelf(nearestExisting(destDir));
-  return !(destReal === libReal || destReal.startsWith(libReal + sep));
-}
-
-type Verdict = "new" | "identical" | "differs";
-
-/**
- * Drift preflight for one skill against the library destination it would install to:
- *   - new       — nothing at the destination → would install
- *   - identical — destination body hash matches upstream → lossless overwrite
- *   - differs   — destination body differs → would clobber local content (needs --force)
- * Compares the frontmatter-stripped BODY (matches installedHash / `skl update`).
- */
-async function driftVerdict(skill: DiscoveredSkill, destDir: string): Promise<Verdict> {
-  const localPath = join(destDir, "SKILL.md");
-  if (!existsSync(localPath)) return "new";
-  const upstream = hashContent(bodyOf(await readSkillBody(skill.dir)));
-  let localText = "";
-  try {
-    localText = await Bun.file(localPath).text();
-  } catch {
-    localText = "";
-  }
-  const local = hashContent(bodyOf(localText));
-  return upstream === local ? "identical" : "differs";
-}
-
-/**
- * Optional AI inference tagging pass over a freshly-installed skill. No inference hook
- * ships today, so this always leaves the skill untagged (returns null); installs land
- * with whatever `--domain` gave them. Kept as a seam so `--infer`/`--no-infer` and the
- * `tagged` summary field stay meaningful when a hook is wired in.
- */
-async function maybeInferTags(
-  _skill: Skill,
-  _warn?: (msg: string) => void,
-): Promise<string[] | null> {
-  return null;
-}
-
-interface InstallOptions {
-  libraryPath: string;
-  domainFolder: string | null;
-  /** single-skill --name override; ignored in multi mode */
-  nameOverride: string | null;
-  /** per-skill lockfile `source` string (already carries the @subpath / #subpath) */
-  sourceStr: string;
-  ref: string;
-  channel: string;
-  infer: boolean;
-  force: boolean;
-  /** multi mode applies skip-differs-without-force + the never-write-through-symlink
-   *  guard; single mode preserves the legacy "exists without --force → error" rule. */
-  multi: boolean;
-}
-
-interface InstallOutcome {
-  name: string;
-  subpath: string;
-  verdict: Verdict | "duplicate" | "retired";
-  status: "installed" | "skipped" | "error";
-  reason: string;
-  path: string;
-  source: string;
-  ref: string;
-  channel: string;
-  installedAt: string;
-  tagged: boolean;
-  domains: string[];
-}
-
-/** Install (copy + record provenance + tag) a single discovered skill. */
-async function installOne(
-  ctx: Ctx,
-  skill: DiscoveredSkill,
-  opts: InstallOptions,
-): Promise<InstallOutcome> {
-  const rawName =
-    opts.nameOverride && opts.nameOverride.trim() !== "" ? opts.nameOverride.trim() : skill.name;
-  const base: InstallOutcome = {
-    name: rawName,
-    subpath: skill.subpath,
-    verdict: "new",
-    status: "error",
-    reason: "",
-    path: "",
-    source: opts.sourceStr,
-    ref: opts.ref,
-    channel: opts.channel,
-    installedAt: "",
-    tagged: false,
-    domains: [],
-  };
-
-  // SECURITY: `name` derives from untrusted upstream frontmatter (or --name) and is
-  // joined into a library path. Reject anything that isn't a clean slug, then a
-  // belt-and-suspenders single-segment check, so a crafted name (e.g. "../../etc")
-  // can't escape the library before it reaches join()/copy.
-  if (!SLUG_RE.test(rawName)) {
-    return {
-      ...base,
-      reason: `invalid skill name "${rawName}" — use lowercase letters, digits, and hyphens${opts.multi ? "" : " (override with --name <slug>)"}`,
-    };
-  }
-  try {
-    assertSafeName(rawName);
-  } catch (err) {
-    return { ...base, reason: err instanceof Error ? err.message : String(err) };
-  }
-
-  // Retired-aware collision guard: if this name exists ONLY as a retired tombstone
-  // (<library>/_retired/<name>), do NOT install a fresh active copy beside it — that
-  // strands a duplicate and breaks `skl unretire`. The user must unretire first. This
-  // fires regardless of --force (force overwrites an ACTIVE copy, not a retired one).
-  // Checked against the flat library root (retirement is never under a domain folder).
-  const status = entryStatus(opts.libraryPath, rawName);
-  if (status.retired && !status.active) {
-    return {
-      ...base,
-      verdict: "retired",
-      status: "skipped",
-      reason: `a retired '${rawName}' exists — run \`skl unretire ${rawName}\` first`,
-    };
-  }
-
-  const destDir = destDirFor(opts.libraryPath, opts.domainFolder, rawName);
-  const verdict = await driftVerdict(skill, destDir);
-  base.verdict = verdict;
-
-  // Never copy THROUGH a symlink into something the library doesn't own: a LINKED leaf
-  // entry, OR a destination reached through a symlinked ANCESTOR (e.g. a symlinked
-  // --domain folder) whose realpath escapes the library. Writing through either would
-  // clobber an external dev repo, even with --force (ADR-0004).
-  const throughSymlink = isSymlink(destDir) || destEscapesLibrary(opts.libraryPath, destDir);
-
-  if (opts.multi) {
-    if (throughSymlink) {
-      return {
-        ...base,
-        status: "skipped",
-        reason: "linked entry / resolves outside the library — not overwriting via symlink",
-      };
-    }
-    // new + identical install; differs needs --force.
-    if (verdict === "differs" && !opts.force) {
-      return { ...base, status: "skipped", reason: "local body differs from upstream — not overwriting (use --force)" };
-    }
-  } else {
-    // SINGLE path: refuse to write through a symlink even with --force (never clobber a
-    // dev repo), then preserve today's exact rule — refuse any existing dest w/o --force.
-    if (throughSymlink) {
-      return {
-        ...base,
-        reason: `${rawName} resolves through a symlink outside the library (${destDir}) — refusing to write (manage a linked entry with \`skl link\`/\`skl rm\`)`,
-      };
-    }
-    if (existsSync(destDir) && !opts.force) {
-      return {
-        ...base,
-        reason: `${rawName} already exists at ${destDir} (use --force to overwrite, or skl update ${rawName} to re-pull)`,
-      };
-    }
-  }
-
-  // ---- write into the library ----
-  await ensureDir(opts.domainFolder ? join(opts.libraryPath, opts.domainFolder) : opts.libraryPath);
-  await copySkillDir(skill.dir, destDir);
-
-  const installedBody = bodyOf(await readSkillBody(skill.dir));
-  const installedAt = new Date().toISOString();
-  const entry: LockEntry = {
-    name: rawName,
-    source: opts.sourceStr,
-    ref: opts.ref,
-    channel: opts.channel,
-    installedAt,
-    localEdits: false,
-    installedHash: hashContent(installedBody),
-  };
-  await recordEntry(opts.libraryPath, entry);
-
-  const installed: Skill = {
-    name: rawName,
-    description: skill.description,
-    primaryDomain: opts.domainFolder,
-    domains: opts.domainFolder ? [opts.domainFolder] : [],
-    path: destDir,
-    bodyPath: join(destDir, "SKILL.md"),
-    refFiles: [],
-    source: { source: opts.sourceStr, ref: opts.ref, channel: opts.channel, installedAt, localEdits: false },
-    retired: false,
-    mirrorOf: null,
-    contentHash: "",
-  };
-  if (opts.domainFolder) await setDomainsForName(opts.libraryPath, rawName, [opts.domainFolder]);
-
-  let inferred: string[] | null = null;
-  if (opts.infer) {
-    inferred = await maybeInferTags(installed, (m) => ctx.error(m));
-    if (inferred && inferred.length > 0) await setDomainsForName(opts.libraryPath, rawName, inferred);
-  }
-  const domains = inferred && inferred.length > 0 ? inferred : opts.domainFolder ? [opts.domainFolder] : [];
-
-  return {
-    ...base,
-    status: "installed",
-    reason:
-      verdict === "identical"
-        ? "re-installed (identical body)"
-        : verdict === "differs"
-          ? "overwrote differing body (--force)"
-          : "installed",
-    path: destDir,
-    installedAt,
-    tagged: Boolean(inferred && inferred.length > 0),
-    domains,
-  };
-}
+// The vendor WRITE operations (installSkill copy+provenance+verdict, the drift verdict,
+// destDirFor, and the symlink-escape guard) live in core/vendor.ts — the curator boundary
+// where `add` (and only `add`) writes the library. This command keeps the parse + select
+// + render; vendor owns the mutation. driftVerdict is still imported here for the
+// read-only --dry-run preflight (no write).
 
 /** `--list`: discover + print, no writes. */
 function reportList(
@@ -386,22 +144,26 @@ function reportList(
     published: d.published,
     internal: d.internal,
   }));
-  if (flags.json) {
-    ctx.json({ ok: true, action: "list", source: parsed.source, ref, count: rows.length, skills: rows });
-    return 0;
-  }
-  const publishedCount = rows.filter((r) => r.published).length;
-  ctx.log(`${rows.length} skill(s) in ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""} (${publishedCount} published):`);
-  ctx.log("");
-  for (const r of rows) {
-    const mark = r.inLibrary ? "✓" : " ";
-    const tag = r.published ? "published  " : r.internal ? "internal   " : "unpublished";
-    ctx.log(`  ${mark} ${tag}  ${r.name.padEnd(28)} ${r.subpath || "(root)"}`);
-    if (r.description) ctx.log(`      ${r.description.length > 100 ? r.description.slice(0, 99) + "…" : r.description}`);
-  }
-  ctx.log("");
-  ctx.log(`✓ = already in your library. published = installed by --all; unpublished/internal = only via --skill <name>.`);
-  ctx.log(`Install with: skl add ${flags.src} --all   (or --skill <name,…>)`);
+  // Structured payload (verbatim) + human renderer; the json/human fork goes through
+  // render() (the reporter seam). Read-only --list always exits 0.
+  const result: CommandResult = {
+    json: { ok: true, action: "list", source: parsed.source, ref, count: rows.length, skills: rows },
+    human: (emit) => {
+      const publishedCount = rows.filter((r) => r.published).length;
+      emit(`${rows.length} skill(s) in ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""} (${publishedCount} published):`);
+      emit();
+      for (const r of rows) {
+        const mark = r.inLibrary ? "✓" : " ";
+        const tag = r.published ? "published  " : r.internal ? "internal   " : "unpublished";
+        emit(`  ${mark} ${tag}  ${r.name.padEnd(28)} ${r.subpath || "(root)"}`);
+        if (r.description) emit(`      ${r.description.length > 100 ? r.description.slice(0, 99) + "…" : r.description}`);
+      }
+      emit();
+      emit(`✓ = already in your library. published = installed by --all; unpublished/internal = only via --skill <name>.`);
+      emit(`Install with: skl add ${flags.src} --all   (or --skill <name,…>)`);
+    },
+  };
+  render(ctx, flags.json, result);
   return 0;
 }
 
@@ -428,7 +190,7 @@ async function reportDryRun(
       continue;
     }
     const destDir = destDirFor(ctx.config.libraryPath, domainFolder, d.name);
-    if (isSymlink(destDir) || destEscapesLibrary(ctx.config.libraryPath, destDir)) {
+    if (writesThroughSymlink(ctx.config.libraryPath, destDir)) {
       rows.push({ name: d.name, subpath: d.subpath, verdict: "linked", willInstall: false, needsForce: false });
       continue;
     }
@@ -445,31 +207,25 @@ async function reportDryRun(
     invalid: rows.filter((r) => r.verdict === "invalid").length,
   };
   const willInstall = rows.filter((r) => r.willInstall).length;
-  if (flags.json) {
-    ctx.json({ ok: true, action: "dry-run", source: parsed.source, ref, counts, willInstall, force: flags.force, skills: rows });
-    return 0;
-  }
-  ctx.log(`dry-run for ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""} (${rows.length} skill(s)):`);
-  ctx.log("");
-  for (const r of rows) {
-    const tag =
-      r.verdict === "new"
-        ? "new      "
-        : r.verdict === "identical"
-          ? "identical"
-          : r.verdict === "differs"
-            ? "DIFFERS  "
-            : r.verdict === "linked"
-              ? "linked   "
-              : "INVALID  ";
-    const note = r.verdict === "differs" && !flags.force ? "  (needs --force)" : "";
-    ctx.log(`  ${tag}  ${r.name.padEnd(28)} ${r.subpath || "(root)"}${note}`);
-  }
-  ctx.log("");
-  ctx.log(
-    `${counts.new} new, ${counts.identical} identical, ${counts.differs} differ${counts.linked ? `, ${counts.linked} linked` : ""}${counts.invalid ? `, ${counts.invalid} invalid` : ""} → ${willInstall} would install${flags.force ? " (--force)" : ""}.`,
-  );
-  if (counts.differs > 0 && !flags.force) ctx.log("re-run with --force to overwrite differing skills.");
+  // Structured payload (verbatim) + human renderer; the verdict->tag ladder now lives in
+  // report.ts as addDryRunVerdictMark(). Read-only --dry-run always exits 0.
+  const result: CommandResult = {
+    json: { ok: true, action: "dry-run", source: parsed.source, ref, counts, willInstall, force: flags.force, skills: rows },
+    human: (emit) => {
+      emit(`dry-run for ${parsed.source}${ref ? ` @ ${ref.slice(0, 10)}` : ""} (${rows.length} skill(s)):`);
+      emit();
+      for (const r of rows) {
+        const note = r.verdict === "differs" && !flags.force ? "  (needs --force)" : "";
+        emit(`  ${addDryRunVerdictMark(r.verdict)}  ${r.name.padEnd(28)} ${r.subpath || "(root)"}${note}`);
+      }
+      emit();
+      emit(
+        `${counts.new} new, ${counts.identical} identical, ${counts.differs} differ${counts.linked ? `, ${counts.linked} linked` : ""}${counts.invalid ? `, ${counts.invalid} invalid` : ""} → ${willInstall} would install${flags.force ? " (--force)" : ""}.`,
+      );
+      if (counts.differs > 0 && !flags.force) emit("re-run with --force to overwrite differing skills.");
+    },
+  };
+  render(ctx, flags.json, result);
   return 0;
 }
 
@@ -635,17 +391,21 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
     // ---- install ----
     if (!multi) {
-      const o = await installOne(ctx, selected[0]!, {
-        libraryPath: ctx.config.libraryPath,
-        domainFolder,
-        nameOverride: flags.name,
-        sourceStr: sourceOf(selected[0]!),
-        ref,
-        channel,
-        infer: flags.infer,
-        force: flags.force,
-        multi: false,
-      });
+      const o = await installSkill(
+        selected[0]!,
+        {
+          libraryPath: ctx.config.libraryPath,
+          domainFolder,
+          nameOverride: flags.name,
+          sourceStr: sourceOf(selected[0]!),
+          ref,
+          channel,
+          infer: flags.infer,
+          force: flags.force,
+          multi: false,
+        },
+        (m) => ctx.error(m),
+      );
       if (o.status === "error") {
         ctx.error("add:", o.reason);
         return 1;
@@ -668,17 +428,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         tagged: o.tagged,
         domains: o.domains,
       };
-      if (flags.json) {
-        ctx.json(summary);
-      } else {
-        ctx.log(`added ${o.name}`);
-        ctx.log(`  path:    ${o.path}`);
-        ctx.log(`  source:  ${o.source}`);
-        ctx.log(`  ref:     ${o.ref || "(unknown)"}`);
-        ctx.log(`  channel: ${o.channel}`);
-        if (o.tagged) ctx.log(`  domains: ${o.domains.join(", ")}`);
-        else ctx.log(`  domains: (untagged — run \`skl infer\` to assign)`);
-      }
+      const result: CommandResult = {
+        json: summary,
+        human: (emit) => {
+          emit(`added ${o.name}`);
+          emit(`  path:    ${o.path}`);
+          emit(`  source:  ${o.source}`);
+          emit(`  ref:     ${o.ref || "(unknown)"}`);
+          emit(`  channel: ${o.channel}`);
+          if (o.tagged) emit(`  domains: ${o.domains.join(", ")}`);
+          else emit(`  domains: (untagged — run \`skl infer\` to assign)`);
+        },
+      };
+      render(ctx, flags.json, result);
       return 0;
     }
 
@@ -708,25 +470,29 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
       seenSlugs.add(s.name);
       outcomes.push(
-        await installOne(ctx, s, {
-          libraryPath: ctx.config.libraryPath,
-          domainFolder,
-          nameOverride: null,
-          sourceStr: sourceOf(s),
-          ref,
-          channel,
-          infer: flags.infer,
-          force: flags.force,
-          multi: true,
-        }),
+        await installSkill(
+          s,
+          {
+            libraryPath: ctx.config.libraryPath,
+            domainFolder,
+            nameOverride: null,
+            sourceStr: sourceOf(s),
+            ref,
+            channel,
+            infer: flags.infer,
+            force: flags.force,
+            multi: true,
+          },
+          (m) => ctx.error(m),
+        ),
       );
     }
     const installed = outcomes.filter((o) => o.status === "installed");
     const skipped = outcomes.filter((o) => o.status === "skipped");
     const errored = outcomes.filter((o) => o.status === "error");
 
-    if (flags.json) {
-      ctx.json({
+    const result: CommandResult = {
+      json: {
         ok: errored.length === 0,
         action: "add",
         source: parsed.source,
@@ -744,18 +510,20 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           tagged: o.tagged,
           domains: o.domains,
         })),
-      });
-    } else {
-      for (const o of outcomes) {
-        const tag = o.status === "installed" ? "added   " : o.status === "skipped" ? "skipped " : "ERROR   ";
-        ctx.log(`${tag}  ${o.name.padEnd(28)} ${o.reason}`);
-      }
-      ctx.log("");
-      ctx.log(
-        `${selected.length} selected, ${installed.length} installed, ${skipped.length} skipped${errored.length ? `, ${errored.length} error(s)` : ""} from ${parsed.source}`,
-      );
-      if (skipped.some((o) => o.verdict === "differs")) ctx.log("re-run with --force to overwrite differing skills.");
-    }
+      },
+      human: (emit) => {
+        for (const o of outcomes) {
+          const tag = o.status === "installed" ? "added   " : o.status === "skipped" ? "skipped " : "ERROR   ";
+          emit(`${tag}  ${o.name.padEnd(28)} ${o.reason}`);
+        }
+        emit("");
+        emit(
+          `${selected.length} selected, ${installed.length} installed, ${skipped.length} skipped${errored.length ? `, ${errored.length} error(s)` : ""} from ${parsed.source}`,
+        );
+        if (skipped.some((o) => o.verdict === "differs")) emit("re-run with --force to overwrite differing skills.");
+      },
+    };
+    render(ctx, flags.json, result);
     return errored.length > 0 ? 1 : 0;
   } catch (err) {
     ctx.error("add: failed:", err instanceof Error ? err.message : String(err));

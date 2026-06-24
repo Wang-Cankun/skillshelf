@@ -28,6 +28,8 @@ import {
 import { hashContent } from "../core/crawl.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { loadLibrary, findByName, entryMode } from "../core/library.ts";
+import { classify } from "../core/reconcile.ts";
+import { render, updateOutcomeMark, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "update",
@@ -113,176 +115,100 @@ async function updateOne(
     const upstreamHash = hashContent(upstreamBody);
     const localHash = hashContent(localBody);
 
-    // ADOPTED entry (`skl track`/`skl migrate`): the recorded baseline was NEVER verified
-    // against real upstream (its ref may be empty / its installedHash describes the LOCAL
-    // copy only). Be CONSERVATIVE — even if the body looks identical to upstream we must
-    // not silently treat it as a normal entry. Two graduation paths (ADR-0011):
-    //   - local == upstream  → an identical reconcile: graduate (clear adopted) without
-    //                           --force; nothing is overwritten so it's lossless.
-    //   - local != upstream  → always show the diff and require --force; only a forced
-    //                           overwrite reconciles + graduates.
-    if (entry.adopted === true) {
-      if (localHash === upstreamHash) {
-        if (opts.dryRun) {
-          return {
-            name: entry.name,
-            source: entry.source,
-            channel: entry.channel,
-            fromRef: entry.ref,
-            toRef: fetched.ref,
-            outcome: "updated",
-            note: "would reconcile adopted baseline (identical to upstream) (dry-run)",
-          };
-        }
-        await applyUpstream(destDir, fetched.skillDir);
-        const graduated: LockEntry = {
-          ...entry,
-          ref: fetched.ref,
-          installedAt: new Date().toISOString(),
-          localEdits: false,
-          installedHash: upstreamHash,
-          adopted: false,
-        };
-        await recordEntry(ctx.config.libraryPath, graduated);
-        return {
-          name: entry.name,
-          source: entry.source,
-          channel: entry.channel,
-          fromRef: entry.ref,
-          toRef: fetched.ref,
-          outcome: "updated",
-          note: "adopted baseline verified against upstream (identical); graduated to tracked",
-        };
-      }
-      // Bodies differ — never clobber an unverified baseline without --force.
-      if (!opts.force) {
-        const diff = await unifiedDiff(
-          localText,
-          upstreamText,
-          `${entry.name} (local, adopted)`,
-          `${entry.name} (upstream ${fetched.ref.slice(0, 10)})`,
-        );
-        return {
-          name: entry.name,
-          source: entry.source,
-          channel: entry.channel,
-          fromRef: entry.ref,
-          toRef: fetched.ref,
-          outcome: "diverged",
-          note: "adopted baseline unverified and differs from upstream; not clobbering (use --force to reconcile)",
-          diff,
-        };
-      }
-      if (opts.dryRun) {
-        return {
-          name: entry.name,
-          source: entry.source,
-          channel: entry.channel,
-          fromRef: entry.ref,
-          toRef: fetched.ref,
-          outcome: "updated",
-          note: "would overwrite adopted body with upstream and graduate (--force, dry-run)",
-        };
-      }
-      await applyUpstream(destDir, fetched.skillDir);
-      const graduated: LockEntry = {
-        ...entry,
-        ref: fetched.ref,
-        installedAt: new Date().toISOString(),
-        localEdits: false,
-        installedHash: upstreamHash,
-        adopted: false,
-      };
-      await recordEntry(ctx.config.libraryPath, graduated);
-      return {
-        name: entry.name,
-        source: entry.source,
-        channel: entry.channel,
-        fromRef: entry.ref,
-        toRef: fetched.ref,
-        outcome: "updated",
-        note: "overwrote adopted body with upstream (--force); graduated to tracked",
-      };
-    }
+    // ONE classifier call replaces the old adopted / uptodate / 3-way branch ladder
+    // (ADR-0013). `update` always has the upstream body in view (online), so the rich
+    // Verdict union collapses to: 'identical' (matches upstream), 'diverged' (user
+    // hand-edited AND differs — never-clobber-without-force; adopted always lands here
+    // when bodies differ), or 'stalePending' (upstream moved, user did NOT edit —
+    // safe-apply). mode is always 'owned' here (run() pre-filters linked; structural
+    // relocate/orphan are handled in run() too).
+    const adopted = entry.adopted === true;
+    const verdict = classify({
+      adopted,
+      mode: "owned",
+      installedHash: entry.installedHash ?? null,
+      localEdits: entry.localEdits,
+      localHash,
+      upstreamHash,
+      installedRef: entry.ref,
+      latestRef: fetched.ref,
+      structural: null,
+    });
 
-    // Already current: local body matches upstream and ref unchanged.
-    if (localHash === upstreamHash && fetched.ref === entry.ref) {
-      return {
-        name: entry.name,
-        source: entry.source,
-        channel: entry.channel,
-        fromRef: entry.ref,
-        toRef: fetched.ref,
-        outcome: "uptodate",
-        note: "already at latest upstream body",
-      };
-    }
+    const base = {
+      name: entry.name,
+      source: entry.source,
+      channel: entry.channel,
+      fromRef: entry.ref,
+      toRef: fetched.ref,
+    } as const;
 
-    // True 3-way divergence: did the USER hand-edit the local body since install?
-    // Compare against installedHash (the upstream body recorded at install/update
-    // time) — NOT against current upstream, so a normal upstream-moved-forward
-    // update is applied, and only genuine local edits are protected.
-    // Legacy entries without installedHash fall back to the localEdits flag.
-    const userEdited =
-      entry.installedHash != null
-        ? localHash !== entry.installedHash
-        : entry.localEdits === true;
-    const localDiverged = userEdited && localHash !== upstreamHash;
-    if (localDiverged && !opts.force) {
+    // 'diverged' is the ONLY verdict gated by --force (never clobber a hand-edited or
+    // unverified body). Without --force: show the diff and skip. With --force: fall
+    // through to applyUpstream (graduating an adopted entry as it lands).
+    if (verdict === "diverged" && !opts.force) {
       const diff = await unifiedDiff(
         localText,
         upstreamText,
-        `${entry.name} (local)`,
+        `${entry.name} (local${adopted ? ", adopted" : ""})`,
         `${entry.name} (upstream ${fetched.ref.slice(0, 10)})`,
       );
       return {
-        name: entry.name,
-        source: entry.source,
-        channel: entry.channel,
-        fromRef: entry.ref,
-        toRef: fetched.ref,
+        ...base,
         outcome: "diverged",
-        note: "local body diverged from upstream; not clobbering (use --force to overwrite)",
+        note: adopted
+          ? "adopted baseline unverified and differs from upstream; not clobbering (use --force to reconcile)"
+          : "local body diverged from upstream; not clobbering (use --force to overwrite)",
         diff,
       };
     }
 
-    if (opts.dryRun) {
-      return {
-        name: entry.name,
-        source: entry.source,
-        channel: entry.channel,
-        fromRef: entry.ref,
-        toRef: fetched.ref,
-        outcome: "updated",
-        note: opts.force && localDiverged ? "would overwrite diverged local body (dry-run)" : "would update (dry-run)",
-      };
+    // 'identical' + non-adopted + ref unchanged: nothing to do.
+    if (verdict === "identical" && !adopted && fetched.ref === entry.ref) {
+      return { ...base, outcome: "uptodate", note: "already at latest upstream body" };
     }
 
-    // Apply: replace body + ref files; domain tags + lock live at the library
-    // root (taxonomy.json / shelf.lock.json), untouched by this skill-dir cleanup.
+    // Everything else applies upstream. Build the right note per verdict/adopted/force
+    // BEFORE writing, so dry-run reports exactly what a real run would do.
+    const willGraduate = adopted; // an adopted entry graduates the moment it reconciles
+    const note =
+      verdict === "identical" && adopted
+        ? "adopted baseline verified against upstream (identical); graduated to tracked"
+        : verdict === "diverged" && adopted
+          ? "overwrote adopted body with upstream (--force); graduated to tracked"
+          : verdict === "diverged"
+            ? "overwrote diverged local body"
+            : "upstream body re-pulled; domain tags preserved";
+    const dryNote =
+      verdict === "identical" && adopted
+        ? "would reconcile adopted baseline (identical to upstream) (dry-run)"
+        : verdict === "diverged" && adopted
+          ? "would overwrite adopted body with upstream and graduate (--force, dry-run)"
+          : verdict === "diverged"
+            ? "would overwrite diverged local body (dry-run)"
+            : "would update (dry-run)";
+
+    if (opts.dryRun) {
+      return { ...base, outcome: "updated", note: dryNote };
+    }
+
+    // Apply: replace body + ref files; domain tags + lock live at the library root
+    // (taxonomy.json / shelf.lock.json), untouched by this skill-dir cleanup.
     await applyUpstream(destDir, fetched.skillDir);
 
-    // Update lockfile ref + record the new installed body hash + clear localEdits
-    // (the on-disk body now equals upstream again, so we are pristine).
+    // Record the new ref + installed body hash + clear localEdits (on-disk body now
+    // equals upstream, so we are pristine). Clear `adopted` for a graduating entry.
     const updatedEntry: LockEntry = {
       ...entry,
       ref: fetched.ref,
       installedAt: new Date().toISOString(),
       localEdits: false,
       installedHash: upstreamHash,
+      ...(willGraduate ? { adopted: false } : {}),
     };
     await recordEntry(ctx.config.libraryPath, updatedEntry);
 
-    return {
-      name: entry.name,
-      source: entry.source,
-      channel: entry.channel,
-      fromRef: entry.ref,
-      toRef: fetched.ref,
-      outcome: "updated",
-      note: opts.force && localDiverged ? "overwrote diverged local body" : "upstream body re-pulled; domain tags preserved",
-    };
+    return { ...base, outcome: "updated", note };
   } catch (err) {
     return {
       name: entry.name,
@@ -339,8 +265,16 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         );
 
     if (entries.length === 0 && linkedNoLock.length === 0) {
-      if (json)
-        ctx.json({
+      // Error fork stays in run(): a named-but-missing skill is a non-json error
+      // with exit 1 (ctx.error, never rendered). Otherwise the empty-state goes
+      // through render — JSON emits the zeroed report verbatim; the human branch
+      // prints the same lockfile-empty line as before.
+      if (nameArg && !json) {
+        ctx.error(`no tracked skill named "${nameArg}"`);
+        return 1;
+      }
+      const emptyResult: CommandResult = {
+        json: {
           ok: true,
           updated: 0,
           diverged: 0,
@@ -348,10 +282,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           orphaned: 0,
           results: [],
           newAvailable: [],
-        });
-      else if (nameArg) ctx.error(`no tracked skill named "${nameArg}"`);
-      else ctx.log("no tracked third-party skills (lockfile is empty)");
-      return nameArg && !json ? 1 : 0;
+        },
+        human: (emit) => {
+          emit("no tracked third-party skills (lockfile is empty)");
+        },
+      };
+      render(ctx, json, emptyResult);
+      return 0;
     }
 
     const results: Result[] = [];
@@ -507,8 +444,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const errored = results.filter((r) => r.outcome === "error").length;
     const orphaned = results.filter((r) => r.outcome === "orphaned").length;
 
-    if (json) {
-      ctx.json({
+    // The structured payload (verbatim) + the human renderer. The outcome->tag ternary
+    // now lives in report.ts as updateOutcomeMark(); the diverged-diff block, the summary
+    // line, and the newAvailable hints are reproduced here EXACTLY (none are in the JSON).
+    const result: CommandResult = {
+      json: {
         ok: errored === 0,
         updated,
         diverged,
@@ -516,40 +456,30 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         orphaned,
         results,
         newAvailable,
-      });
-    } else {
-      for (const r of results) {
-        const tag =
-          r.outcome === "updated"
-            ? "updated  "
-            : r.outcome === "uptodate"
-              ? "current  "
-              : r.outcome === "diverged"
-                ? "DIVERGED "
-                : r.outcome === "orphaned"
-                  ? "orphaned "
-                  : r.outcome === "error"
-                    ? "ERROR    "
-                    : "skipped  ";
-        ctx.log(`${tag}  ${r.name.padEnd(28)} ${r.note}`);
-        if (r.outcome === "diverged" && r.diff) {
-          ctx.log("");
-          ctx.log(r.diff.trimEnd());
-          ctx.log("");
+      },
+      human: (emit) => {
+        for (const r of results) {
+          emit(`${updateOutcomeMark(r.outcome)}  ${r.name.padEnd(28)} ${r.note}`);
+          if (r.outcome === "diverged" && r.diff) {
+            emit();
+            emit(r.diff.trimEnd());
+            emit();
+          }
         }
-      }
-      ctx.log("");
-      ctx.log(
-        `${results.length} tracked, ${updated} updated, ${diverged} diverged${orphaned ? `, ${orphaned} orphaned` : ""}${errored ? `, ${errored} error(s)` : ""}.`,
-      );
-      if (diverged > 0) ctx.log("re-run with --force to overwrite diverged local bodies.");
-      // Additions never install (curator boundary, decision 4); just point at `skl add`.
-      for (const a of newAvailable) {
-        ctx.log(
-          `${a.names.length} new published skill(s) in ${a.repo} not tracked → skl add ${a.repo} --all`,
+        emit();
+        emit(
+          `${results.length} tracked, ${updated} updated, ${diverged} diverged${orphaned ? `, ${orphaned} orphaned` : ""}${errored ? `, ${errored} error(s)` : ""}.`,
         );
-      }
-    }
+        if (diverged > 0) emit("re-run with --force to overwrite diverged local bodies.");
+        // Additions never install (curator boundary, decision 4); just point at `skl add`.
+        for (const a of newAvailable) {
+          emit(
+            `${a.names.length} new published skill(s) in ${a.repo} not tracked → skl add ${a.repo} --all`,
+          );
+        }
+      },
+    };
+    render(ctx, json, result);
 
     // Non-zero if any error or any unresolved divergence (blocks CI/agents).
     if (errored > 0) return 1;
