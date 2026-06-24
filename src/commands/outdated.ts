@@ -14,6 +14,8 @@ import { entryMode, entryModeInfo, loadLibrary, findByName } from "../core/libra
 import { hashContent } from "../core/crawl.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { parseStoredSource, latestRef } from "../core/fetch.ts";
+import { classify } from "../core/reconcile.ts";
+import { render, outdatedStatusMark, outdatedRefInfo, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "outdated",
@@ -23,7 +25,8 @@ export const meta = {
 
 type Status = "stale" | "current" | "unknown" | "linked" | "diverged" | "adopted";
 
-interface Row {
+/** One outdated-check row. Exported (renamed from the local `Row`) so report.ts can type outdatedRefInfo(). */
+export interface OutdatedRow {
   name: string;
   channel: string;
   source: string;
@@ -33,11 +36,7 @@ interface Row {
   note: string;
 }
 
-function shortRef(ref: string): string {
-  return /^[0-9a-f]{7,40}$/i.test(ref) ? ref.slice(0, 10) : ref;
-}
-
-async function checkEntry(entry: LockEntry): Promise<Row> {
+async function checkEntry(entry: LockEntry): Promise<OutdatedRow> {
   const parsed = parseStoredSource(entry.source);
   const res = await latestRef(parsed);
   if (!res.ok) {
@@ -52,14 +51,26 @@ async function checkEntry(entry: LockEntry): Promise<Row> {
     };
   }
   const latest = res.ref;
-  const same = latest === entry.ref;
+  // Ref-only online view (no upstream body fetched): classify maps to stale/current
+  // off the ref compare. Same surface word as before; the disambiguation is internal.
+  const verdict = classify({
+    adopted: false,
+    mode: "owned",
+    installedHash: entry.installedHash ?? null,
+    localEdits: entry.localEdits,
+    localHash: null,
+    upstreamHash: null,
+    installedRef: entry.ref,
+    latestRef: latest,
+    structural: null,
+  });
   return {
     name: entry.name,
     channel: entry.channel,
     source: entry.source,
     installedRef: entry.ref,
     latestRef: latest,
-    status: same ? "current" : "stale",
+    status: verdict === "stale" ? "stale" : "current",
     note: entry.localEdits ? "has local edits" : "",
   };
 }
@@ -69,7 +80,7 @@ async function checkEntry(entry: LockEntry): Promise<Row> {
  * upstream — its own git owns versioning. Report it as such instead of probing a
  * (possibly stale) github ref (ADR-0004).
  */
-function linkedRow(entry: LockEntry): Row {
+function linkedRow(entry: LockEntry): OutdatedRow {
   return {
     name: entry.name,
     channel: "local",
@@ -93,7 +104,7 @@ function linkedRow(entry: LockEntry): Row {
  * the installedHash describes the LOCAL copy only). Reporting it as stale/current off the
  * empty ref would be a lie, so surface it as `adopted` and do NOT network-probe (ADR-0011).
  */
-function adoptedRow(entry: LockEntry): Row {
+function adoptedRow(entry: LockEntry): OutdatedRow {
   return {
     name: entry.name,
     channel: entry.channel,
@@ -105,7 +116,7 @@ function adoptedRow(entry: LockEntry): Row {
   };
 }
 
-function linkedRowFromName(name: string, linkTarget: string | null): Row {
+function linkedRowFromName(name: string, linkTarget: string | null): OutdatedRow {
   return {
     name,
     channel: "local",
@@ -123,7 +134,7 @@ function linkedRowFromName(name: string, linkTarget: string | null): Row {
  * (lockfile.installedHash). Answers "have I locally edited this?" without probing
  * upstream — usable on a plane / in CI with no creds.
  */
-function checkEntryLocal(entry: LockEntry, library: Skill[], libraryPath: string): Row {
+function checkEntryLocal(entry: LockEntry, library: Skill[], libraryPath: string): OutdatedRow {
   const skill = findByName(library, entry.name);
   const bodyPath = skill?.bodyPath ?? join(libraryPath, entry.name, "SKILL.md");
   let localHash: string | null = null;
@@ -142,15 +153,31 @@ function checkEntryLocal(entry: LockEntry, library: Skill[], libraryPath: string
     installedRef: entry.ref,
     latestRef: null,
   };
+  // Distinct 'unknown' Rows keep their distinct guidance notes (the disambiguation the
+  // classifier collapses to a single 'unknown' verdict — surface text preserved).
   if (entry.installedHash == null) {
     return { ...base, status: "unknown", note: "no recorded baseline (installed before hash tracking) — re-run `skl update` to record one" };
   }
   if (localHash == null) {
     return { ...base, status: "unknown", note: "local SKILL.md unreadable" };
   }
-  return localHash === entry.installedHash
-    ? { ...base, status: "current", note: "matches installed baseline (offline)" }
-    : { ...base, status: "diverged", note: "local body diverged from installed baseline (offline)" };
+  // Pure offline (no upstream body, no ref): classify maps to 'edited' vs 'current' off
+  // the install-baseline compare. The 'edited' verdict surfaces as the UNCHANGED public
+  // Status word 'diverged' (ADR-0013 keeps the UI word for backward compat).
+  const verdict = classify({
+    adopted: false,
+    mode: "owned",
+    installedHash: entry.installedHash ?? null,
+    localEdits: entry.localEdits,
+    localHash,
+    upstreamHash: null,
+    installedRef: entry.ref,
+    latestRef: null,
+    structural: null,
+  });
+  return verdict === "edited"
+    ? { ...base, status: "diverged", note: "local body diverged from installed baseline (offline)" }
+    : { ...base, status: "current", note: "matches installed baseline (offline)" };
 }
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
@@ -198,58 +225,50 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     }
     rows.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
+    // Empty result: a DISTINCT JSON shape (no `diverged` field) + nameArg-vs-empty
+    // human messages. Folded into a CommandResult so render() owns the json/human fork;
+    // exit stays 0 below (no flagged rows).
     if (rows.length === 0) {
-      if (json) ctx.json({ ok: true, checked: 0, stale: 0, rows: [] });
-      else if (nameArg) ctx.log(`no tracked skill named "${nameArg}"`);
-      else ctx.log("no tracked third-party skills (lockfile is empty)");
+      const empty: CommandResult = {
+        json: { ok: true, checked: 0, stale: 0, rows: [] },
+        human: (emit) =>
+          emit(nameArg ? `no tracked skill named "${nameArg}"` : "no tracked third-party skills (lockfile is empty)"),
+      };
+      render(ctx, json, empty);
       return 0;
     }
 
     const stale = rows.filter((r) => r.status === "stale");
     const diverged = rows.filter((r) => r.status === "diverged");
 
-    if (json) {
-      ctx.json({
+    // The structured payload (verbatim) + the human renderer (the mark/refInfo ladders
+    // now live in report.ts as outdatedStatusMark/outdatedRefInfo; summary text verbatim).
+    const result: CommandResult = {
+      json: {
         ok: true,
         checked: rows.length,
         stale: stale.length,
         diverged: diverged.length,
         rows,
-      });
-    } else {
-      for (const r of rows) {
-        const mark =
-          r.status === "stale" ? "STALE   "
-            : r.status === "diverged" ? "DIVERGED"
-              : r.status === "current" ? "current "
-                : r.status === "linked" ? "linked  "
-                  : r.status === "adopted" ? "adopted "
-                    : "unknown ";
-        const refInfo =
-          r.status === "linked"
-            ? r.note
-            : r.status === "adopted"
-              ? r.note
-              : r.status === "stale"
-                ? `${shortRef(r.installedRef)} -> ${shortRef(r.latestRef ?? "")}`
-                : r.status === "diverged"
-                  ? r.note
-                  : r.status === "current"
-                    ? shortRef(r.installedRef) + (checkLocal ? " (offline)" : "")
-                    : `${shortRef(r.installedRef)} (${r.note})`;
-        const extra =
-          r.note && !["unknown", "linked", "diverged", "adopted"].includes(r.status) ? `  [${r.note}]` : "";
-        ctx.log(`${mark}  ${r.name.padEnd(28)} ${r.channel.padEnd(15)} ${refInfo}${extra}`);
-      }
-      ctx.log("");
-      if (checkLocal) {
-        ctx.log(`${rows.length} tracked, ${diverged.length} locally diverged (offline check — no upstream probed).`);
-        if (diverged.length > 0) ctx.log("re-run \`skl update [name]\` to see the upstream diff, or \`--force\` to overwrite.");
-      } else {
-        ctx.log(`${rows.length} tracked, ${stale.length} stale.`);
-        if (stale.length > 0) ctx.log(`run \`skl update [name]\` to re-pull (domain tags are preserved).`);
-      }
-    }
+      },
+      human: (emit) => {
+        for (const r of rows) {
+          emit(
+            `${outdatedStatusMark(r.status)}  ${r.name.padEnd(28)} ${r.channel.padEnd(15)} ${outdatedRefInfo(r, checkLocal)}`,
+          );
+        }
+        emit();
+        if (checkLocal) {
+          emit(`${rows.length} tracked, ${diverged.length} locally diverged (offline check — no upstream probed).`);
+          if (diverged.length > 0) emit("re-run \`skl update [name]\` to see the upstream diff, or \`--force\` to overwrite.");
+        } else {
+          emit(`${rows.length} tracked, ${stale.length} stale.`);
+          if (stale.length > 0) emit(`run \`skl update [name]\` to re-pull (domain tags are preserved).`);
+        }
+      },
+    };
+    render(ctx, json, result);
+
     // Non-zero exit when stale (or, offline, locally-diverged) skills exist, so
     // agents/CI can branch on it.
     const flagged = checkLocal ? diverged.length : stale.length;

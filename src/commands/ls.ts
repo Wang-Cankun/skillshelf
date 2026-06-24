@@ -9,6 +9,7 @@ import { inventoryDeployments } from "../core/deployments.ts";
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
 import { isCleanSite } from "../core/agents.ts";
 import { oneLine } from "../core/lifecycle.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "ls",
@@ -45,16 +46,16 @@ function sortSkills(skills: Skill[], field: SortField, deployCounts: Map<string,
   });
 }
 
-function emitHuman(ctx: Ctx, skills: Skill[]): void {
+function emitHuman(emit: (line?: string) => void, skills: Skill[]): void {
   if (skills.length === 0) {
-    ctx.log("(no skills)");
+    emit("(no skills)");
     return;
   }
   for (const s of skills) {
     const tag = s.retired ? " (retired)" : "";
     const dom =
       s.primaryDomain && !s.retired ? ` [${s.primaryDomain}]` : "";
-    ctx.log(`${s.name}${dom}${tag} — ${oneLine(s.description)}`);
+    emit(`${s.name}${dom}${tag} — ${oneLine(s.description)}`);
   }
 }
 
@@ -166,25 +167,30 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         includeRetired: all,
       });
       const rows = applySort(bundle.skills);
-      if (json) {
-        ctx.json({ bundle: bundle.name, skills: toJson(rows, ctx.libraryPath, deployCounts) });
-        return 0;
-      }
-      if (rows.length === 0) {
-        ctx.log(`Bundle "${bundle.name}" has no skills.`);
-        return 0;
-      }
-      ctx.log(`# ${bundle.name} (${rows.length})`);
-      emitHuman(ctx, rows);
+      // toJson/emitHuman already split cleanly; route the fork through render(). The
+      // empty-bundle case keeps its distinct human message while JSON still emits the
+      // full {bundle, skills:[]} shape (verbatim).
+      const result: CommandResult = {
+        json: { bundle: bundle.name, skills: toJson(rows, ctx.libraryPath, deployCounts) },
+        human: (emit) => {
+          if (rows.length === 0) {
+            emit(`Bundle "${bundle.name}" has no skills.`);
+            return;
+          }
+          emit(`# ${bundle.name} (${rows.length})`);
+          emitHuman(emit, rows);
+        },
+      };
+      render(ctx, json, result);
       return 0;
     }
 
     const listed = applySort(all ? skills : activeSkills(skills));
-    if (json) {
-      ctx.json(toJson(listed, ctx.libraryPath, deployCounts));
-      return 0;
-    }
-    emitHuman(ctx, listed);
+    const result: CommandResult = {
+      json: toJson(listed, ctx.libraryPath, deployCounts),
+      human: (emit) => emitHuman(emit, listed),
+    };
+    render(ctx, json, result);
     return 0;
   } catch (err) {
     ctx.error(`ls failed: ${(err as Error).message}`);
