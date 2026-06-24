@@ -265,8 +265,16 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         );
 
     if (entries.length === 0 && linkedNoLock.length === 0) {
-      if (json)
-        ctx.json({
+      // Error fork stays in run(): a named-but-missing skill is a non-json error
+      // with exit 1 (ctx.error, never rendered). Otherwise the empty-state goes
+      // through render — JSON emits the zeroed report verbatim; the human branch
+      // prints the same lockfile-empty line as before.
+      if (nameArg && !json) {
+        ctx.error(`no tracked skill named "${nameArg}"`);
+        return 1;
+      }
+      const emptyResult: CommandResult = {
+        json: {
           ok: true,
           updated: 0,
           diverged: 0,
@@ -274,10 +282,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           orphaned: 0,
           results: [],
           newAvailable: [],
-        });
-      else if (nameArg) ctx.error(`no tracked skill named "${nameArg}"`);
-      else ctx.log("no tracked third-party skills (lockfile is empty)");
-      return nameArg && !json ? 1 : 0;
+        },
+        human: (emit) => {
+          emit("no tracked third-party skills (lockfile is empty)");
+        },
+      };
+      render(ctx, json, emptyResult);
+      return 0;
     }
 
     const results: Result[] = [];

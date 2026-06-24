@@ -11,6 +11,7 @@ import {
   realpathOrSelf,
   listDirNames,
 } from "../lib/fs.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "status",
@@ -85,8 +86,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
     }
 
-    if (json) {
-      ctx.json({
+    const result: CommandResult = {
+      json: {
         projectRoot: cwd,
         skillsDir,
         skillsDirExists: pathExists(skillsDir),
@@ -106,44 +107,45 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           aliased: e.skill != null && e.skill.name !== e.link,
           domains: e.skill ? e.skill.domains : [],
         })),
-      });
-      return 0;
-    }
+      },
+      human: (emit) => {
+        if (linked.length === 0 && unmanaged.length === 0) {
+          emit(`No skills linked into ${skillsDir}`);
+          return;
+        }
 
-    if (linked.length === 0 && unmanaged.length === 0) {
-      ctx.log(`No skills linked into ${skillsDir}`);
-      return 0;
-    }
+        emit(`Linked into ${skillsDir} (${linked.length}):`);
+        for (const e of linked) {
+          if (e.skill) {
+            const dom = e.skill.domains.length
+              ? ` [${e.skill.domains.join(", ")}]`
+              : "";
+            const alias = e.skill.name !== e.link ? "  ⚠ aliased (link name ≠ skill)" : "";
+            emit(`  ${e.link}${dom} -> ${e.skill.name}${alias}`);
+          } else {
+            emit(`  ${e.link} -> ${e.target} (not a library skill)`);
+          }
+        }
 
-    ctx.log(`Linked into ${skillsDir} (${linked.length}):`);
-    for (const e of linked) {
-      if (e.skill) {
-        const dom = e.skill.domains.length
-          ? ` [${e.skill.domains.join(", ")}]`
-          : "";
-        const alias = e.skill.name !== e.link ? "  ⚠ aliased (link name ≠ skill)" : "";
-        ctx.log(`  ${e.link}${dom} -> ${e.skill.name}${alias}`);
-      } else {
-        ctx.log(`  ${e.link} -> ${e.target} (not a library skill)`);
-      }
-    }
+        if (bundles.size) {
+          emit("");
+          emit("Bundles present:");
+          for (const name of [...bundles.keys()].sort()) {
+            const members = bundles.get(name)!.slice().sort();
+            emit(`  ${name} (${members.length}): ${members.join(", ")}`);
+          }
+        }
 
-    if (bundles.size) {
-      ctx.log("");
-      ctx.log("Bundles present:");
-      for (const name of [...bundles.keys()].sort()) {
-        const members = bundles.get(name)!.slice().sort();
-        ctx.log(`  ${name} (${members.length}): ${members.join(", ")}`);
-      }
-    }
-
-    if (unmanaged.length) {
-      ctx.log("");
-      ctx.log(`⚠ Unmanaged real copies (${unmanaged.length}) — not symlinks, can drift:`);
-      for (const u of unmanaged) {
-        ctx.log(`  ${u.name}${u.inLibrary ? " (shadows a library skill — `skl where --fix` to dedupe)" : ""}`);
-      }
-    }
+        if (unmanaged.length) {
+          emit("");
+          emit(`⚠ Unmanaged real copies (${unmanaged.length}) — not symlinks, can drift:`);
+          for (const u of unmanaged) {
+            emit(`  ${u.name}${u.inLibrary ? " (shadows a library skill — `skl where --fix` to dedupe)" : ""}`);
+          }
+        }
+      },
+    };
+    render(ctx, json, result);
     return 0;
   } catch (err) {
     ctx.error(`status failed: ${(err as Error).message}`);

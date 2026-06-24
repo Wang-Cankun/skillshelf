@@ -428,17 +428,19 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         tagged: o.tagged,
         domains: o.domains,
       };
-      if (flags.json) {
-        ctx.json(summary);
-      } else {
-        ctx.log(`added ${o.name}`);
-        ctx.log(`  path:    ${o.path}`);
-        ctx.log(`  source:  ${o.source}`);
-        ctx.log(`  ref:     ${o.ref || "(unknown)"}`);
-        ctx.log(`  channel: ${o.channel}`);
-        if (o.tagged) ctx.log(`  domains: ${o.domains.join(", ")}`);
-        else ctx.log(`  domains: (untagged — run \`skl infer\` to assign)`);
-      }
+      const result: CommandResult = {
+        json: summary,
+        human: (emit) => {
+          emit(`added ${o.name}`);
+          emit(`  path:    ${o.path}`);
+          emit(`  source:  ${o.source}`);
+          emit(`  ref:     ${o.ref || "(unknown)"}`);
+          emit(`  channel: ${o.channel}`);
+          if (o.tagged) emit(`  domains: ${o.domains.join(", ")}`);
+          else emit(`  domains: (untagged — run \`skl infer\` to assign)`);
+        },
+      };
+      render(ctx, flags.json, result);
       return 0;
     }
 
@@ -489,8 +491,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const skipped = outcomes.filter((o) => o.status === "skipped");
     const errored = outcomes.filter((o) => o.status === "error");
 
-    if (flags.json) {
-      ctx.json({
+    const result: CommandResult = {
+      json: {
         ok: errored.length === 0,
         action: "add",
         source: parsed.source,
@@ -508,18 +510,20 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           tagged: o.tagged,
           domains: o.domains,
         })),
-      });
-    } else {
-      for (const o of outcomes) {
-        const tag = o.status === "installed" ? "added   " : o.status === "skipped" ? "skipped " : "ERROR   ";
-        ctx.log(`${tag}  ${o.name.padEnd(28)} ${o.reason}`);
-      }
-      ctx.log("");
-      ctx.log(
-        `${selected.length} selected, ${installed.length} installed, ${skipped.length} skipped${errored.length ? `, ${errored.length} error(s)` : ""} from ${parsed.source}`,
-      );
-      if (skipped.some((o) => o.verdict === "differs")) ctx.log("re-run with --force to overwrite differing skills.");
-    }
+      },
+      human: (emit) => {
+        for (const o of outcomes) {
+          const tag = o.status === "installed" ? "added   " : o.status === "skipped" ? "skipped " : "ERROR   ";
+          emit(`${tag}  ${o.name.padEnd(28)} ${o.reason}`);
+        }
+        emit("");
+        emit(
+          `${selected.length} selected, ${installed.length} installed, ${skipped.length} skipped${errored.length ? `, ${errored.length} error(s)` : ""} from ${parsed.source}`,
+        );
+        if (skipped.some((o) => o.verdict === "differs")) emit("re-run with --force to overwrite differing skills.");
+      },
+    };
+    render(ctx, flags.json, result);
     return errored.length > 0 ? 1 : 0;
   } catch (err) {
     ctx.error("add: failed:", err instanceof Error ? err.message : String(err));

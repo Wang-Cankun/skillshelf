@@ -26,6 +26,7 @@ import {
   genuineConflictGroups,
 } from "../core/dedupe.ts";
 import { realpathOrSelf } from "../lib/fs.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "scan",
@@ -162,18 +163,20 @@ function toGroupView(g: DuplicateGroup): GroupView {
 
 /** Report the configured roots when there is nothing to scan. */
 function reportNoRoots(args: Args, roots: string[], ctx: Ctx): number {
-  if (args.json) {
-    ctx.json({ roots, totals: { roots: roots.length, candidates: 0 }, candidates: [], duplicateGroups: [] });
-    return 0;
-  }
-  if (roots.length === 0) {
-    ctx.log("No scan roots configured.");
-    ctx.log("Add one with:  skl scan --add-root <path>");
-    ctx.log("Or scan ad-hoc:  skl scan <path> [<path>…]");
-  } else {
-    ctx.log(`Configured scan roots (${roots.length}):`);
-    for (const r of roots) ctx.log(`  ${r}`);
-  }
+  const result: CommandResult = {
+    json: { roots, totals: { roots: roots.length, candidates: 0 }, candidates: [], duplicateGroups: [] },
+    human: (emit) => {
+      if (roots.length === 0) {
+        emit("No scan roots configured.");
+        emit("Add one with:  skl scan --add-root <path>");
+        emit("Or scan ad-hoc:  skl scan <path> [<path>…]");
+      } else {
+        emit(`Configured scan roots (${roots.length}):`);
+        for (const r of roots) emit(`  ${r}`);
+      }
+    },
+  };
+  render(ctx, args.json, result);
   return 0;
 }
 
@@ -190,12 +193,14 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // --add-root: persist, then report the updated roots (no scan side effect).
     if (args.addRoot != null) {
       const roots = await ctx.addRoot(args.addRoot);
-      if (args.json) {
-        ctx.json({ added: realpathLike(args.addRoot, roots), roots });
-        return 0;
-      }
-      ctx.log(`Roots (${roots.length}):`);
-      for (const r of roots) ctx.log(`  ${r}`);
+      const result: CommandResult = {
+        json: { added: realpathLike(args.addRoot, roots), roots },
+        human: (emit) => {
+          emit(`Roots (${roots.length}):`);
+          for (const r of roots) emit(`  ${r}`);
+        },
+      };
+      render(ctx, args.json, result);
       return 0;
     }
 
@@ -203,13 +208,15 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // a not-registered path reports removed:false and is not an error.
     if (args.removeRoot != null) {
       const { roots, removed } = await ctx.removeRoot(args.removeRoot);
-      if (args.json) {
-        ctx.json({ removed, target: args.removeRoot, roots });
-        return 0;
-      }
-      ctx.log(removed ? `Removed root: ${args.removeRoot}` : `Not a registered root: ${args.removeRoot}`);
-      ctx.log(`Roots (${roots.length}):`);
-      for (const r of roots) ctx.log(`  ${r}`);
+      const result: CommandResult = {
+        json: { removed, target: args.removeRoot, roots },
+        human: (emit) => {
+          emit(removed ? `Removed root: ${args.removeRoot}` : `Not a registered root: ${args.removeRoot}`);
+          emit(`Roots (${roots.length}):`);
+          for (const r of roots) emit(`  ${r}`);
+        },
+      };
+      render(ctx, args.json, result);
       return 0;
     }
 
@@ -269,8 +276,8 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     );
     const groupViews = reported.map(toGroupView);
 
-    if (args.json) {
-      ctx.json({
+    const result: CommandResult = {
+      json: {
         roots,
         totals: {
           roots: roots.length,
@@ -289,48 +296,49 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         candidates,
         newCandidates,
         duplicateGroups: groupViews,
-      });
-      return 0;
-    }
+      },
+      human: (emit) => {
+        // --- Human report ----------------------------------------------------
+        emit(`Scanned ${roots.length} root${roots.length === 1 ? "" : "s"}:`);
+        for (const r of roots) {
+          const c = perRoot.get(r) ?? 0;
+          const n = perRootNew.get(r) ?? 0;
+          const breakdown = c === 0 ? "" : n === 0 ? " (all in library)" : ` (${n} new, ${c - n} in library)`;
+          emit(`  ${r} — ${c} candidate${c === 1 ? "" : "s"}${breakdown}`);
+        }
+        if (dedupedRoots.length) {
+          emit(`  (skipped ${dedupedRoots.length} aliased root${dedupedRoots.length === 1 ? "" : "s"}: ${dedupedRoots.join(", ")})`);
+        }
+        emit("");
+        emit(`Total candidates: ${candidates.length} (${newCandidates.length} new, not yet in library)`);
 
-    // --- Human report ----------------------------------------------------
-    ctx.log(`Scanned ${roots.length} root${roots.length === 1 ? "" : "s"}:`);
-    for (const r of roots) {
-      const c = perRoot.get(r) ?? 0;
-      const n = perRootNew.get(r) ?? 0;
-      const breakdown = c === 0 ? "" : n === 0 ? " (all in library)" : ` (${n} new, ${c - n} in library)`;
-      ctx.log(`  ${r} — ${c} candidate${c === 1 ? "" : "s"}${breakdown}`);
-    }
-    if (dedupedRoots.length) {
-      ctx.log(`  (skipped ${dedupedRoots.length} aliased root${dedupedRoots.length === 1 ? "" : "s"}: ${dedupedRoots.join(", ")})`);
-    }
-    ctx.log("");
-    ctx.log(`Total candidates: ${candidates.length} (${newCandidates.length} new, not yet in library)`);
+        // New candidates: the actionable list — what you'd `skl import` next.
+        if (newCandidates.length > 0) {
+          emit("");
+          emit(`New (not in library) — ${newCandidates.length}:`);
+          for (const c of newCandidates) {
+            emit(`  ${c.name}${c.retired ? " [retired]" : ""}`);
+            emit(`    ${c.path}`);
+          }
+          emit("");
+          emit("Import one with:  skl import <name> --from <path>");
+        }
 
-    // New candidates: the actionable list — what you'd `skl import` next.
-    if (newCandidates.length > 0) {
-      ctx.log("");
-      ctx.log(`New (not in library) — ${newCandidates.length}:`);
-      for (const c of newCandidates) {
-        ctx.log(`  ${c.name}${c.retired ? " [retired]" : ""}`);
-        ctx.log(`    ${c.path}`);
-      }
-      ctx.log("");
-      ctx.log("Import one with:  skl import <name> --from <path>");
-    }
+        if (groupViews.length === 0) {
+          if (newCandidates.length === 0) emit("No duplicates or drift detected.");
+          return;
+        }
 
-    if (groupViews.length === 0) {
-      if (newCandidates.length === 0) ctx.log("No duplicates or drift detected.");
-      return 0;
-    }
-
-    ctx.log("");
-    ctx.log(`Duplicate / drift groups (${groupViews.length}):`);
-    for (const g of groupViews) {
-      ctx.log(`  ${g.name} [${g.kind}]`);
-      for (const loc of g.locations) ctx.log(`    - ${loc}`);
-      ctx.log(`    → ${g.recommendation}`);
-    }
+        emit("");
+        emit(`Duplicate / drift groups (${groupViews.length}):`);
+        for (const g of groupViews) {
+          emit(`  ${g.name} [${g.kind}]`);
+          for (const loc of g.locations) emit(`    - ${loc}`);
+          emit(`    → ${g.recommendation}`);
+        }
+      },
+    };
+    render(ctx, args.json, result);
     return 0;
   } catch (err) {
     ctx.error(`scan failed: ${(err as Error).message}`);

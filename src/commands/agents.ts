@@ -10,6 +10,7 @@ import { basename, join, sep } from "node:path";
 import type { AgentConfigEntry, Ctx } from "../types.ts";
 import { inventoryDeployments } from "../core/deployments.ts";
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
+import { render, type CommandResult } from "../core/report.ts";
 import {
   computeAgentsReport,
   knownAgentIds,
@@ -108,57 +109,61 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       };
     }
 
-    if (json) {
-      if (name !== null) {
-        ctx.json({
+    const { agents, scopes, deployments } = agentsReport;
+    if (name !== null) {
+      // One skill's row across agents × scopes.
+      const result: CommandResult = {
+        json: {
           name,
           agents: agentsReport.agents,
           scopes: agentsReport.scopes,
           deployment: agentsReport.deployments[name] ?? {},
-        });
-        return 0;
-      }
-      ctx.json(agentsReport);
+        },
+        human: (emit) => {
+          const byAgent = deployments[name] ?? {};
+          emit(`${name} — deployment across agents:`);
+          for (const a of agents) {
+            const dep = byAgent[a.id];
+            const g = dep?.g ?? "absent";
+            const projects = dep?.p
+              ? Object.entries(dep.p).map(([s, st]) => `${s} ${GLYPH[st]}`).join("  ")
+              : "";
+            const installed = a.installed ? "" : " (not installed)";
+            emit(`  ${a.short.padEnd(10)} ${GLYPH[g]} global·${g}${installed}${projects ? `   ${projects}` : ""}`);
+          }
+          emit("");
+          emit(LEGEND);
+        },
+      };
+      render(ctx, json, result);
       return 0;
     }
 
-    // --- human view ------------------------------------------------------
-    const { agents, scopes, deployments } = agentsReport;
-    if (name !== null) {
-      const byAgent = deployments[name] ?? {};
-      ctx.log(`${name} — deployment across agents:`);
-      for (const a of agents) {
-        const dep = byAgent[a.id];
-        const g = dep?.g ?? "absent";
-        const projects = dep?.p
-          ? Object.entries(dep.p).map(([s, st]) => `${s} ${GLYPH[st]}`).join("  ")
-          : "";
-        const installed = a.installed ? "" : " (not installed)";
-        ctx.log(`  ${a.short.padEnd(10)} ${GLYPH[g]} global·${g}${installed}${projects ? `   ${projects}` : ""}`);
-      }
-      ctx.log("");
-      ctx.log(LEGEND);
-      return 0;
-    }
-
-    ctx.log(`Agents (${agents.filter((a) => a.installed).length} installed) · scopes: ${scopes.join(", ")}`);
-    for (const a of agents) {
-      let clean = 0;
-      let problems = 0;
-      for (const byAgent of Object.values(deployments)) {
-        const dep = byAgent[a.id];
-        if (!dep) continue;
-        const states: DeployState[] = [dep.g ?? "absent", ...Object.values(dep.p ?? {})];
-        for (const st of states) {
-          if (st === "clean" || st === "source") clean++;
-          else if (st !== "absent") problems++;
+    // The full agents matrix report.
+    const result: CommandResult = {
+      json: agentsReport,
+      human: (emit) => {
+        emit(`Agents (${agents.filter((a) => a.installed).length} installed) · scopes: ${scopes.join(", ")}`);
+        for (const a of agents) {
+          let clean = 0;
+          let problems = 0;
+          for (const byAgent of Object.values(deployments)) {
+            const dep = byAgent[a.id];
+            if (!dep) continue;
+            const states: DeployState[] = [dep.g ?? "absent", ...Object.values(dep.p ?? {})];
+            for (const st of states) {
+              if (st === "clean" || st === "source") clean++;
+              else if (st !== "absent") problems++;
+            }
+          }
+          const tag = a.installed ? "" : "  (not installed)";
+          emit(`  ${a.short.padEnd(10)} ${a.global}${tag}  —  ${clean} clean, ${problems} need attention`);
         }
-      }
-      const tag = a.installed ? "" : "  (not installed)";
-      ctx.log(`  ${a.short.padEnd(10)} ${a.global}${tag}  —  ${clean} clean, ${problems} need attention`);
-    }
-    ctx.log("");
-    ctx.log(LEGEND);
+        emit("");
+        emit(LEGEND);
+      },
+    };
+    render(ctx, json, result);
     return 0;
   } catch (err) {
     ctx.error(`skl agents failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -193,11 +198,13 @@ async function runConfigSubverb(argv: string[], ctx: Ctx): Promise<number> {
 
   if (verb === "rm") {
     const { agents, removed } = await ctx.removeAgent(id);
-    if (json) {
-      ctx.json({ agents, removed });
-      return 0;
-    }
-    ctx.log(removed ? `Removed custom agent "${id}".` : `No custom agent "${id}" (nothing removed).`);
+    const result: CommandResult = {
+      json: { agents, removed },
+      human: (emit) => {
+        emit(removed ? `Removed custom agent "${id}".` : `No custom agent "${id}" (nothing removed).`);
+      },
+    };
+    render(ctx, json, result);
     return 0;
   }
 
@@ -233,11 +240,13 @@ async function runConfigSubverb(argv: string[], ctx: Ctx): Promise<number> {
     ...(inheritsGlobal ? {} : { inheritsGlobal: false }),
   };
   const agents = await ctx.addAgent(entry);
-  if (json) {
-    ctx.json({ agents, added: true });
-    return 0;
-  }
-  ctx.log(`Registered custom agent "${name}" (${id}). Custom agents (${agents.length}):`);
-  for (const a of agents) ctx.log(`  ${a.id}  ${a.global}`);
+  const result: CommandResult = {
+    json: { agents, added: true },
+    human: (emit) => {
+      emit(`Registered custom agent "${name}" (${id}). Custom agents (${agents.length}):`);
+      for (const a of agents) emit(`  ${a.id}  ${a.global}`);
+    },
+  };
+  render(ctx, json, result);
   return 0;
 }

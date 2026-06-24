@@ -23,6 +23,7 @@ import {
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
 import { resolveReadTarget } from "../core/agents.ts";
 import { safeSymlink, removeSymlink } from "../lib/fs.ts";
+import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "where",
@@ -158,19 +159,21 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       });
       const applied = outcomes.filter((o) => o.applied).length;
       const manual = outcomes.filter((o) => o.action === "manual");
-      if (json) {
-        ctx.json({ dryRun: parsed.args.dryRun, mode: parsed.args.fix ? "fix" : "prune", applied, outcomes });
-        return 0;
-      }
-      const verb = parsed.args.dryRun ? "Would apply" : "Applied";
-      ctx.log(`${verb} ${parsed.args.fix ? "fix" : "prune"} to ${outcomes.length} problem site(s):`);
-      for (const o of outcomes) {
-        const flag = o.action === "manual" ? "•" : parsed.args.dryRun ? "?" : "✓";
-        ctx.log(`  ${flag} ${o.name}  ${tilde(o.path)}`);
-        ctx.log(`      ${o.note}`);
-      }
-      ctx.log("");
-      ctx.log(`${applied} ${parsed.args.dryRun ? "would be " : ""}auto-fixed, ${manual.length} need a manual decision.`);
+      const result: CommandResult = {
+        json: { dryRun: parsed.args.dryRun, mode: parsed.args.fix ? "fix" : "prune", applied, outcomes },
+        human: (emit) => {
+          const verb = parsed.args.dryRun ? "Would apply" : "Applied";
+          emit(`${verb} ${parsed.args.fix ? "fix" : "prune"} to ${outcomes.length} problem site(s):`);
+          for (const o of outcomes) {
+            const flag = o.action === "manual" ? "•" : parsed.args.dryRun ? "?" : "✓";
+            emit(`  ${flag} ${o.name}  ${tilde(o.path)}`);
+            emit(`      ${o.note}`);
+          }
+          emit("");
+          emit(`${applied} ${parsed.args.dryRun ? "would be " : ""}auto-fixed, ${manual.length} need a manual decision.`);
+        },
+      };
+      render(ctx, json, result);
       return 0;
     }
 
@@ -178,52 +181,55 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     if (name !== null) {
       const sites = report.sites.filter((s) => s.name === name);
       const inLibrary = lib.some((s) => s.name === name);
-      if (json) {
-        ctx.json({ name, inLibrary, sites });
-        return 0;
-      }
-      if (sites.length === 0) {
-        ctx.log(
-          inLibrary
-            ? `${name}: in the library, but not deployed to any scanned surface.`
-            : `${name}: not in the library and not found in any scanned surface.`,
-        );
-        return 0;
-      }
-      ctx.log(`${name} — deployed at ${sites.length} site${sites.length === 1 ? "" : "s"}:`);
-      for (const s of sites) {
-        ctx.log(`  ${labelFor(s)}  ${tilde(s.path)}`);
-        if (s.kind === "foreign-link" && s.target) ctx.log(`      → ${tilde(s.target)}`);
-        const fix = suggestionFor(s);
-        if (fix) ctx.log(`      ${fix}`);
-      }
+      const result: CommandResult = {
+        json: { name, inLibrary, sites },
+        human: (emit) => {
+          if (sites.length === 0) {
+            emit(
+              inLibrary
+                ? `${name}: in the library, but not deployed to any scanned surface.`
+                : `${name}: not in the library and not found in any scanned surface.`,
+            );
+            return;
+          }
+          emit(`${name} — deployed at ${sites.length} site${sites.length === 1 ? "" : "s"}:`);
+          for (const s of sites) {
+            emit(`  ${labelFor(s)}  ${tilde(s.path)}`);
+            if (s.kind === "foreign-link" && s.target) emit(`      → ${tilde(s.target)}`);
+            const fix = suggestionFor(s);
+            if (fix) emit(`      ${fix}`);
+          }
+        },
+      };
+      render(ctx, json, result);
       return 0;
     }
 
     // --- full map / problems --------------------------------------------
-    if (json) {
-      ctx.json(problems ? { surfaces: report.surfaces, problems: report.problems } : report);
-      return 0;
-    }
+    const result: CommandResult = {
+      json: problems ? { surfaces: report.surfaces, problems: report.problems } : report,
+      human: (emit) => {
+        const linked = report.sites.filter((s) => s.kind === "linked");
+        emit(`Scanned ${report.surfaces.length} surface${report.surfaces.length === 1 ? "" : "s"}:`);
+        for (const s of report.surfaces) emit(`  ${tilde(s)}`);
+        emit("");
+        emit(`Clean: ${linked.length} linked deployment${linked.length === 1 ? "" : "s"}.`);
 
-    const linked = report.sites.filter((s) => s.kind === "linked");
-    ctx.log(`Scanned ${report.surfaces.length} surface${report.surfaces.length === 1 ? "" : "s"}:`);
-    for (const s of report.surfaces) ctx.log(`  ${tilde(s)}`);
-    ctx.log("");
-    ctx.log(`Clean: ${linked.length} linked deployment${linked.length === 1 ? "" : "s"}.`);
+        if (report.problems.length === 0) {
+          emit("No deployment problems. ✨");
+          return;
+        }
 
-    if (report.problems.length === 0) {
-      ctx.log("No deployment problems. ✨");
-      return 0;
-    }
-
-    ctx.log("");
-    ctx.log(`Problems (${report.problems.length}):`);
-    for (const s of report.problems) {
-      ctx.log(`  ${s.name}  [${labelFor(s)}]`);
-      ctx.log(`    ${tilde(s.path)}${s.kind === "foreign-link" && s.target ? ` → ${tilde(s.target)}` : ""}`);
-      ctx.log(`    → ${suggestionFor(s)}`);
-    }
+        emit("");
+        emit(`Problems (${report.problems.length}):`);
+        for (const s of report.problems) {
+          emit(`  ${s.name}  [${labelFor(s)}]`);
+          emit(`    ${tilde(s.path)}${s.kind === "foreign-link" && s.target ? ` → ${tilde(s.target)}` : ""}`);
+          emit(`    → ${suggestionFor(s)}`);
+        }
+      },
+    };
+    render(ctx, json, result);
     return 0;
   } catch (err) {
     ctx.error(`skl where failed: ${err instanceof Error ? err.message : String(err)}`);
