@@ -216,7 +216,8 @@ function checkEntryLocal(entry: LockEntry, library: Skill[], libraryPath: string
  * WHOLE lockfile at once (unbounded Promise.all) opens dozens of simultaneous TLS handshakes
  * that a flaky network / connection cap turns into a storm of transient "unable to access"
  * failures — every one collapsing to status "unknown". A small pool caps in-flight probes so
- * they succeed instead of overwhelming the transport (works with the ls-remote retry).
+ * they succeed instead of overwhelming the transport (a failed probe degrades to "unknown",
+ * not a retry — a status check must not hang on a flaky host).
  *
  * `fn` MUST resolve (never reject): a rejection would tear down the pool via Promise.all
  * while sibling workers keep running (risking an unhandled rejection). Every current caller

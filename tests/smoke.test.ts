@@ -82,14 +82,22 @@ describe("CLI smoke (subprocess)", () => {
     expect(existsSync(join(t.path, "INDEX.md"))).toBe(true);
   });
 
-  test("outdated --json reports the one tracked skill", async () => {
-    // exit code 2 == stale, 0 == current; either is a clean run (depends on net).
-    const r = await runCli(["outdated", "--json"]);
-    expect([0, 2]).toContain(r.code);
-    const j = JSON.parse(r.stdout);
-    expect(j.ok).toBe(true);
-    expect(j.checked).toBe(1);
-  });
+  test(
+    "outdated --json reports the one tracked skill",
+    async () => {
+      // exit code 2 == stale, 0 == current; either is a clean run (depends on net).
+      const r = await runCli(["outdated", "--json"]);
+      expect([0, 2]).toContain(r.code);
+      const j = JSON.parse(r.stdout);
+      expect(j.ok).toBe(true);
+      expect(j.checked).toBe(1);
+    },
+    // Generous timeout: this is a LIVE network probe (gh api → git ls-remote against
+    // anthropics/skills) run through a nested subprocess. Under the parallel test runner
+    // + a slow/flaky link the round-trip legitimately exceeds bun's 5s default; the assertion
+    // is about the report shape/exit code, not latency, so give the network real headroom.
+    20_000,
+  );
 
   test("infer --emit emits a corpus", async () => {
     const r = await runCli(["infer", "--emit", "--json"]);

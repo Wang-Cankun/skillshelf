@@ -593,25 +593,6 @@ export function isTransientGitError(stderr: string): boolean {
 }
 
 /**
- * `git ls-remote <url> HEAD` with the same bounded transient-retry as cloneWithRetry — the
- * upstream-ref probe behind `outdated`/`update`'s "has the repo moved?" check. `outdated`
- * fires one of these per tracked skill; a single flaky handshake would otherwise mark a
- * perfectly-reachable skill "unknown" (probe failed). Backoff also staggers a burst of
- * probes so they stop colliding on the transport.
- */
-async function lsRemoteWithRetry(url: string): Promise<RunResult> {
-  const MAX_ATTEMPTS = 3;
-  let last: RunResult = { ok: false, code: -1, stdout: "", stderr: "" };
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    last = await run(["git", "ls-remote", url, "HEAD"]);
-    if (last.ok) return last;
-    if (attempt === MAX_ATTEMPTS || !isTransientGitError(last.stderr)) return last;
-    await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
-  }
-  return last;
-}
-
-/**
  * `git clone --depth 1` with a bounded retry on TRANSIENT network/TLS faults. A single
  * flaky handshake (observed: LibreSSL `SSL_ERROR_SYSCALL`) otherwise fails an ENTIRE `skl
  * update --repo` run — the repo is cloned once for the whole group, so one blip reports
@@ -838,10 +819,13 @@ export async function latestGithubRef(parsed: ParsedSource): Promise<RefResult> 
     }
   }
 
-  // Fallback: ls-remote default HEAD.
+  // Fallback: ls-remote default HEAD. NOT retried — this is a status probe (one per
+  // skill under `outdated`'s bounded pool); a transient blip degrades to "unknown" (cheap,
+  // re-runnable) rather than retrying with backoff, which would make a single hung probe
+  // blow a caller's time budget. Retry is reserved for the expensive clone path.
   if (await hasBinary("git")) {
     const url = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
-    const r = await lsRemoteWithRetry(url);
+    const r = await run(["git", "ls-remote", url, "HEAD"]);
     if (r.ok) {
       const sha = r.stdout.split(/\s+/)[0]?.trim();
       if (sha) return { ok: true, ref: sha };
