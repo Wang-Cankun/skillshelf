@@ -1,6 +1,6 @@
 {
   "name": "skillshelf",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Agent-first skill registry + manager for Claude Code and compatible agents.",
   "type": "module",
   "license": "MIT",

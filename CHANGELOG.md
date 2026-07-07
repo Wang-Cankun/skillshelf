@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`skl outdated` now actually detects stale skills** (and, with it, the desktop app's
+  `↑` update badge). `checkEntry` fed the shared classifier `localHash: null`, which
+  short-circuits to `unknown` *before* the ref-compare — so every online row collapsed to
+  `current` (`stale: 0` forever) and the badge (keyed off `status === "stale"`) never lit.
+  It now hashes the local body so the ref-compare is reached; an unreadable body reports
+  `unknown` rather than a falsely-reassuring `current`.
+- **A transient network blip no longer fails an entire `skl update --repo` run.** The repo
+  is cloned once per group, so one flaky handshake (observed: LibreSSL `SSL_ERROR_SYSCALL`)
+  errored *every* skill in it. `git clone`/`ls-remote` now retry transient faults with
+  backoff and fail fast on definitive ones (404/auth). `outdated` also bounds its
+  per-skill ref probes (pool of 6) instead of firing the whole lockfile at once, which
+  under a flaky network turned dozens of probes into a storm of `unknown`.
+- **The desktop update banner no longer swallows errors.** A failed run showed a cheerful
+  "0 updated"; it now surfaces "N failed" with per-skill retry, an honest error toast, and
+  an honest `update()` return. The `outdated` status enum also accepts `adopted` (it was
+  silently throwing `loadOutdated` for any user with an adopted entry).
+
 ### Added
 - **`skl add --all` installs the *published set*, behind a count gate** ([ADR-0012](./docs/adr/0012-published-set-and-all-count-gate.md)).
   Dogfooding against a repo that lays out 29 `SKILL.md` dirs (including `deprecated/` and `in-progress/`)
