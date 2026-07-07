@@ -49,7 +49,10 @@ export type OutdatedStatus =
   | "current"
   | "unknown"
   | "linked"
-  | "diverged";
+  | "diverged"
+  // `adopted` (ADR-0011): provenance known, baseline unverified. The CLI emits it;
+  // it renders as no badge (UpdateBadge only reacts to stale/diverged/orphaned).
+  | "adopted";
 export interface OutdatedRow {
   name: string;
   channel?: string | null;
