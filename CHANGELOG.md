@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The desktop "update available" badges finally work.** The per-skill `↑`/`⚠` badges were
+  dead code — the `outdated` scan was never triggered — so a new **"Check updates"** toolbar
+  button runs it (plus **"Update all stale (N)"**), and a failed check is surfaced instead of
+  silently swallowed.
+- **`skl rm` now removes multiple names in one call** (atomic validation, reindex once).
+  Previously `skl rm a b c` silently deleted only the *first* name, so the desktop app's bulk
+  remove reported deleting N skills while purging one — a data-integrity lie.
+- **Desktop UI desync fixes:** a single-skill update retry no longer collapses the multi-row
+  results banner; dismissing the banner keeps the per-row orphaned (`⊘`) badges; a single
+  failed data feed (library/where/agents/config) is surfaced instead of a healthy-looking
+  "0 deployments"; the footer "stub" count now matches the "Needs attention" inbox; and
+  "Pull upstream" is gated to github-vendored skills.
 - **`skl outdated` now actually detects stale skills** (and, with it, the desktop app's
   `↑` update badge). `checkEntry` fed the shared classifier `localHash: null`, which
   short-circuits to `unknown` *before* the ref-compare — so every online row collapsed to
