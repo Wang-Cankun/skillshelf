@@ -20,6 +20,7 @@
 
 import { useStore } from "../state/store";
 import { useCommands } from "../state/commands";
+import { useLibrary } from "../state/queries";
 import { GLOBAL_SCOPE } from "../state/store";
 import { MONO } from "../lib/tokens";
 import type { DeployStateName } from "../lib/types";
@@ -40,10 +41,21 @@ interface ResolveAction {
 export function ResolvePopover() {
   const { state, dispatch } = useStore();
   const commands = useCommands();
+  const library = useLibrary().data ?? [];
   const target = state.resolve;
   if (!target) return null;
 
   const { skill, agent, scope, scopePath } = target;
+  // W6/S4: "Pull upstream" runs `skl update`, which only works for a github-
+  // vendored skill (has a real upstream). A local/linked skill has none, so the
+  // engine errors — gate the action to source==="vendored" && channel==="github"
+  // (mirrors the ADR-0004 update gate in SkillList / SourceCell). The target only
+  // carries the skill NAME, so recover its provenance from the library feed.
+  const skillMeta = library.find((s) => s.name === skill);
+  const canPull =
+    skillMeta?.source === "vendored" &&
+    skillMeta?.channel === "github" &&
+    !!skillMeta?.origin;
   // `aliased` is folded into `drift` by stateForSite; AgentToggle re-flags it on
   // the target. Treat copy/dead/source on their own; default to the drift menu.
   const st = target.state;
@@ -99,13 +111,19 @@ export function ResolvePopover() {
             cmd: ["skl", "diff", skill, "--agent", agent, ...scopeFlag],
             kind: "deferred",
           },
-          {
-            label: "Pull upstream",
-            hint: "Re-pull the upstream body into the library (preserves tags).",
-            cmd: ["skl", "update", skill],
-            kind: "run",
-            run: () => void commands.update(skill),
-          },
+          // Only a github-vendored skill has an upstream to pull; hide otherwise
+          // so `skl update` never runs against a local/linked skill (W6/S4).
+          ...(canPull
+            ? [
+                {
+                  label: "Pull upstream",
+                  hint: "Re-pull the upstream body into the library (preserves tags).",
+                  cmd: ["skl", "update", skill],
+                  kind: "run",
+                  run: () => void commands.update(skill),
+                } as ResolveAction,
+              ]
+            : []),
           {
             label: "Overwrite from library",
             hint: "Replace the drifted deployment with the library version.",

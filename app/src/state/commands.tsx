@@ -468,6 +468,43 @@ export function useCommands() {
     [dispatch, run],
   );
 
+  // ── Hard remove MANY — IRREVERSIBLE, one batch call (W7 / ADR-0008) ──────
+  // Mirrors `retire`'s batched optimistic structure but stays destructive like
+  // hardRemove: ONE `skl rm a b c` (the engine deletes each folder + reindexes
+  // the library ONCE), ONE toast, ONE invalidate — replacing the old un-awaited
+  // per-name loop (which fired N parallel `skl rm`, N invalidation storms,
+  // clobbered toasts, and left partial non-undoable state on a mid-batch fail).
+  // Optimistically marks every name removed and rolls ALL back on failure; the
+  // refetch reconciles to real (possibly partial) disk truth. No Undo (matches
+  // hardRemove — the type-to-confirm gate upstream is the guard).
+  const hardRemoveMany = useCallback(
+    async (names: string[]) => {
+      if (!names.length) return;
+      // Close the type-to-confirm modal immediately (it renders off
+      // state.confirm); otherwise it lingers on now-deleted skills and a second
+      // confirm would re-dispatch `rm` on absent skills.
+      dispatch({ type: "cancelConfirm" });
+      for (const name of names)
+        dispatch({ type: "setRemovedHard", name, value: true });
+      const rollback = () => {
+        for (const name of names)
+          dispatch({ type: "setRemovedHard", name, value: false });
+      };
+      await run(["rm", ...names], {
+        rollback,
+        invalidate: [qk.library, qk.where, qk.agents],
+        toast: {
+          msg:
+            names.length > 1
+              ? `Removed ${names.length} skills — deleted from disk`
+              : `Removed ${names[0]} — deleted from disk`,
+          undo: null,
+        },
+      });
+    },
+    [dispatch, run],
+  );
+
   // ── Update a vendored skill from upstream (ADR-0009) — NOT invertible ────
   // Callers gate this to status==="stale"|"diverged" github rows only (the
   // badge logic in LibraryView/MatrixView; never linked/local). `skl update`
@@ -513,7 +550,10 @@ export function useCommands() {
         return false;
       }
       await invalidate([qk.library, qk.where, qk.agents]);
-      if (report) dispatch({ type: "setUpdateReport", report });
+      // W2: MERGE (not replace) so a badge click / banner retry / "Update all
+      // stale" loop accumulates into ONE report instead of collapsing the
+      // multi-row banner down to this single skill's row.
+      if (report) dispatch({ type: "mergeUpdateReport", report });
       if (!opts?.silent && name) {
         // Honest, outcome-aware toast. Saying "Updated" when the outcome was
         // diverged/orphaned/uptodate misleads (nothing changed, and the banner
@@ -610,6 +650,8 @@ export function useCommands() {
       }
       await invalidate([qk.library, qk.where, qk.agents]);
       if (report) {
+        // W2: a full per-vendor run REPLACES the report (fresh multi-row result);
+        // only targeted single-skill updates merge (see update() above).
         dispatch({ type: "setUpdateReport", report });
         const reconciled = new Set(
           report.results
@@ -690,6 +732,7 @@ export function useCommands() {
     untag,
     tag,
     hardRemove,
+    hardRemoveMany,
     update,
     updateVendor,
     addAll,

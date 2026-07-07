@@ -362,7 +362,7 @@ export function normalizeShow(raw: unknown, name: string): ShowReport {
   };
 }
 
-const STUB_DEFAULTS = [
+export const STUB_DEFAULTS = [
   "replace with description of the skill",
   "replace with a description",
 ];
@@ -371,6 +371,16 @@ const STUB_DEFAULTS = [
 export function isStub(s: Skill): boolean {
   const d = s.description.trim().toLowerCase();
   return STUB_DEFAULTS.some((def) => d.startsWith(def));
+}
+
+/**
+ * Count of LIVE (non-retired) stub skills — the SAME predicate AND population as the
+ * stub subset of needsAttentionNames (which also filters to !retired, line ~392). The
+ * footer "N stub" count must use this so it can never disagree with the inbox triage
+ * (a retired stub would otherwise inflate the footer but not the "Needs attention" set).
+ */
+export function stubCount(skills: Skill[]): number {
+  return skills.filter((s) => !s.retired && isStub(s)).length;
 }
 
 /**

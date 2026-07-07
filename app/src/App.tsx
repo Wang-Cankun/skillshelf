@@ -4,12 +4,19 @@
 // detail drawer). Every pane is a self-contained container reading the store /
 // queries / commands directly — App only composes + owns the load/empty gate.
 
-import { useLibrary, useWhere, useScan, useStatus } from "./state/queries";
+import {
+  useLibrary,
+  useWhere,
+  useAgents,
+  useConfig,
+  useScan,
+  useStatus,
+} from "./state/queries";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { MainPane } from "./components/MainPane";
 import { HealthStrip } from "./components/HealthStrip";
-import { ErrorBanner } from "./components/ErrorBanner";
+import { ErrorBanner, FeedErrorBanner } from "./components/ErrorBanner";
 import { UpdateResultsBanner } from "./components/UpdateResultsBanner";
 import { Toast } from "./components/Toast";
 import { RemoveModal } from "./components/RemoveModal";
@@ -18,16 +25,38 @@ import { BulkBar } from "./components/BulkBar";
 import { C } from "./lib/tokens";
 
 export default function App() {
-  // Kick the four core feeds; panes subscribe to whichever they need. The
-  // initial load gate mirrors App.svelte: show a spinner until the primary feed
-  // resolves, an error+retry if every feed failed.
+  // Kick the core feeds; panes subscribe to whichever they need. The initial
+  // load gate mirrors App.svelte: show a spinner until the primary feeds resolve,
+  // an error+retry if every feed failed. library/where/agents/config are watched
+  // here so a single failed feed is surfaced (W4); scan/status stay unwatched.
   const library = useLibrary();
   const where = useWhere();
+  const agents = useAgents();
+  const config = useConfig();
   useScan();
   useStatus();
 
-  const loading = library.isLoading && where.isLoading;
+  // W4: gate on OR — keep showing "loading…" until BOTH primary feeds resolve, so
+  // a single slow/failed feed can't render the empty-deployment shell as "done".
+  const loading = library.isLoading || where.isLoading;
   const allFailed = library.isError && where.isError;
+
+  // W4: with global retry:false (main.tsx) a single failed CORE feed otherwise
+  // shows a healthy-looking "0 deployments" app. Surface ANY failed core feed
+  // (library/where/agents/config — scan/status are unused by the panes) via an
+  // explicit banner with a targeted retry. The catastrophic all-failed path keeps
+  // its own full-screen retry, so suppress the banner there to avoid doubling.
+  const coreFeeds: Array<{
+    label: string;
+    isError: boolean;
+    refetch: () => void;
+  }> = [
+    { label: "library", isError: library.isError, refetch: () => void library.refetch() },
+    { label: "deployments", isError: where.isError, refetch: () => void where.refetch() },
+    { label: "agents", isError: agents.isError, refetch: () => void agents.refetch() },
+    { label: "config", isError: config.isError, refetch: () => void config.refetch() },
+  ];
+  const failedFeeds = coreFeeds.filter((f) => f.isError);
 
   return (
     <div
@@ -55,6 +84,12 @@ export default function App() {
           }}
         >
           <ErrorBanner />
+          {!allFailed && failedFeeds.length > 0 && (
+            <FeedErrorBanner
+              feeds={failedFeeds.map((f) => f.label)}
+              onRetry={() => failedFeeds.forEach((f) => f.refetch())}
+            />
+          )}
           <UpdateResultsBanner />
           {loading ? (
             <div style={{ padding: 24, fontSize: 12, color: C.faint }}>

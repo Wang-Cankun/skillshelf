@@ -15,7 +15,13 @@ import {
   type ReactNode,
   type Dispatch,
 } from "react";
-import type { DeployStateName, UpdateReport } from "../lib/types";
+import type {
+  DeployStateName,
+  UpdateReport,
+  UpdateResult,
+  UpdateOutcome,
+  RepoAdditions,
+} from "../lib/types";
 
 // ── Scope (ADR-0010 §2/§5) — replaces `view`. "Global" or a project; the GUI
 //    keys scopes by the ABSOLUTE project path (RISK 4) and displays a basename.
@@ -138,6 +144,11 @@ export interface State {
   //    lines, diverged rows, per-repo newAvailable "Add new" buttons). null = no
   //    update run this session (banner + orphaned badges hidden).
   updateReport: UpdateReport | null;
+  /** W3: UI-only banner visibility flag, DECOUPLED from `updateReport` data.
+   *  Dismissing the banner sets this true (the report itself is KEPT so
+   *  SourceCell's ⊘ orphaned badges — which read updateReport — survive). Reset
+   *  to false whenever a new report is set/merged (a fresh run re-opens it). */
+  bannerDismissed: boolean;
 }
 
 export const initialState: State = {
@@ -166,6 +177,7 @@ export const initialState: State = {
   confirmText: "",
   error: null,
   updateReport: null,
+  bannerDismissed: false,
 };
 
 export type Action =
@@ -209,9 +221,56 @@ export type Action =
   | { type: "cancelConfirm" }
   | { type: "setConfirmText"; text: string }
   | { type: "setError"; error: string | null }
-  // ADR-0013 update report (last-run-wins replace; null clears the banner)
+  // ADR-0013 update report. `setUpdateReport` REPLACES (a fresh full vendor/all
+  // run); `mergeUpdateReport` MERGES a targeted single-skill result into the
+  // existing report (W2) so a per-skill retry/overwrite never collapses the
+  // multi-row banner. Both reset `bannerDismissed`. `dismissBanner` hides the
+  // banner WITHOUT clearing the report (W3); `clearUpdateReport` nulls it.
   | { type: "setUpdateReport"; report: UpdateReport }
+  | { type: "mergeUpdateReport"; report: UpdateReport }
+  | { type: "dismissBanner" }
   | { type: "clearUpdateReport" };
+
+// W2: merge a targeted (single-skill) update report INTO the existing one so a
+// banner retry/overwrite doesn't collapse the multi-row report. Only the rows the
+// new run touched (matched by name) are replaced IN PLACE; genuinely-new rows are
+// appended; every count (updated/diverged/errors/orphaned) is recomputed from the
+// merged results; `newAvailable` is unioned by repo (the new run wins on collision).
+function mergeUpdateReports(
+  prev: UpdateReport,
+  next: UpdateReport,
+): UpdateReport {
+  const nextByName = new Map(next.results.map((r) => [r.name, r]));
+  const seen = new Set<string>();
+  const results: UpdateResult[] = [];
+  for (const r of prev.results) {
+    const replacement = nextByName.get(r.name);
+    if (replacement) {
+      results.push(replacement);
+      seen.add(r.name);
+    } else {
+      results.push(r);
+    }
+  }
+  for (const r of next.results) {
+    if (!seen.has(r.name)) results.push(r);
+  }
+  const count = (o: UpdateOutcome) =>
+    results.filter((r) => r.outcome === o).length;
+  const byRepo = new Map<string, RepoAdditions>();
+  for (const ra of prev.newAvailable ?? []) byRepo.set(ra.repo, ra);
+  for (const ra of next.newAvailable ?? []) byRepo.set(ra.repo, ra);
+  const newAvailable = [...byRepo.values()];
+  return {
+    ok: prev.ok && next.ok,
+    updated: count("updated"),
+    diverged: count("diverged"),
+    errors: count("error"),
+    orphaned: count("orphaned"),
+    results,
+    newAvailable: newAvailable.length ? newAvailable : undefined,
+  };
+}
 
 function withKey<T>(obj: Record<string, T>, key: string, value: T) {
   return { ...obj, [key]: value };
@@ -370,7 +429,22 @@ export function reducer(state: State, action: Action): State {
     case "setError":
       return { ...state, error: action.error };
     case "setUpdateReport":
-      return { ...state, updateReport: action.report };
+      // Full vendor/all run — REPLACE, and re-open a previously-dismissed banner.
+      return { ...state, updateReport: action.report, bannerDismissed: false };
+    case "mergeUpdateReport":
+      // Targeted single-skill run — MERGE into the existing report (W2); with no
+      // prior report it behaves like a replace. Re-opens the banner either way.
+      return {
+        ...state,
+        updateReport: state.updateReport
+          ? mergeUpdateReports(state.updateReport, action.report)
+          : action.report,
+        bannerDismissed: false,
+      };
+    case "dismissBanner":
+      // W3: hide the banner only — KEEP updateReport so SourceCell's ⊘ orphaned
+      // badges (which read updateReport) survive the dismissal.
+      return { ...state, bannerDismissed: true };
     case "clearUpdateReport":
       return { ...state, updateReport: null };
     default:

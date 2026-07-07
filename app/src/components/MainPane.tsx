@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useStore } from "../state/store";
 import type { SortKey, GroupMode } from "../state/store";
 import { GLOBAL_SCOPE } from "../state/store";
-import { useLibrary, useConfig } from "../state/queries";
+import { useLibrary, useConfig, useOutdated } from "../state/queries";
 import { useCommands } from "../state/commands";
 import { filterLabel, allDomains } from "../lib/select";
 import { projectScopeName } from "../lib/skl";
@@ -49,6 +49,22 @@ const dividerStyle: React.CSSProperties = {
   background: "#E7E7E9",
   margin: "0 2px",
 };
+
+// Update-subsystem toolbar buttons (Check updates / Update all stale) — a flat
+// bordered pill distinct from the toggle `pill()` chips.
+function actionBtn(disabled: boolean, accent = "#3F3F46"): React.CSSProperties {
+  return {
+    background: "#FFFFFF",
+    border: `1px solid ${disabled ? "#E7E7E9" : accent}`,
+    borderRadius: 6,
+    padding: "3px 11px",
+    fontSize: 11.5,
+    color: disabled ? "#A1A1AA" : accent,
+    cursor: disabled ? "default" : "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  };
+}
 
 export function MainPane() {
   return (
@@ -339,11 +355,78 @@ function LibraryToolbar() {
           ))}
         </div>
         <span style={{ flex: 1 }} />
-        {/* No library-wide "Update all" — it swept all vendors in one blocking
-            clone (froze the UI) and dumped a wall of results. Update is now
-            per-vendor: switch to "By vendor" and use the per-group Update action
-            (SkillList header → commands.updateVendor). */}
+        {/* Update-detection controls (ADR-0009/0013). "Check updates" runs the
+            MANUAL outdated query (enabled:false → no auto-network on mount) so the
+            SourceCell ↑/⚠ badges light up; "Update all stale (N)" updates every
+            stale skill and — via the W2 merge — accumulates into ONE banner. */}
+        <UpdateControls />
       </div>
+    </div>
+  );
+}
+
+// ── Update-detection toolbar controls (W1) ─────────────────────────────────
+// `useOutdated` stays enabled:false (no network on mount); the "Check updates"
+// button is the ONLY trigger. Once a check has run and N>0 stale rows exist, the
+// "Update all stale (N)" button appears and loops commands.update(name) — each
+// merges into one report (W2), so the banner shows a single combined result.
+function UpdateControls() {
+  const outdated = useOutdated();
+  const commands = useCommands();
+  const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  const staleNames = (outdated.data?.rows ?? [])
+    .filter((r) => r.status === "stale")
+    .map((r) => r.name);
+  // A check has run once the query has data (undefined until the first refetch).
+  const checked = outdated.data !== undefined;
+
+  const updateAllStale = async () => {
+    if (bulkUpdating || staleNames.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      // Sequential + silent: one report accrues via the W2 merge (parallel runs
+      // would clobber toasts and storm invalidations). The combined banner is the
+      // feedback surface here.
+      for (const name of staleNames) {
+        await commands.update(name, { silent: true });
+      }
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+      <button
+        onClick={() => void outdated.refetch()}
+        disabled={outdated.isFetching}
+        style={actionBtn(outdated.isFetching, "#2563EB")}
+      >
+        {outdated.isFetching ? "Checking…" : "Check updates"}
+      </button>
+      {checked && staleNames.length > 0 ? (
+        <button
+          onClick={() => void updateAllStale()}
+          disabled={bulkUpdating}
+          style={actionBtn(bulkUpdating, "#2563EB")}
+        >
+          {bulkUpdating
+            ? "Updating…"
+            : `Update all stale (${staleNames.length})`}
+        </button>
+      ) : null}
+      {/* A genuinely failed check (e.g. GitHub unreachable) — loadOutdated throws, so
+          surface it here instead of silently re-enabling the button with no badges. */}
+      {outdated.isError && !outdated.isFetching ? (
+        <span
+          role="status"
+          title={outdated.error instanceof Error ? outdated.error.message : String(outdated.error)}
+          style={{ color: "#B91C1C", fontSize: 11 }}
+        >
+          check failed
+        </span>
+      ) : null}
     </div>
   );
 }
