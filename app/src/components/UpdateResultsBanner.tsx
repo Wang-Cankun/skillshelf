@@ -26,12 +26,15 @@ export function UpdateResultsBanner() {
   const updated = report.updated;
   const diverged = report.diverged;
   const orphaned = report.orphaned ?? 0;
+  const errored = report.errors ?? 0;
   const relocatedResults = report.results.filter((r) => r.relocatedFrom);
   const divergedResults = report.results.filter((r) => r.outcome === "diverged");
+  const errorResults = report.results.filter((r) => r.outcome === "error");
   const newAvailable = report.newAvailable ?? [];
 
   const summary = [
     `${updated} updated`,
+    errored ? `${errored} failed` : null,
     diverged ? `${diverged} diverged` : null,
     orphaned ? `${orphaned} orphaned` : null,
     relocatedResults.length ? `${relocatedResults.length} relocated` : null,
@@ -81,6 +84,26 @@ export function UpdateResultsBanner() {
           ))}
         </ul>
       ) : null}
+
+      {/* errored — a clone/fetch failure (often a transient network blip). Surfaced
+          explicitly (never silently folded into "0 updated") with a per-skill retry
+          that re-runs `skl update <name>`. */}
+      {errorResults.map((r) => (
+        <div
+          key={r.name}
+          style={{ display: "flex", gap: 8, alignItems: "center" }}
+        >
+          <span style={{ color: "#B91C1C", flex: 1, wordBreak: "break-word" }}>
+            ✕ {r.name} failed — {r.note}
+          </span>
+          <button
+            onClick={() => void commands.update(r.name)}
+            style={pillBtn("#B91C1C")}
+          >
+            retry
+          </button>
+        </div>
+      ))}
 
       {/* diverged — local edits block an overwrite (3-way gate, never clobbered) */}
       {divergedResults.map((r) => (

@@ -580,6 +580,58 @@ function localCloneUrl(localPath: string): string {
 }
 
 /**
+ * A `git clone` failure worth retrying: a TRANSIENT network/TLS fault, not a definitive
+ * one (repo not found / auth / 404) which will never succeed and must fail fast. The
+ * definitive-failure guard is checked FIRST so a "unable to access … 404" is never mistaken
+ * for the transient "unable to access … SSL_ERROR_SYSCALL" handshake blip.
+ */
+export function isTransientGitError(stderr: string): boolean {
+  if (/not found|does not (exist|appear)|repository not found|authentication failed|\b40[134]\b|permission denied|invalid username or password/i.test(stderr)) {
+    return false;
+  }
+  return /ssl_error|ssl_connect|\btls\b|gnutls|connection reset|connection timed out|could not resolve host|recv failure|send failure|unable to access|early eof|rpc failed|temporary failure|operation timed out|connection refused|failed to connect|timed out|remote end hung up|protocol error|unexpected disconnect|kex_exchange_identification|connection closed by remote/i.test(stderr);
+}
+
+/**
+ * `git ls-remote <url> HEAD` with the same bounded transient-retry as cloneWithRetry — the
+ * upstream-ref probe behind `outdated`/`update`'s "has the repo moved?" check. `outdated`
+ * fires one of these per tracked skill; a single flaky handshake would otherwise mark a
+ * perfectly-reachable skill "unknown" (probe failed). Backoff also staggers a burst of
+ * probes so they stop colliding on the transport.
+ */
+async function lsRemoteWithRetry(url: string): Promise<RunResult> {
+  const MAX_ATTEMPTS = 3;
+  let last: RunResult = { ok: false, code: -1, stdout: "", stderr: "" };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    last = await run(["git", "ls-remote", url, "HEAD"]);
+    if (last.ok) return last;
+    if (attempt === MAX_ATTEMPTS || !isTransientGitError(last.stderr)) return last;
+    await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+  }
+  return last;
+}
+
+/**
+ * `git clone --depth 1` with a bounded retry on TRANSIENT network/TLS faults. A single
+ * flaky handshake (observed: LibreSSL `SSL_ERROR_SYSCALL`) otherwise fails an ENTIRE `skl
+ * update --repo` run — the repo is cloned once for the whole group, so one blip reports
+ * "error" for every skill in it. Non-transient failures fail fast (one attempt). The partial
+ * checkout dir is removed between attempts so the re-clone starts from a clean slate.
+ */
+async function cloneWithRetry(cloneTarget: string, checkout: string): Promise<RunResult> {
+  const MAX_ATTEMPTS = 3;
+  let last: RunResult = { ok: false, code: -1, stdout: "", stderr: "" };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    last = await run(["git", "clone", "--depth", "1", cloneTarget, checkout]);
+    if (last.ok) return last;
+    if (attempt === MAX_ATTEMPTS || !isTransientGitError(last.stderr)) return last;
+    await rm(checkout, { recursive: true, force: true }).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+  }
+  return last;
+}
+
+/**
  * Clone a github/git source ONCE into a fresh staging dir and capture HEAD. Shared
  * by the single-skill fetch (fetchGithub/fetchGit) and the repo-wide fetchRepo so a
  * `--all`/`--skill` install clones exactly once and copies N skills out of it.
@@ -609,7 +661,7 @@ async function cloneToStaging(
   }
 
   const checkout = join(staging, "repo");
-  const clone = await run(["git", "clone", "--depth", "1", cloneTarget, checkout]);
+  const clone = await cloneWithRetry(cloneTarget, checkout);
   if (!clone.ok) {
     return {
       ok: false,
@@ -789,7 +841,7 @@ export async function latestGithubRef(parsed: ParsedSource): Promise<RefResult> 
   // Fallback: ls-remote default HEAD.
   if (await hasBinary("git")) {
     const url = `https://github.com/${parsed.owner}/${parsed.repo}.git`;
-    const r = await run(["git", "ls-remote", url, "HEAD"]);
+    const r = await lsRemoteWithRetry(url);
     if (r.ok) {
       const sha = r.stdout.split(/\s+/)[0]?.trim();
       if (sha) return { ok: true, ref: sha };

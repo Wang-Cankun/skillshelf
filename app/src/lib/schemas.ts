@@ -89,7 +89,7 @@ export const OutdatedRowSchema = z
     source: z.string().optional(),
     installedRef: z.string(),
     latestRef: z.string().nullable(),
-    status: z.enum(["stale", "current", "unknown", "linked", "diverged"]),
+    status: z.enum(["stale", "current", "unknown", "linked", "diverged", "adopted"]),
     note: z.string(),
   })
   .passthrough();

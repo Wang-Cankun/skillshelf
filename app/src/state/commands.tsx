@@ -520,15 +520,17 @@ export function useCommands() {
         // still shows it diverged). Reflect THIS skill's actual outcome.
         const r0 = report?.results.find((r) => r.name === name);
         const msg =
-          r0?.outcome === "diverged"
-            ? `${name} diverged — local edits block overwrite (use CLI --force)`
-            : r0?.outcome === "orphaned"
-              ? `${name} no longer published upstream`
-              : r0?.outcome === "uptodate"
-                ? `${name} already up to date`
-                : r0?.relocatedFrom
-                  ? `Updated ${name} (followed rename)`
-                  : `Updated ${name}`;
+          r0?.outcome === "error"
+            ? `${name} failed — ${r0.note}`
+            : r0?.outcome === "diverged"
+              ? `${name} diverged — local edits block overwrite (use CLI --force)`
+              : r0?.outcome === "orphaned"
+                ? `${name} no longer published upstream`
+                : r0?.outcome === "uptodate"
+                  ? `${name} already up to date`
+                  : r0?.relocatedFrom
+                    ? `Updated ${name} (followed rename)`
+                    : `Updated ${name}`;
         dispatch({
           type: "showToast",
           toast: { msg, cmd: cmdEcho(args), undo: null },
@@ -571,6 +573,12 @@ export function useCommands() {
             }
           : prev,
       );
+      // Honest boolean: a single-skill update whose result errored is NOT a success,
+      // even though a report was produced (report-wins-over-res.ok governs SURFACING,
+      // not the success verdict). Callers that gate on the return must see the failure.
+      if (name && report?.results.find((r) => r.name === name)?.outcome === "error") {
+        return false;
+      }
       return true;
     },
     [dispatch, invalidate, qc],

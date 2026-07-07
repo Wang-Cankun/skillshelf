@@ -36,7 +36,27 @@ export interface OutdatedRow {
   note: string;
 }
 
-async function checkEntry(entry: LockEntry): Promise<OutdatedRow> {
+/**
+ * Hash the on-disk SKILL.md body (frontmatter-stripped) of a tracked skill, or null when
+ * the file is missing/unreadable. The online check MUST feed this into classify: with
+ * localHash==null the classifier short-circuits to "unknown" (reconcile.ts step 4) and
+ * NEVER reaches the ref-compare (step 7), so `outdated` could never surface a stale skill
+ * — the ref-compare was dead code and the UI ↑ badge (keys off status==="stale") never lit.
+ */
+function localBodyHash(name: string, library: Skill[], libraryPath: string): string | null {
+  const skill = findByName(library, name);
+  const bodyPath = skill?.bodyPath ?? join(libraryPath, name, "SKILL.md");
+  try {
+    if (existsSync(bodyPath)) {
+      return hashContent(parseFrontmatter(readFileSync(bodyPath, "utf8")).body);
+    }
+  } catch {
+    /* leave null */
+  }
+  return null;
+}
+
+async function checkEntry(entry: LockEntry, library: Skill[], libraryPath: string): Promise<OutdatedRow> {
   const parsed = parseStoredSource(entry.source);
   const res = await latestRef(parsed);
   if (!res.ok) {
@@ -51,14 +71,16 @@ async function checkEntry(entry: LockEntry): Promise<OutdatedRow> {
     };
   }
   const latest = res.ref;
-  // Ref-only online view (no upstream body fetched): classify maps to stale/current
-  // off the ref compare. Same surface word as before; the disambiguation is internal.
+  // Ref-only online view (no upstream body fetched): classify maps to stale/current off
+  // the ref compare (step 7) — but only if a real localHash is supplied (else the step-4
+  // localHash==null guard returns "unknown" before the ref compare is ever reached).
+  const localHash = localBodyHash(entry.name, library, libraryPath);
   const verdict = classify({
     adopted: false,
     mode: "owned",
     installedHash: entry.installedHash ?? null,
     localEdits: entry.localEdits,
-    localHash: null,
+    localHash,
     upstreamHash: null,
     installedRef: entry.ref,
     latestRef: latest,
@@ -70,8 +92,16 @@ async function checkEntry(entry: LockEntry): Promise<OutdatedRow> {
     source: entry.source,
     installedRef: entry.ref,
     latestRef: latest,
-    status: verdict === "stale" ? "stale" : "current",
-    note: entry.localEdits ? "has local edits" : "",
+    // Map the verdict explicitly: an unreadable local body yields "unknown" (localHash
+    // null → classify step 4), NOT a falsely-reassuring "current". Only a real ref-compare
+    // (readable body) produces stale/current.
+    status: verdict === "stale" ? "stale" : verdict === "unknown" ? "unknown" : "current",
+    note:
+      verdict === "unknown"
+        ? "local SKILL.md missing/unreadable — cannot compare against upstream"
+        : entry.localEdits
+          ? "has local edits"
+          : "",
   };
 }
 
@@ -180,6 +210,37 @@ function checkEntryLocal(entry: LockEntry, library: Skill[], libraryPath: string
     : { ...base, status: "current", note: "matches installed baseline (offline)" };
 }
 
+/**
+ * Resolve an array through an async fn with BOUNDED concurrency, preserving input order.
+ * `outdated` probes an upstream ref per tracked skill; firing one `git ls-remote` for the
+ * WHOLE lockfile at once (unbounded Promise.all) opens dozens of simultaneous TLS handshakes
+ * that a flaky network / connection cap turns into a storm of transient "unable to access"
+ * failures — every one collapsing to status "unknown". A small pool caps in-flight probes so
+ * they succeed instead of overwhelming the transport (works with the ls-remote retry).
+ *
+ * `fn` MUST resolve (never reject): a rejection would tear down the pool via Promise.all
+ * while sibling workers keep running (risking an unhandled rejection). Every current caller
+ * branch is throw-free by contract; a future throwing `fn` must catch internally.
+ */
+export async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    for (let i = next++; i < items.length; i = next++) {
+      out[i] = await fn(items[i]!, i);
+    }
+  }
+  // Clamp to >=1 worker: a limit of 0 (or negative) would spawn none, leaving `out` full
+  // of undefined holes. min() with items.length avoids spawning idle workers.
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return out;
+}
+
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");
   const checkLocal = argv.includes("--check-local");
@@ -197,21 +258,24 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // --from` case — which would otherwise be invisible here.
     const library = await loadLibrary(libraryPath);
 
-    const rows = await Promise.all(
-      entries.map((e) =>
-        entryMode(libraryPath, e.name) === "linked"
-          ? Promise.resolve(linkedRow(e))
-          : e.adopted === true
-            ? // An adopted entry has an unverified (often empty) baseline — never probe
-              // upstream off it; report it as `adopted` so `update` reconciles (ADR-0011).
-              // --check-local still does the offline body-vs-baseline compare below.
-              checkLocal
-              ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
-              : Promise.resolve(adoptedRow(e))
-            : checkLocal
-              ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
-              : checkEntry(e),
-      ),
+    // Bounded concurrency (not an unbounded Promise.all): the online checkEntry path
+    // makes a network probe per skill, and firing all of them at once storms the transport
+    // into transient failures (→ status "unknown"). Offline branches (linked/adopted/
+    // --check-local) resolve instantly and cost nothing extra under the pool.
+    const PROBE_CONCURRENCY = 6;
+    const rows = await mapLimit(entries, PROBE_CONCURRENCY, (e) =>
+      entryMode(libraryPath, e.name) === "linked"
+        ? Promise.resolve(linkedRow(e))
+        : e.adopted === true
+          ? // An adopted entry has an unverified (often empty) baseline — never probe
+            // upstream off it; report it as `adopted` so `update` reconciles (ADR-0011).
+            // --check-local still does the offline body-vs-baseline compare below.
+            checkLocal
+            ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
+            : Promise.resolve(adoptedRow(e))
+          : checkLocal
+            ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
+            : checkEntry(e, library, libraryPath),
     );
 
     // Augment: LINKED library skills not already represented by a lock entry get a
