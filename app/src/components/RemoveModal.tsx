@@ -152,9 +152,10 @@ export function RemoveModal() {
             onClick={
               armed
                 ? () => {
-                    // hardRemove is single-name (and cancels the modal on its
-                    // first call); loop over the captured set for bulk removes.
-                    for (const n of names) commands.hardRemove(n);
+                    // W7: ONE batched `skl rm a b c` (single toast + single
+                    // invalidate) instead of N un-awaited per-name calls.
+                    // hardRemoveMany cancels the modal on its first dispatch.
+                    commands.hardRemoveMany(names);
                   }
                 : undefined
             }

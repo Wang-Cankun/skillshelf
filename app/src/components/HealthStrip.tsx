@@ -5,22 +5,17 @@
 
 import { useLibrary } from "../state/queries";
 import { aggregates } from "../lib/select";
+import { stubCount } from "../lib/derive";
 import { C, MONO } from "../lib/tokens";
-
-const STUB_DEFAULTS = [
-  "replace with description",
-  "replace with a description",
-];
 
 export function HealthStrip() {
   const skills = useLibrary().data ?? [];
   const agg = aggregates(skills);
 
   const localEdits = 0; // not tracked yet — honest
-  const stub = skills.filter((s) => {
-    const d = s.description.trim().toLowerCase();
-    return STUB_DEFAULTS.some((def) => d.startsWith(def));
-  }).length;
+  // Same predicate AND population (live/non-retired) as needsAttentionNames, so the
+  // footer "N stub" count always matches the inbox's stub triage.
+  const stub = stubCount(skills);
 
   return (
     <div

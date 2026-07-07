@@ -166,6 +166,30 @@ describe("skl rm/retire/unretire — removal lifecycle (friction #1)", () => {
     expect(errors.join("\n")).toContain("not in the library");
   });
 
+  test("rm removes MULTIPLE names in one call (regression: batch must not drop names)", async () => {
+    await writeSkill(library, "beta");
+    await writeSkill(library, "gamma");
+    const { ctx } = makeCtx(library);
+    // Live OWNED skills need --force; the WHOLE batch must purge, not just the first
+    // (the old single-name rm silently ignored names 2..N).
+    const code = await rmRun(["alpha", "beta", "gamma", "--force"], ctx);
+    expect(code).toBe(0);
+    for (const n of ["alpha", "beta", "gamma"]) {
+      expect(existsSync(join(library, n))).toBe(false);
+    }
+  });
+
+  test("rm batch is ATOMIC on validation — one missing name deletes nothing", async () => {
+    await writeSkill(library, "beta");
+    const { ctx, errors } = makeCtx(library);
+    const code = await rmRun(["alpha", "ghost", "beta", "--force"], ctx);
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toContain("not in the library");
+    // No partial purge — both valid names survive because one name was invalid.
+    expect(existsSync(join(library, "alpha"))).toBe(true);
+    expect(existsSync(join(library, "beta"))).toBe(true);
+  });
+
   test("rm refuses a path-traversal name (no escape outside the library)", async () => {
     // a sibling dir outside the library that must NOT be deletable via `../`
     const victim = join(tmp, "victim");

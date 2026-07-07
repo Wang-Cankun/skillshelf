@@ -21,7 +21,10 @@ export function UpdateResultsBanner() {
   const { state, dispatch } = useStore();
   const commands = useCommands();
   const report = state.updateReport;
-  if (!report) return null;
+  // W3: visibility is decoupled from the report DATA. `bannerDismissed` hides the
+  // banner while KEEPING `updateReport`, so SourceCell's ⊘ orphaned badges (which
+  // read updateReport) survive a dismissal. A new run resets bannerDismissed.
+  if (!report || state.bannerDismissed) return null;
 
   const updated = report.updated;
   const diverged = report.diverged;
@@ -61,7 +64,7 @@ export function UpdateResultsBanner() {
         <span style={{ flex: 1, wordBreak: "break-word" }}>{summary}</span>
         <button
           aria-label="dismiss update report"
-          onClick={() => dispatch({ type: "clearUpdateReport" })}
+          onClick={() => dispatch({ type: "dismissBanner" })}
           style={{
             background: "none",
             border: "none",
