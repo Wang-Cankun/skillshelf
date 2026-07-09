@@ -113,7 +113,7 @@ describe("computeAgentsReport", () => {
   const r = computeAgentsReport(report, HOME);
 
   test("registers the 6 known agents (installed=false under a fake HOME)", () => {
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "omp"]);
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi"]);
     expect(r.agents.every((a) => a.installed === false)).toBe(true);
     expect(r.agents[0]!.global).toBe("~/.claude/skills");
   });
@@ -138,9 +138,9 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
     problems: [],
   };
 
-  test("opts.agents appends a custom agent (pi) after the seeds", () => {
+  test("opts.agents appends a custom agent (walrus) after the seeds", () => {
     const r = computeAgentsReport(baseReport, HOME, {
-      agents: [{ id: "pi", name: "PI Agent", short: "PI", icon: "anthropic" }],
+      agents: [{ id: "walrus", name: "Walrus Agent", short: "Walrus", icon: "anthropic" }],
     });
     expect(r.agents.map((a) => a.id)).toEqual([
       "claude",
@@ -148,8 +148,8 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
       "cursor",
       "opencode",
       "gemini",
-      "omp",
       "pi",
+      "walrus",
     ]);
   });
 
@@ -177,17 +177,17 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
     const r = computeAgentsReport(
       {
         surfaces: [],
-        sites: [site({ name: "x", surface: "/work/proj/.pi/skills", kind: "linked" })],
+        sites: [site({ name: "x", surface: "/work/proj/.walrus/skills", kind: "linked" })],
         problems: [],
       },
       HOME,
-      { agents: [{ id: "pi", name: "PI", short: "PI" }] },
+      { agents: [{ id: "walrus", name: "Walrus", short: "Walrus" }] },
     );
-    expect(r.deployments.x!.pi!.p!.proj).toBe("clean");
+    expect(r.deployments.x!.walrus!.p!.proj).toBe("clean");
   });
   test("no opts is backward-compatible (seed-only, default extraScopes)", () => {
     const r = computeAgentsReport(baseReport, HOME);
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "omp"]);
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi"]);
   });
 
   test("inheritsGlobal: all seeds default true; report carries the flag", () => {
@@ -199,11 +199,11 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
   test("inheritsGlobal: a custom agent defaults true unless inheritsGlobal:false", () => {
     const r = computeAgentsReport(baseReport, HOME, {
       agents: [
-        { id: "pi", name: "PI", short: "PI" }, // no flag → inherits (true)
+        { id: "walrus", name: "Walrus", short: "Walrus" }, // no flag → inherits (true)
         { id: "static", name: "Static", short: "Static", inheritsGlobal: false },
       ],
     });
-    expect(r.agents.find((a) => a.id === "pi")!.inheritsGlobal).toBe(true);
+    expect(r.agents.find((a) => a.id === "walrus")!.inheritsGlobal).toBe(true);
     expect(r.agents.find((a) => a.id === "static")!.inheritsGlobal).toBe(false);
   });
 

@@ -247,12 +247,12 @@ fn watched_dirs() -> Vec<PathBuf> {
     if let Ok(home) = std::env::var("HOME") {
         let home = PathBuf::from(home);
         for agent in [
-            ".claude", ".codex", ".cursor", ".opencode", ".gemini", ".pi",
+            ".claude", ".codex", ".cursor", ".opencode", ".gemini",
         ] {
             dirs.push(home.join(agent).join("skills"));
         }
-        // omp nests skills under agent/skills/ (not .omp/skills/)
-        dirs.push(home.join(".omp").join("agent").join("skills"));
+        // pi nests skills under agent/skills/ (not .pi/skills/)
+        dirs.push(home.join(".pi").join("agent").join("skills"));
     }
 
     dirs.extend(resolve_projects(cfg.as_ref()));

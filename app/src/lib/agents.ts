@@ -23,15 +23,15 @@ import {
 } from "@core/agent-matrix.ts";
 
 // Registry seeds — the agents this user actually deploys to: Claude Code,
-// Codex, Pi, and Oh My Pi. `installed` is overridden at runtime if the real feed
-// knows better; these are the defaults. (To add more agents, append here AND
-// extend the inferHome regex below + the Rust agent surface set.)
+// Codex, and Pi. `installed` is overridden at runtime if the real feed knows
+// better; these are the defaults. (To add more agents, append here AND extend
+// the inferHome regex below + the Rust agent surface set.)
 //
 // This list INTENTIONALLY diverges from the ENGINE seed list in
-// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, omp; no `pi`).
-// The engine errs toward broad on-disk detection; the app shows the user's real
-// agents and reconstructs the report in the browser dev fallback. The two are NOT
-// meant to match — net-new/overridden agents flow through the config `agents`
+// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, pi). The engine
+// errs toward broad on-disk detection; the app shows the user's real agents and
+// reconstructs the report in the browser dev fallback. The two are NOT meant to
+// match exactly — net-new/overridden agents flow through the config `agents`
 // block (delta 4) on both sides. Keep this comment in sync with its twin over
 // AGENT_SEEDS in src/core/agents.ts when changing either list.
 export const AGENT_SEEDS: AgentInfo[] = [
@@ -57,17 +57,8 @@ export const AGENT_SEEDS: AgentInfo[] = [
     id: "pi",
     name: "Pi",
     short: "Pi",
-    global: "~/.pi/skills",
+    global: "~/.pi/agent/skills",
     projConvention: ".pi/skills",
-    installed: true,
-    inheritsGlobal: true,
-  },
-  {
-    id: "omp",
-    name: "Oh My Pi",
-    short: "OMP",
-    global: "~/.omp/agent/skills",
-    projConvention: ".omp/agent/skills",
     installed: true,
     inheritsGlobal: true,
   },
@@ -125,8 +116,14 @@ export function agentIdForSurface(surface: string): string | null {
 function inferHome(surfaces: string[]): string | null {
   const parents: string[] = [];
   for (const s of surfaces) {
-    const m = s.match(/^(.*)\/\.(claude|codex|pi)\/skills?$/);
-    if (m) parents.push(m[1]);
+    const flat = s.match(/^(.*)\/\.(claude|codex)\/skills?$/);
+    if (flat) {
+      parents.push(flat[1]);
+      continue;
+    }
+    // pi nests skills under agent/skills (~/.pi/agent/skills), not ~/.pi/skills.
+    const piNested = s.match(/^(.*)\/\.pi\/agent\/skills?$/);
+    if (piNested) parents.push(piNested[1]);
   }
   if (!parents.length) return null;
   if (parents.length === 1) return parents[0];

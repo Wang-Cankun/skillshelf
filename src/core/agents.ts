@@ -72,22 +72,22 @@ interface AgentSeed {
   short: string;
 }
 // ENGINE seed list — the full set of agents `skl` can DETECT on disk (claude,
-// codex, cursor, opencode, gemini, omp; no `pi` — `pi` is a user-facing alias for
-// `omp` in the app). This INTENTIONALLY diverges from the app-side seed list in
-// `app/src/lib/agents.ts` (claude, codex, pi, omp), which shows only the agents a
-// given user actually deploys to and reconstructs the report in the browser dev
-// fallback. The two lists are NOT meant to match: the engine errs toward broad
-// detection, the app toward the user's real surfaces, and custom/overridden agents
-// flow through config (delta 4) on both sides. If you add/remove an id here, decide
-// deliberately whether the app list should follow — see the matching comment over
-// AGENT_SEEDS in app/src/lib/agents.ts.
+// codex, cursor, opencode, gemini, pi). `pi` is now a first-class engine-seeded
+// agent, matching the app-side seed list in `app/src/lib/agents.ts` (claude,
+// codex, pi), which shows only the agents a given user actually deploys to and
+// reconstructs the report in the browser dev fallback. The two lists are NOT
+// meant to match exactly: the engine errs toward broad detection (cursor,
+// opencode, gemini included), the app toward the user's real surfaces, and
+// custom/overridden agents flow through config (delta 4) on both sides. If you
+// add/remove an id here, decide deliberately whether the app list should follow
+// — see the matching comment over AGENT_SEEDS in app/src/lib/agents.ts.
 const AGENT_SEEDS: AgentSeed[] = [
   { id: "claude", name: "Claude Code", short: "Claude" },
   { id: "codex", name: "Codex", short: "Codex" },
   { id: "cursor", name: "Cursor", short: "Cursor" },
   { id: "opencode", name: "OpenCode", short: "OpenCode" },
   { id: "gemini", name: "Gemini", short: "Gemini" },
-  { id: "omp", name: "Oh My Pi", short: "OMP" },
+  { id: "pi", name: "Pi", short: "Pi" },
 ];
 
 const AGENT_IDS = AGENT_SEEDS.map((a) => a.id);
@@ -105,9 +105,9 @@ export function agentIdForSurface(
   return agentIdForSurfaceCore(surface, ids);
 }
 
-/** Relative subdirectory under .<id>/ where skills live (agent/skills for omp, skills otherwise). */
+/** Relative subdirectory under .<id>/ where skills live (agent/skills for pi, skills otherwise). */
 function skillsSuffix(id: string): string {
-  return id === "omp" ? join("agent", "skills") : "skills";
+  return id === "pi" ? join("agent", "skills") : "skills";
 }
 
 /** Absolute path to an agent's global skills dir. */

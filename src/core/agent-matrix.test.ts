@@ -14,7 +14,7 @@ import {
 } from "./agent-matrix.ts";
 
 const HOME = "/home/u";
-const IDS = ["claude", "codex", "cursor", "opencode", "gemini", "omp"] as const;
+const IDS = ["claude", "codex", "cursor", "opencode", "gemini", "pi"] as const;
 
 function site(p: Partial<DeploymentSite> & { name: string; surface: string }): DeploymentSite {
   return {
@@ -31,9 +31,9 @@ function site(p: Partial<DeploymentSite> & { name: string; surface: string }): D
 describe("agentIdForSurface honors `ids` ordering", () => {
   test("returns the FIRST matching id in the given order (custom precedence)", () => {
     // A surface that could match two ids: the caller's order decides the winner.
-    const s = "/work/proj/.pi/skills";
-    expect(agentIdForSurface(s, ["pi", "claude"])).toBe("pi");
-    // pi not in the id set → no match (the engine never widened to it).
+    const s = "/work/proj/.walrus/skills";
+    expect(agentIdForSurface(s, ["walrus", "claude"])).toBe("walrus");
+    // walrus not in the id set → no match (the engine never widened to it).
     expect(agentIdForSurface(s, ["claude", "codex"])).toBeNull();
   });
   test("matches segment, trailing dotdir, and trailing /skills", () => {
@@ -146,8 +146,8 @@ describe("foldAgentMatrix", () => {
   });
 
   test("custom-agent surface detected via a widened id set", () => {
-    const sites = [site({ name: "x", surface: "/work/proj/.pi/skills", kind: "linked" })];
-    const m = foldAgentMatrix(sites, { home: HOME, agentIds: [...IDS, "pi"] });
-    expect(m.deployments.x!.pi!.p!.proj).toBe("clean");
+    const sites = [site({ name: "x", surface: "/work/proj/.walrus/skills", kind: "linked" })];
+    const m = foldAgentMatrix(sites, { home: HOME, agentIds: [...IDS, "walrus"] });
+    expect(m.deployments.x!.walrus!.p!.proj).toBe("clean");
   });
 });
