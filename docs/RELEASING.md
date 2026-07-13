@@ -8,8 +8,9 @@ Do not confuse them — using the wrong tag prefix triggers the wrong pipeline.
 | npm CLI (`skl`)   | `v*`       | `npm publish` (manual / existing) | package on npm                  | root `package.json`     |
 | Desktop app       | `app-v*`   | `.github/workflows/release-app.yml` | GitHub Release with installers | `app/package.json` + `app/src-tauri/tauri.conf.json` |
 
-The desktop app versions **independently** of the CLI. The CLI is currently at
-`0.4.0`; the desktop app starts at `0.1.0`. Bumping one does not bump the other.
+The desktop app versions **independently** of the CLI — bumping one does not bump the
+other. The current version of each lives in its own `package.json` (root for the CLI,
+`app/` for the desktop app).
 
 ---
 

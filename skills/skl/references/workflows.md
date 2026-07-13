@@ -54,11 +54,18 @@ skl where --fix --dry-run       # preview the auto-fix (remove dead links, dedup
 skl where --fix                 # apply it
 # project-local stale links only:
 skl refresh --dry-run && skl refresh
+# an aliased link (deployed under the wrong name):
+skl realign <deployed-name> --agent <id> --global
+# a genuinely drifted copy — inspect, then decide which side wins:
+skl diff <name> --agent <id>            # what did the copy change?
+skl use <name> --agent <id> --force     # library wins: replace the copy with the symlink
+# (copy wins instead → `skl import <name> --from <copy path> --force` to pull it INTO the library)
 ```
 
 Why: `where` is the cross-agent source of truth (ADR-0003/0008). `--fix` only does the safe,
 mechanical repairs (dead links + content-identical dedupe); genuine drift (`⚠ drifted copy`)
-it reports but won't silently resolve — that's a human/agent judgment call. Preview with
+it reports but won't silently resolve — that's a human/agent judgment call: `diff` informs it,
+then `use --force` (library wins) or `import --force` (copy wins) executes it. Preview with
 `--dry-run` first and show the user.
 
 ## 4. Develop a skill in its own repo, then stabilize it
@@ -68,13 +75,13 @@ into the library.
 
 ```bash
 # DEVELOP: shelve a LINK. The dev repo stays canonical; edits show live; no re-sync.
-skl link --from ~/Documents/GitHub/cairn/skill/cairn
+skl link --from ~/dev/cairn/skill/cairn
 skl where cairn                 # shows the dev repo as a clean `✓ source`
 # update/outdated will SKIP it — that's correct; its own git owns versioning.
 
 # STABILIZE later: turn the link into an owned copy.
 skl rm cairn                    # safe — only removes the symlink; dev repo untouched
-skl import cairn --from ~/Documents/GitHub/cairn/skill/cairn --copy
+skl import cairn --from ~/dev/cairn/skill/cairn --copy
 ```
 
 Why: linked entries (ADR-0004) are for active development — the library points *at* your repo

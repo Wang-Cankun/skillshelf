@@ -1,5 +1,10 @@
 # skillshelf — Constellation UI · Design Context
 
+> **SUPERSEDED (historical record).** This graph/poster direction was rejected — see
+> `workbench-ui-context.md` §0, itself later superseded by `brief-0010-management-ui.md`
+> (the shipped list-first design, ADR-0010). Kept for its §3 data contracts, which later
+> docs reference. Do not treat the visual direction here as current.
+
 > Paste this whole file into Claude's design tool as grounding context. It describes
 > the product, the **real** data shapes the UI binds to, the chosen visual direction
 > (a force-directed "constellation" map), and the interaction + visual language.

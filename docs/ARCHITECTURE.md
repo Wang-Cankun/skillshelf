@@ -52,7 +52,7 @@ The library is a *shelf*, and an entry comes in two modes ([ADR-0004](adr/0004-o
   third-party downloads (`skl add`) and your own skills adopted with `skl import`, plus skills
   you've stabilized. `skl update` tracks an OWNED skill's upstream.
 - **LINKED** — `library/<name>` is a *symlink to an external dev repo* that stays canonical. The
-  right mode for skills you actively develop in their own git (e.g. `claim-log`, skillshelf itself):
+  right mode for skills you actively develop in their own git (e.g. skillshelf's own `skl` skill):
   editing the repo is editing the deployed skill, with zero drift and no copy to keep in sync.
   Register one with `skl link --from <dev-repo>`.
 - **Mode is derived from reality, never stored.** `entryMode(library, name)` resolves the realpath
@@ -64,7 +64,7 @@ The library is a *shelf*, and an entry comes in two modes ([ADR-0004](adr/0004-o
 
 ### Taxonomy — domain is tags, not folders
 - Domain membership lives **entirely in tags** (e.g. `domains: [coding, data]`), not in the
-  on-disk layout. See [ADR-0001](../adr/0001-domain-is-tags-not-folders.md) for the decision
+  on-disk layout. See [ADR-0001](adr/0001-domain-is-tags-not-folders.md) for the decision
   and its rationale. Cross-domain membership is expressed honestly rather than forced into a
   single folder.
 - **`primaryDomain` is derived, not folder-derived.** It is defined as `domains[0]` (the first
@@ -75,7 +75,10 @@ The library is a *shelf*, and an entry comes in two modes ([ADR-0004](adr/0004-o
   single copy on disk.
 - The taxonomy is **AI-inferred and re-runnable** (`skl infer`): cluster skills, propose the
   domain vocabulary (surfacing domains not previously thought of), assign primary + secondary
-  tags, and flag ambiguous skills for human approval. It is never hand-maintained.
+  tags, and flag ambiguous skills for human approval. Deterministic hand edits are first-class
+  too (`skl tag`/`untag`/`retag`, [ADR-0005](adr/0005-inverse-and-edit-verbs.md)) — what is
+  never hand-maintained is the *file*: tags are edited only through verbs that write the
+  central `taxonomy.json`, never by editing skill dirs.
 
 ### Two-tier / hybrid delivery
 - **Thin global core** — a small handful of universal skills (e.g. commit, memory, search)
@@ -83,11 +86,12 @@ The library is a *shelf*, and an entry comes in two modes ([ADR-0004](adr/0004-o
   is small and acceptable: *some* loaded is fine; *all-at-once* is the problem.
 - **Domain bundles** — everything else, on-demand, with zero auto-load cost until invoked.
 
-### Trigger bridge — a router meta-skill
-- One tiny, always-loaded skill (on the order of a dozen lines) whose description lists the
+### Trigger bridge — a router meta-skill (future work)
+- **Not built yet.** The idea: one tiny, always-loaded skill whose description lists the
   **domain menu** and instructs the agent: *"run `skl search <kw>` (or `skl use <bundle>`)
-  to load specialized skills."*
-- A few lines of always-on context buy discoverable access to the entire library.
+  to load specialized skills"* — a few lines of always-on context buying discoverable access
+  to the entire library. Today the [`skl` skill](../skills/skl/SKILL.md) covers the driving
+  half (how to operate the CLI); the auto-generated domain-menu half remains future work.
 
 ### On-demand mechanics — two coexisting paths
 - **`skl show <name>`** — prints only the **SKILL.md instruction layer** (the body), not the
@@ -124,7 +128,7 @@ installedHash — hash of the upstream SKILL.md body as recorded at install/upda
 ### Tag/body separation (the critical piece) — uniform for all skills
 - `SKILL.md` body = pristine, replaceable (the upstream layer).
 - Domain tags, bundle membership, and notes live in the **central `<library>/taxonomy.json`**
-  ([ADR-0002](../adr/0002-central-taxonomy-not-sidecars.md)) — never inside the skill dir.
+  ([ADR-0002](adr/0002-central-taxonomy-not-sidecars.md)) — never inside the skill dir.
 - **Effective skill = body + central taxonomy**, merged at `show` / `use` / load time.
 - This lets `skl update` swap the upstream body cleanly while your tags survive — they were never
   in the file being replaced. (Replaces the earlier per-skill `<skill>.shelf.json` overlay sidecars.)
@@ -150,7 +154,7 @@ After a successful update, the lockfile records the new `ref` and a fresh `insta
 and clears `localEdits` (the on-disk body equals upstream again).
 
 The verdict itself lives in one pure classifier — **`src/core/reconcile.ts`**
-([ADR-0014](../adr/0014-deep-core-modules-reconcile-agent-matrix-vendor-report.md)) — shared by
+([ADR-0014](adr/0014-deep-core-modules-reconcile-agent-matrix-vendor-report.md)) — shared by
 `update`, `outdated`, and `add` so the rule can never drift between them. It exposes two **separately
 named facts**: `editedSinceInstall` (offline — local vs the install baseline) and `differsFromUpstream`
 (online, nullable — local vs current upstream). `update`'s never-clobber gate is the **AND** of both;
@@ -160,7 +164,7 @@ hand-edit a body to exactly what upstream independently moved to) is `editedSinc
 which `update` re-pulls safely but offline `outdated` still reports as edited. Each command projects the
 shared verdict onto its own unchanged public enum.
 
-### Repo-wide install — one repo, one clone ([ADR-0006](../adr/0006-repo-wide-add.md))
+### Repo-wide install — one repo, one clone ([ADR-0006](adr/0006-repo-wide-add.md))
 
 A single GitHub repo often ships *many* skills (e.g. `skills/<name>/SKILL.md` ×21). `skl add`
 installs a whole repo, or a chosen subset, in **one clone**:
@@ -173,7 +177,7 @@ installs a whole repo, or a chosen subset, in **one clone**:
   out of the single staging checkout → **N installs, one network fetch** (never clone-per-skill).
   Each skill is its own lockfile entry — same `source`+`ref`, its own `@subpath` + `installedHash`
   (no schema change).
-- **Published set + count gate** ([ADR-0012](../adr/0012-published-set-and-all-count-gate.md), which
+- **Published set + count gate** ([ADR-0012](adr/0012-published-set-and-all-count-gate.md), which
   **amends ADR-0006 §6**: a manifest now *bounds* `--all`, no longer just opportunistic-for-discovery).
   `--all` installs the **published set**, not every `SKILL.md` on disk: when a `.claude-plugin/plugin.json`
   (or `marketplace.json`, union over plugins) is present, its `skills` array is an **allowlist** —
@@ -192,7 +196,7 @@ installs a whole repo, or a chosen subset, in **one clone**:
 
 Single-skill `skl add <repo>/<path>` is unchanged. `add` stays a **librarian**: it writes only into
 the library — no agent-dir writes / symlink fan-out (that is `skl use` / a future `skl deploy`,
-[ADR-0003](../adr/0003-agent-agnostic-surfaces.md)) — and uses skillshelf's own `git clone`, never
+[ADR-0003](adr/0003-agent-agnostic-surfaces.md)) — and uses skillshelf's own `git clone`, never
 `npx skills add` (kept only as the narrow registry-name fallback).
 
 ### Don't reinvent fetching
@@ -219,6 +223,7 @@ hand-`rm`/`mv`/`ln -s` to undo or tweak is the signal of a missing primitive.
 | `skl add <src>` | Install third-party skill(s) into the library, record provenance, AI-tag. Repo-wide via `--all`/`--skill`/`--list`/`--yes`/`--dry-run` — one repo, one clone ([ADR-0006](adr/0006-repo-wide-add.md)); `--all` installs the **published set** behind a count gate ([ADR-0012](adr/0012-published-set-and-all-count-gate.md)). |
 | `skl new` | Scaffold a new skill into the library. |
 | `skl init` | Initialize a library / global core. |
+| `skl track` / `untrack` / `migrate` | Adopt (or drop) provenance for skills already in the library — offline, no re-download; `migrate` bulk-adopts from a vendor skill-lock ([ADR-0011](adr/0011-adopt-provenance-track-verb.md)). |
 
 **Read / diagnosis:**
 
@@ -229,6 +234,8 @@ hand-`rm`/`mv`/`ln -s` to undo or tweak is the signal of a missing primitive.
 | `skl show <name>` | Print the SKILL.md instruction layer; list reference-file paths. |
 | `skl status` | Which bundles/skills are linked into the current project; flags unmanaged real copies. |
 | `skl where [name]` | Deployment map across all agent surfaces; classifies copies/drift/2nd-sources/dead links. |
+| `skl agents [name]` | Per-agent × per-scope deployment matrix (backs the desktop app's toggle grid). |
+| `skl diff <name>` | Unified diff of a deployed copy's `SKILL.md` against the library skill (read-only). |
 | `skl outdated` | Check upstream ref per tracked skill → mark stale; `--check-local` diffs locally, offline. |
 | `skl index` | Regenerate `INDEX.md` (catalog grouped by domain). |
 | `skl infer` | Re-run the AI taxonomy pass; propose domains/tags for approval. |
@@ -237,7 +244,8 @@ hand-`rm`/`mv`/`ln -s` to undo or tweak is the signal of a missing primitive.
 
 | Command | Purpose |
 |---|---|
-| `skl use <bundle\|skill>` / `drop` | Symlink (or unlink) a bundle **or a single skill** into `./.claude/skills/`. |
+| `skl use <bundle\|skill>` / `drop` | Symlink (or unlink) a bundle **or a single skill** into an agent's skills dir (default `./.claude/skills/`; target another agent/scope via `--agent`/`--global`/`--project`, ADR-0008). `use --force` replaces a real-file conflict (e.g. a drifted copy) with the library symlink. |
+| `skl realign <deployed-name>` | Rename an aliased deployment symlink (wrong link name) to match the library skill it resolves to. |
 | `skl refresh` | Re-sync this project's links to library reality (repoint stale, prune vanished). |
 | `skl update [name]` | Re-pull the upstream body (OWNED only), preserve domain tags, diff if diverged. |
 | `skl tag` / `untag` / `retag` | Deterministic single-item taxonomy edits (and a library-wide domain rename). |
@@ -373,7 +381,7 @@ parseable output; nothing irreversible happens implicitly.
      same-named library skill (e.g. when the agent has picked the drift winner).
    - These are the user's **own** skills: `source` is `null` and no lockfile entry is written
      (that is `add`'s job). Domain tags are applied later via the central `taxonomy.json`
-     ([ADR-0002](../adr/0002-central-taxonomy-not-sidecars.md)), never inside the skill dir, so
+     ([ADR-0002](adr/0002-central-taxonomy-not-sidecars.md)), never inside the skill dir, so
      tagging never clobbers the upstream `SKILL.md`.
 
 4. **`skl infer`** — *tag the now-populated library* in one pass (see §5). Because the layout is
@@ -395,19 +403,7 @@ The crawl behind `skl scan`:
 
 These rules were previously duplicated in a `DISCOVERED_ROOTS.local.md` scratchpad at the
 skillshelf home root. That file was an orphan — no code read or wrote it — so the ADR-0002
-migration deletes it and folds its content here (the single source of truth). For reference,
-the live roots it documented and their layouts:
-
-| Root | Layout | Notes |
-|---|---|---|
-| `~/.claude/skills/` | `name/SKILL.md` | main collection |
-| `~/Dropbox/Obsidian/.agents/skills/` | `name/SKILL.md` | `.agents` bridge fmt; CloudStorage/Dropbox is an alias of the same vault (realpath-dedupe) |
-| `/Volumes/External/Project/manuscripts/skills/` | `name/SKILL.md` | external drive, writing skills |
-| `~/Documents/GitHub/writing-skills/skills/` | `skills/name/SKILL.md` | nature-* writing/figure set |
-| `~/Documents/GitHub/everything-claude-code/skills/` | `skills/name/SKILL.md` | coding skills |
-| `~/Documents/GitHub/infra-repo/.claude/skills/` | `+ .agents` mirror | cloud-cost |
-| `~/Documents/GitHub/analysis-repo/.claude/skills/` | has `_retired/` | bioinfo, plus `_retired` subdir |
-| `~/Documents/GitHub/claim-log/skill/` | `skill/name/SKILL.md` | claim log |
+migration deleted it and folded its rules here (the single source of truth).
 
 Persisted scan roots live in `config.json` (machine-local, absolute paths). Each entry may be
 a bare path string or an annotated `{path, layout?, notes?}` object; `layout`/`notes` are
@@ -429,7 +425,7 @@ informational only (crawl auto-detects layout — nothing consumes them programm
 ## 8. Implementation notes
 
 - **Runtime:** Bun + TypeScript, **zero runtime dependencies** in the core.
-- **Deep core seams** ([ADR-0014](../adr/0014-deep-core-modules-reconcile-agent-matrix-vendor-report.md)):
+- **Deep core seams** ([ADR-0014](adr/0014-deep-core-modules-reconcile-agent-matrix-vendor-report.md)):
   four modules hold the logic the commands used to duplicate inline. **`reconcile.ts`** — the pure verdict
   classifier (above). **`vendor.ts`** — the library *write* boundary (`installSkill`/`track`/`adopt` + the
   retired/safe-name/symlink guard suite, once); commands parse + print and never import one another, and
@@ -443,6 +439,6 @@ informational only (crawl auto-detects layout — nothing consumes them programm
 - **Library location:** resolved from `SKILLSHELF_LIBRARY` (used by the test fixtures and by
   any non-default install).
 - **Taxonomy is authoritative for tags:** inference and bundle membership only ever write to
-  the central `<library>/taxonomy.json` (see [ADR-0002](../adr/0002-central-taxonomy-not-sidecars.md)),
+  the central `<library>/taxonomy.json` (see [ADR-0002](adr/0002-central-taxonomy-not-sidecars.md)),
   never to the upstream `SKILL.md` body — which is what makes the three-way update safe. (This
   replaces the earlier per-skill `<skill>.shelf.json` overlay sidecars.)

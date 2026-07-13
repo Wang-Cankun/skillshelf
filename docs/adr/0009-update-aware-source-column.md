@@ -4,7 +4,9 @@ Date: 2026-06-15
 
 ## Status
 
-Accepted — extends [ADR-0008](0008-ui-design-alignment.md) §7 (the `ls --json`
+Accepted — **§5 ("Update all stale") superseded by [ADR-0013](0013-update-reconciles-per-repo-reports-structural-drift.md) §9**
+(update reconciles per source repo; no library-wide update remains). The rest stands.
+Extends [ADR-0008](0008-ui-design-alignment.md) §7 (the `ls --json`
 `source`/`origin` additions) with a `channel` field, and is governed by
 [ADR-0004](0004-owned-vs-linked-entries.md) (never update LINKED/local) and
 [ADR-0007](0007-fact-vs-inference-and-ui-scope.md) (`outdated`/`update` are deterministic

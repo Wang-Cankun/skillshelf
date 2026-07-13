@@ -37,7 +37,8 @@ and `INDEX.md` in sync — hand-edits drift).
    following the symlink would clobber the user's live dev repo. "Skipped (linked)" is correct.
 2. **Curator boundary** — `add` writes the library; `use`/`drop` write agent dirs. Installing and
    deploying are two steps (`add` then `use`); `add` never makes a skill active.
-3. **Never clobber real files.** `use` won't overwrite a real file in a skills dir; `import`/`link`
+3. **Never clobber real files.** `use` won't overwrite a real file in a skills dir (only an
+   explicit `use --force` replaces a drifted copy — `skl diff` it first); `import`/`link`
    won't write through symlinks or into the library. If a command refuses, surface it — don't force.
 4. **`import` decides no domain** — adopt first (`scan`→`import`), tag after (`tag`/`infer`).
 5. **Rename doesn't repoint deploys** — re-run `skl use` (or check `skl where`) after `rename`.
@@ -55,6 +56,8 @@ Full flags in `references/commands.md`; multi-step recipes in `references/workfl
 | See what's deployed here / everywhere / per agent | `skl status` · `skl where [name]` · `skl agents [name]` |
 | Activate / deactivate in this project | `skl use <bundle\|skill…>` · `skl drop <…>` |
 | Repair stale/dead symlinks | `skl refresh` (here) · `skl where --fix` (everywhere) |
+| Fix a misnamed (aliased) deployment | `skl realign <deployed-name>` |
+| See how a deployed copy drifted, then overwrite it | `skl diff <name>` → `skl use <name> --force` |
 | Install a third-party skill | `skl add github:owner/repo[/path]` (then `skl use`) |
 | Consolidate scattered skills | `skl scan` → `skl import <name> --from <path>` → `skl infer` |
 | Develop a skill in its own repo | `skl link --from <dev-repo>` |

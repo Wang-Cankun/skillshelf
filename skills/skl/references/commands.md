@@ -8,9 +8,9 @@ output) and `--help`. Exit 0 = success, exit 1 = error (errors go to stderr).
 
 - [Invocation & state files](#invocation--state-files)
 - Query & read: [`search`](#search) · [`ls`](#ls) · [`show`](#show)
-- Deployment view: [`status`](#status) · [`where`](#where) · [`agents`](#agents)
-- Deploy verbs: [`use`](#use) · [`drop`](#drop) · [`refresh`](#refresh)
-- Install & adopt: [`add`](#add) · [`scan`](#scan) · [`roots`](#roots) · [`import`](#import) · [`link`](#link)
+- Deployment view: [`status`](#status) · [`where`](#where) · [`agents`](#agents) · [`diff`](#diff)
+- Deploy verbs: [`use`](#use) · [`drop`](#drop) · [`realign`](#realign) · [`refresh`](#refresh)
+- Install & adopt: [`add`](#add) · [`scan`](#scan) · [`roots`](#roots) · [`import`](#import) · [`link`](#link) · [`track` / `untrack` / `migrate`](#track--untrack--migrate) · [`projects`](#projects)
 - Curate: [`tag`](#tag) · [`untag`](#untag) · [`retag`](#retag) · [`rename`](#rename) · [`retire`](#retire) · [`unretire`](#unretire) · [`rm`](#rm)
 - Versioning: [`outdated`](#outdated) · [`update`](#update)
 - AI & index: [`infer`](#infer) · [`index`](#index)
@@ -79,15 +79,32 @@ Multi-agent matrix: for each known agent × scope, each skill's deployment state
 `⚠ drift`, `□ copy`, `✗ dead`.
 
 ## use
-`skl use <bundle|skill> [--agent <id>] [--global | --project <name>] [--json]`
+`skl use <bundle|skill> [--agent <id>] [--global | --project <name>] [--force] [--json]`
 Symlink a bundle (domain) **or** a single skill into an agent's skills dir. Default target
 `./.claude/skills/`. `--agent <id>` changes the agent; `--global` targets `~/<agent>/skills`;
 `--project <name>` targets `./<name>/skills`. Idempotent — reports `linked`/`already`/`conflict`.
-Refuses to clobber a real file (conflict → resolve manually).
+Refuses to clobber a real file by default (conflict); `--force` replaces the real entry with the
+library symlink instead (reported `overwritten`) — the "overwrite from library" drift remediation.
+It discards that copy's local edits, so `skl diff` first.
 
 ## drop
 `skl drop <bundle|skill> [--agent <id>] [--global | --project <name>] [--json]`
 Inverse of `use`: removes the bundle's/skill's symlinks. Idempotent; never touches real files.
+
+## realign
+`skl realign <deployed-name> [--agent <id>] [--global | --project <name>] [--json]`
+Fix an **aliased** deployment: a symlink whose name differs from the library skill it resolves
+to (e.g. `nuwa -> <library>/huashu-nuwa`). Atomically renames the link to the library skill's
+name so name-keyed views (`status`/`agents`) see it again. Only ever renames a symlink in place —
+refuses a real (non-symlink) entry, a link that doesn't resolve to any library skill, and an
+already-occupied destination name. Already-aligned is a no-op (`already`).
+
+## diff
+`skl diff <name> [--agent <id>] [--global | --project <name>] [--json]`
+Read-only unified diff of a deployed copy's `SKILL.md` against the library skill, for one agent
+surface. A clean symlink deployment trivially reports `identical` (its realpath IS the library
+copy). JSON carries `{name, site, library, identical, diff}`. Use before `use --force` or
+`update` to see what a drifted copy actually changed.
 
 ## refresh
 `skl refresh [--dry-run] [--json]`
@@ -109,7 +126,8 @@ after). One repo = one clone.
   it can name an unpublished/internal skill (conflicts with `--all`).
 - `--yes` — bypass the `--all` **count gate**: a published set over **15** skills refuses without it
   (blast-radius guard). `--skill`/`--list`/`--dry-run` are never gated. Distinct from `--force`.
-- `--domain <d>` — frontmatter domain to apply; `--no-infer` — skip AI domain tagging (stay untagged).
+- `--domain <d>` — taxonomy tag applied to the installed skill(s). A tag only, never a folder —
+  installs always land flat at `library/<name>` (ADR-0001). `--no-infer` — skip AI domain tagging (stay untagged).
 - `--name <slug>` — single-skill only: override the installed name.
 - `--force` — overwrite when an existing skill's body differs (multi-skill: a `differs` skill is skipped without it).
 - Never installs through symlinks (ADR-0004). Writes a `shelf.lock.json` entry per skill.
@@ -145,6 +163,18 @@ Two modes of the bookshelf model (ADR-0004):
 - `--from <dev-repo>` (LINKED side): make the library entry a **symlink to a dev repo** that
   stays canonical — for a skill you actively develop in its own git. `<name>` optional (defaults
   to the dir name). `--force` replaces an existing entry. After this, `update`/`outdated` skip it.
+
+## track / untrack / migrate
+`skl track <name> --source <src> [--ref <r>] [--resolve] [--force] [--json]` — Adopt provenance
+for a library skill you already have (offline; no re-download): writes the `shelf.lock.json`
+entry so `outdated`/`update` can track its upstream.
+`skl untrack <name> [--json]` — Drop the provenance lock entry (idempotent inverse).
+`skl migrate [--from <path>] [--dry-run] [--resolve] [--force] [--json]` — Bulk-adopt provenance
+from a vendor skill-lock for skills already in your library (ADR-0011).
+
+## projects
+`skl projects [ls|add <path>|rm <path>] [--json]` — Manage the persisted nav projects shown as
+scopes in the desktop app. `add`/`rm` take an absolute project dir; `ls` (default) lists them.
 
 ## tag
 `skl tag <name> <domain> [<domain>…] [--json]` — Add domain tag(s) in `taxonomy.json` only

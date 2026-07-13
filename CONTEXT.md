@@ -10,13 +10,14 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
 - **Skill** — a `SKILL.md` instruction body plus optional reference files in its own directory.
 - **Bundle** — a domain grouping resolved as a *tag query* over skills' `domains`, not a
   folder. A skill with multiple domains appears in multiple bundles from one copy on disk.
-- **Overlay** — `<skill>.shelf.json` sidecar holding the user's additions (domain tags,
-  bundle membership, notes), kept separate from the upstream `SKILL.md` so updates never
-  clobber it. Effective skill = upstream + overlay.
+- **Taxonomy (overlay)** — the central `<library>/taxonomy.json` holding the user's domain
+  tags, kept separate from the upstream `SKILL.md` so updates never clobber them. Effective
+  skill = upstream body + central taxonomy (ADR-0002 — replaces the earlier per-skill
+  `<skill>.shelf.json` sidecars).
 - **Global core** — the small set of universal skills symlinked permanently into
   `~/.claude/skills` so they always auto-trigger.
-- **Provenance** — a vendored skill's recorded upstream (`origin` = `owner/repo`, `channel`,
-  `ref`, `installedHash`) in `shelf.lock.json`. The app's update-aware SOURCE column surfaces
+- **Provenance** — a vendored skill's recorded upstream (`source` e.g. `github:owner/repo@path`,
+  `channel`, `ref`, `installedHash`) in `shelf.lock.json`. The app's update-aware SOURCE column surfaces
   it: click-through to the repo root + a manual "Check updates" → `↑` stale / `⚠` diverged
   badges beside the name; linked/local entries are never updated (ADR-0004, ADR-0009).
 - **Published set** — the subset of a repo's discovered skills that `skl add --all` installs: the
@@ -54,6 +55,10 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   is computed by one shared classifier, `src/core/reconcile.ts` — which is why `update` (online) and
   `outdated --check-local` (offline) can give the *same* skill different-but-correct answers: the first
   asks "do I differ from upstream now?", the second "have I edited since install?" (ADR-0014).
+- **Remediate** — fix a *deployed site* without touching the library: `skl realign` renames an
+  aliased link back to its library skill's name, `skl diff` shows how a deployed copy drifted
+  from the library, and `skl use --force` replaces a drifted real copy with the clean library
+  symlink. These act on agent surfaces only — the library side of drift is `update`'s job.
 - **Curator boundary** — `add` only ever writes the library; `use` only ever writes agent dirs.
   skillshelf deliberately does **not** offer one-shot install-and-activate (the `vercel-labs/skills`
   installer model); getting-and-activating in one command is out of scope by ADR-0003. To install
@@ -73,3 +78,6 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
   symlink behind in its old location (move + symlink-back).
 - **Drift** — two copies of a same-named skill whose bodies differ. Resolving drift (which
   copy is canonical) is a judgment call left to the user/agent, not the tool.
+- **Aliased** — a deployment symlink that resolves to a library skill but carries the wrong
+  link name (ADR-0010). Distinct from a *foreign link* (ADR-0004): that one points at a
+  non-library target entirely. Fixed by `skl realign`.

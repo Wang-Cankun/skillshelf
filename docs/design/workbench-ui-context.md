@@ -1,5 +1,10 @@
 # skillshelf — Manager Workbench · Design Context (v2, light)
 
+> **SUPERSEDED (historical record).** The Matrix-centerpiece / Inbox-default IA described
+> here was retired by `brief-0010-management-ui.md` + ADR-0010 (list-first, "No grid — the
+> old Matrix is retired"). Kept as the design lineage between the constellation direction
+> and the shipped 0010 build. Do not treat the IA here as current.
+
 > Paste this whole file into Claude's design tool as grounding context.
 > This is the **practical, management-first** redesign. The earlier "constellation graph"
 > looked great but was a poster, not a tool — you can't sort, multi-select, or triage a

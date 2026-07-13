@@ -1,6 +1,12 @@
 # ADR-0010 Library-First Management — File-by-File Implementation Plan
 Branch: `feat/management-ui-0010`
 
+> **Status: executed (historical plan).** The build landed; RISK 9's deferred resolve verbs
+> (`view diff` / `adopt` / `realign`) were later implemented for real (`skl diff`,
+> `skl realign`, `skl use --force` — see CHANGELOG), so the "coming soon" degradations
+> described below no longer exist in the app. Only the Explanation/AI tab remains deferred
+> (ADR-0007, P3).
+
 ## Verified ground truth (drives the plan)
 - **Engine use/drop already targets arbitrary/new project dirs.** `parseDeployTarget` (src/core/agents.ts:302) resolves `--project <name|path>` (relative→`join(cwd,...)`, absolute as-is); `use.ts` already `mkdir(skillsDir,{recursive:true})`. **No engine change needed for the deploy mechanic itself** — only for the `agents` config block and the persisted projects list.
 - **Rust gate checks the verb only**, not flags (lib.rs:105). `use`/`drop` are already allow-listed (lib.rs:22). **No Rust change for delta 5.**
