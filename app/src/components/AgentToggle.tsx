@@ -26,11 +26,7 @@ import { memo } from "react";
 import { useStore } from "../state/store";
 import { useAgents, useWhere } from "../state/queries";
 import { useCommands } from "../state/commands";
-import {
-  cellStateWithOverride,
-  aliasedSiteFor,
-  copySiteFor,
-} from "../lib/agents";
+import { cellStateWithOverride, aliasedSiteFor } from "../lib/agents";
 import type { CellState } from "../lib/agents";
 import { iconFor } from "../lib/agentIcon";
 import { DEPLOY_GLYPH } from "../lib/tokens";
@@ -112,12 +108,8 @@ function AgentToggleImpl({
         anomaly === "drift" && where
           ? aliasedSiteFor(where, skill, agentId, scope)
           : null;
-      // For a `copy` cell, recover the on-disk copy path so ResolvePopover can
-      // run real link/import verbs against it (Bug 1).
-      const copy =
-        anomaly === "copy" && where
-          ? copySiteFor(where, skill, agentId, scope)
-          : null;
+      // The `copy` site's on-disk path is NOT snapshotted here — ResolvePopover
+      // derives it from the live `where` feed at render time (single source).
       dispatch({
         type: "openResolve",
         target: {
@@ -126,7 +118,6 @@ function AgentToggleImpl({
           scope,
           scopePath: scopePath ?? null,
           state: anomaly,
-          ...(copy ? { copyPath: copy.path } : {}),
           ...(alias
             ? {
                 aliased: true,

@@ -235,6 +235,15 @@ export interface Frontmatter {
   license: string;
 }
 
+/** `skl diff <name> --json` — drift View-diff payload (read-only). */
+export interface DiffReport {
+  name: string;
+  site: string;
+  library: string;
+  identical: boolean;
+  diff: string;
+}
+
 export interface ShowReport {
   name: string;
   body: string;

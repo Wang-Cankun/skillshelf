@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The anomaly-resolution popover is now 100% executable — every "coming soon" action is real.**
+  Three engine verbs land to back it: **`skl realign <deployed-name>`** renames an aliased
+  deployment symlink to match its library skill (atomic same-dir rename; refuses real files,
+  foreign links, and occupied destinations); **`skl diff <name>`** prints/returns a unified diff
+  of a deployed copy's SKILL.md against the library (read-only; clean symlinks trivially report
+  identical); **`skl use --force`** replaces a real-file conflict in an agent skills dir with the
+  library symlink (reported as `overwritten`; default behavior still refuses). In the desktop
+  app: "Realign name" and "Overwrite from library" run for real, "View diff" renders the unified
+  diff in-place inside the popover, and the copy anomaly's Adopt/Convert actions derive the
+  copy's on-disk path from the live `where` feed at render time (single source — when the path
+  can't be recovered the actions are omitted rather than stubbed). The drawer's **Rename**
+  lifecycle button is wired to `skl rename` with inline slug validation, an undo toast, and the
+  drawer re-pointing to the new name (deploy symlinks are not repointed — ADR-0005 — so any
+  now-dead links surface in the anomaly panel's existing Repair flow).
+
 ### Fixed
+- **`skl add --domain` no longer nests the install under a domain folder.** A pre-ADR-0001
+  leftover made `add --domain <d>` write to `library/<d>/<name>` instead of the flat
+  `library/<name>`, so every deployment of such a skill was flagged `aliased` /
+  "Misaligned name" by `where` and the desktop app (the classifier reads the first path
+  segment under the library as the skill name), and a same-named symlinked dir could
+  reroute the write. `--domain` now only tags the taxonomy — the install always lands
+  flat, matching `skl new` and ADR-0001 (domain is tags, not folders). Existing nested
+  installs: move `library/<d>/<name>` up to `library/<name>` and re-run `skl use`.
 - **The desktop "update available" badges finally work.** The per-skill `↑`/`⚠` badges were
   dead code — the `outdated` scan was never triggered — so a new **"Check updates"** toolbar
   button runs it (plus **"Update all stale (N)"**), and a failed check is surfaced instead of

@@ -29,7 +29,7 @@ import type { OutdatedReport, UpdateReport } from "../lib/types";
 // and never touch run(), so they don't appear here. The Rust list is the full
 // authority and must remain a superset of this set; anything routed through
 // run() that isn't here is a programming error, refused before a process spawns.
-const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update", "add", "projects", "link", "import"]);
+const ALLOWED = new Set(["use", "drop", "retire", "unretire", "tag", "untag", "rm", "where", "update", "add", "projects", "link", "import", "rename", "realign"]);
 
 export function deployKey(skill: string, agentId: string, scope: string) {
   return `${skill}|${agentId}|${scope}`;
@@ -386,6 +386,47 @@ export function useCommands() {
     [dispatch, invalidate, runInverse],
   );
 
+  // ── Rename a skill slug — reversible (inverse: rename back) ─────────────
+  // ONE `skl rename <from> <to>` call (dir + frontmatter + taxonomy + lockfile,
+  // atomic in the engine). No optimistic override: rename is rare and the
+  // rename touches every name-keyed feed, so we wait for the engine then
+  // refetch truth. NOTE the engine does NOT repoint deployed symlinks
+  // (ADR-0005 defers that) — the `where` invalidation surfaces any now-dead
+  // links in the anomaly panel, whose existing Repair action closes the loop.
+  // Returns ok so the caller (drawer) can re-point its selection to `to`.
+  const rename = useCallback(
+    async (from: string, to: string): Promise<boolean> => {
+      dispatch({ type: "setError", error: null });
+      const res = await runAction(["rename", from, to]);
+      await invalidate([qk.library, qk.where, qk.agents, qk.status]);
+      if (!res.ok) {
+        dispatch({
+          type: "setError",
+          error: res.stderr.trim() || `rename failed`,
+        });
+        return false;
+      }
+      const undo = () => {
+        dispatch({ type: "hideToast" });
+        dispatch({ type: "openDrawer", name: from });
+        void runInverse(
+          [["rename", to, from]],
+          [qk.library, qk.where, qk.agents, qk.status],
+        );
+      };
+      dispatch({
+        type: "showToast",
+        toast: {
+          msg: `Renamed ${from} → ${to}`,
+          cmd: cmdEcho(["rename", from, to]),
+          undo,
+        },
+      });
+      return true;
+    },
+    [dispatch, invalidate, runInverse],
+  );
+
   // ── Untag a domain — reversible ─────────────────────────────────────────
   const untag = useCallback(
     async (name: string, domain: string) => {
@@ -729,6 +770,7 @@ export function useCommands() {
     removeProject,
     retire,
     unretire,
+    rename,
     untag,
     tag,
     hardRemove,

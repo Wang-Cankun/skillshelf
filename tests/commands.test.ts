@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { existsSync, symlinkSync, writeFileSync, mkdtempSync } from "node:fs";
+import { existsSync, symlinkSync, writeFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { lstat, readlink } from "node:fs/promises";
 import * as show from "../src/commands/show.ts";
 import * as search from "../src/commands/search.ts";
@@ -176,6 +176,32 @@ describe("skl status", () => {
 });
 
 describe("skl use / drop symlink lifecycle", () => {
+  test("use --force replaces a real-file conflict with the library symlink; default still refuses", async () => {
+    const p = await tempProject();
+    cleanups.push(p.cleanup);
+    // Occupy the slot with a REAL (non-symlink) drifted copy dir.
+    const slot = join(p.path, ".claude", "skills", "rnaseq-qc");
+    mkdirSync(slot, { recursive: true });
+    writeFileSync(join(slot, "SKILL.md"), "---\nname: rnaseq-qc\n---\n\nDRIFTED COPY\n");
+
+    // Default: conflict, exit 1, the real dir is untouched.
+    const refused = await runCmd(use, ["rnaseq-qc", "--json"], { cwd: p.path });
+    expect(refused.code).toBe(1);
+    expect((refused.json[0] as any).linked[0].status).toBe("conflict");
+    expect((await lstat(slot)).isSymbolicLink()).toBe(false);
+
+    // --force: the real dir is replaced by a symlink to the library skill.
+    const forced = await runCmd(use, ["rnaseq-qc", "--force", "--json"], { cwd: p.path });
+    expect(forced.code).toBe(0);
+    expect((forced.json[0] as any).linked[0].status).toBe("overwritten");
+    expect((await lstat(slot)).isSymbolicLink()).toBe(true);
+    expect(await readlink(slot)).toBe(join(FIXTURE_LIBRARY, "rnaseq-qc"));
+
+    // --force on a clean re-run is a no-op "already", not another overwrite.
+    const again = await runCmd(use, ["rnaseq-qc", "--force", "--json"], { cwd: p.path });
+    expect((again.json[0] as any).linked[0].status).toBe("already");
+  });
+
   test("use links a bundle's skills into ./.claude/skills, status sees them, drop removes them", async () => {
     const p = await tempProject();
     cleanups.push(p.cleanup);

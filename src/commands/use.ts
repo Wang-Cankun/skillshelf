@@ -5,7 +5,7 @@
 // library crawl, one symlink pass); the single-name shape is byte-identical to before.
 
 import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import type { Ctx, Skill } from "../types.ts";
 import { resolveBundle } from "../core/bundle.ts";
 import { activeSkills, findByName } from "../core/library.ts";
@@ -16,20 +16,25 @@ import { render, type CommandResult } from "../core/report.ts";
 export const meta = {
   name: "use",
   summary: "Symlink bundle(s)/skill(s) into an agent's skills dir (default: ./.claude/skills/)",
-  usage: "skl use <bundle|skill>... [--agent <id>] [--global | --project <name>] [--json]",
+  usage: "skl use <bundle|skill>... [--agent <id>] [--global | --project <name>] [--force] [--json]",
 } as const;
 
 interface LinkResult {
   name: string;
   target: string;
   link: string;
-  status: "linked" | "already" | "conflict";
+  status: "linked" | "already" | "conflict" | "overwritten";
 }
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     const json = argv.includes("--json");
-    const parsed = parseDeployTarget(argv);
+    // --force: a real (non-symlink) file/dir occupying a slot is REPLACED by the
+    // library symlink instead of reported as a conflict — the UI's "Overwrite
+    // from library" drift remediation. Consumed here; parseDeployTarget rejects
+    // unknown flags.
+    const force = argv.includes("--force");
+    const parsed = parseDeployTarget(argv.filter((a) => a !== "--force"));
     if ("error" in parsed) {
       ctx.error(`skl use: ${parsed.error}`);
       ctx.error("usage: " + meta.usage);
@@ -118,9 +123,16 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         const want = await realpathOrSelfAsync(skillPath);
         if (cur === want) status = "already";
       } else if (await pathTakenNonLink(link)) {
-        // A real (non-symlink) file/dir occupies the slot — don't clobber it.
-        results.push({ name: s.name, target: skillPath, link, status: "conflict" });
-        continue;
+        if (!force) {
+          // A real (non-symlink) file/dir occupies the slot — don't clobber it.
+          results.push({ name: s.name, target: skillPath, link, status: "conflict" });
+          continue;
+        }
+        // --force: replace the real entry with the library symlink. `link` is
+        // always join(skillsDir, <library skill name>), so the removal cannot
+        // reach outside the agent's skills dir.
+        await rm(link, { recursive: true, force: true });
+        status = "overwritten";
       }
 
       await safeSymlink(skillPath, link);
@@ -139,7 +151,13 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         emit(`${label} -> ${skillsDir}`);
         for (const r of results) {
           const tag =
-            r.status === "linked" ? "linked" : r.status === "already" ? "ok" : "SKIP (real file present)";
+            r.status === "linked"
+              ? "linked"
+              : r.status === "already"
+                ? "ok"
+                : r.status === "overwritten"
+                  ? "overwritten (real file replaced)"
+                  : "SKIP (real file present)";
           emit(`  ${r.name}  [${tag}]`);
         }
         for (const u of unresolved) {

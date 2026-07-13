@@ -63,6 +63,25 @@ export function DetailDrawer() {
   const [extraScopes, setExtraScopes] = useState<string[]>([]);
   useEffect(() => setExtraScopes([]), [name]);
 
+  // Inline rename flow (LIFECYCLE section). Mirrors the engine's SLUG_RE
+  // (src/core/lifecycle.ts) so an invalid slug is refused before a process
+  // spawns. On success the drawer re-points to the new name — the old
+  // name-keyed queries are gone after the rename invalidation.
+  const [renameTo, setRenameTo] = useState<string | null>(null);
+  useEffect(() => setRenameTo(null), [name]);
+  const RENAME_SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
+  const renameValid =
+    renameTo !== null && RENAME_SLUG_RE.test(renameTo) && renameTo !== name;
+  const submitRename = () => {
+    if (!name || !renameValid || renameTo === null) return;
+    void commands.rename(name, renameTo).then((ok) => {
+      if (ok) {
+        dispatch({ type: "openDrawer", name: renameTo });
+        setRenameTo(null);
+      }
+    });
+  };
+
   // ResolvePopover + InheritedPopover are mounted globally here (DetailDrawer is
   // always mounted) so a list-row anomaly/inherited click resolves even with the
   // drawer closed.
@@ -824,7 +843,10 @@ export function DetailDrawer() {
             <div style={{ padding: "15px 16px" }}>
               <div style={{ ...CAPTION, marginBottom: 9 }}>LIFECYCLE</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                <button style={lifeBtn} disabled title="coming soon">
+                <button
+                  style={lifeBtn}
+                  onClick={() => setRenameTo(renameTo === null ? name : null)}
+                >
                   Rename
                 </button>
                 {isRetired ? (
@@ -853,6 +875,38 @@ export function DetailDrawer() {
                   Remove
                 </button>
               </div>
+              {renameTo !== null && (
+                <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
+                  <input
+                    autoFocus
+                    value={renameTo}
+                    onChange={(e) =>
+                      setRenameTo(e.target.value.trim().toLowerCase())
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") submitRename();
+                      if (e.key === "Escape") setRenameTo(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontFamily: MONO,
+                      fontSize: 11,
+                      padding: "5px 8px",
+                      border: `1px solid ${renameValid || renameTo === name ? "#ECECEE" : "#F1D4D4"}`,
+                      borderRadius: 7,
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    style={{ ...lifeBtn, opacity: renameValid ? 1 : 0.5 }}
+                    disabled={!renameValid}
+                    onClick={submitRename}
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
               <div
                 style={{
                   marginTop: 10,
@@ -868,7 +922,9 @@ export function DetailDrawer() {
                 }}
               >
                 <span style={{ color: "#A1A1AA" }}>$</span> skl{" "}
-                {isRetired ? "unretire" : "retire"} {name}
+                {renameTo !== null
+                  ? `rename ${name} ${renameTo || "<new-name>"}`
+                  : `${isRetired ? "unretire" : "retire"} ${name}`}
               </div>
             </div>
           </div>

@@ -21,6 +21,8 @@ import * as show from "./commands/show.ts";
 import * as index from "./commands/index.ts";
 import * as use from "./commands/use.ts";
 import * as drop from "./commands/drop.ts";
+import * as realign from "./commands/realign.ts";
+import * as diffCmd from "./commands/diff.ts";
 import * as init from "./commands/init.ts";
 import * as add from "./commands/add.ts";
 import * as outdated from "./commands/outdated.ts";
@@ -56,6 +58,8 @@ const MODULES: CommandModule[] = [
   show,
   use,
   drop,
+  realign,
+  diffCmd,
   refresh,
   add,
   scan,

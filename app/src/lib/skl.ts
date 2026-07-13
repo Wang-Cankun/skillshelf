@@ -20,6 +20,7 @@ import type {
   AppConfig,
   ShowReport,
   OutdatedReport,
+  DiffReport,
 } from "./types";
 import {
   LibrarySchema,
@@ -30,6 +31,7 @@ import {
   ConfigSchema,
   RawShowSchema,
   OutdatedSchema,
+  DiffReportSchema,
 } from "./schemas";
 import { realLibrary, realWhere, realScan, realStatus, realConfig } from "./fixtures";
 import { augmentLibrary, deriveShow, normalizeShow, deriveOutdated } from "./derive";
@@ -275,6 +277,31 @@ export async function loadShow(
     return normalizeShow(raw, name);
   }
   return deriveShow(name, file, augmentLibrary(realLibrary, realWhere));
+}
+
+/**
+ * `skl diff <name>` — unified diff of a deployed copy against the library
+ * (read-only, backs the drift "View diff" action). Browser dev shows a small
+ * synthetic diff so the panel is exercisable without an engine.
+ */
+export async function loadDiff(
+  name: string,
+  agentId: string,
+  scopeArgs: string[],
+): Promise<DiffReport> {
+  if (IS_TAURI) {
+    return invokeJson(
+      ["diff", name, "--agent", agentId, ...scopeArgs, "--json"],
+      DiffReportSchema,
+    );
+  }
+  return {
+    name,
+    site: "(browser fixture)",
+    library: `(library)/${name}`,
+    identical: false,
+    diff: `--- library/${name}/SKILL.md\n+++ deployed/${name}/SKILL.md\n@@ -1,2 +1,2 @@\n # ${name}\n-fixture body\n+fixture body (local edit)`,
+  };
 }
 
 /**

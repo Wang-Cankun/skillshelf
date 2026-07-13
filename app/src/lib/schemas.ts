@@ -261,3 +261,14 @@ export const ShowReportSchema = z
       .optional(),
   })
   .passthrough();
+
+// `skl diff <name> --json` — the drift "View diff" payload (read-only L2 fact).
+export const DiffReportSchema = z
+  .object({
+    name: z.string(),
+    site: z.string(),
+    library: z.string(),
+    identical: z.boolean(),
+    diff: z.string(),
+  })
+  .passthrough();

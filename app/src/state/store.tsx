@@ -63,10 +63,6 @@ export interface ResolveTarget {
    *  library skill the alias points at, for the realign command. */
   aliased?: boolean;
   aliasTarget?: string | null;
-  /** on-disk path of the standalone `copy` site (recovered via copySiteFor), so
-   *  ResolvePopover can run real `skl link --at <path>` / `skl import --from
-   *  <path>` verbs for the copy anomaly (Bug 1). null/absent when unknown. */
-  copyPath?: string | null;
 }
 
 /** An open "active via Global" info+action request (ADR-0010 inheritance §3).

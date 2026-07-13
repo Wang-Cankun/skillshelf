@@ -2,47 +2,53 @@
 // off `state.resolve` — set when a WARNING-glyph AgentToggle cell is clicked
 // (rows OR drawer). A click never blind-toggles a symlink; instead it opens this
 // modal of explicit, per-state choices:
-//   drift   → view diff (deferred) · pull upstream · overwrite from library (deferred) · keep
+//   drift   → view diff (inline unified diff) · pull upstream · overwrite from library · keep
 //   copy    → adopt into library (skl import --copy) · convert to link (DANGER, skl link --at) · keep
 //   dead    → repair (re-link) · remove (drop the broken link)
-//   aliased → realign name (deferred) · keep
+//   aliased → realign name (skl realign) · keep
 // `aliased` is FOLDED into the derived state `drift` by stateForSite, so a cell's
 // `state` alone reads as "drift". AgentToggle recovers the pre-fold distinction
 // from the raw `where` feed and sets `target.aliased`, which we branch on FIRST
 // here so an aliased deployment gets the dedicated "Realign name" menu instead of
 // the diff/pull drift options.
 //
-// Each action: dispatch `applyResolve` (closes the popover) THEN either run a
-// real command (update / use / drop) OR, for engine verbs that don't exist yet
-// (diff/adopt/convert/realign), echo the exact command + a "coming soon" toast.
-// We mount this globally inside DetailDrawer (always mounted) so a list-row
-// anomaly click resolves even when the drawer is closed.
+// Each action: dispatch `applyResolve` (closes the popover) THEN run the real
+// command — every action is engine-backed; "View diff" renders its result
+// in-place instead of closing. We mount this globally inside DetailDrawer
+// (always mounted) so a list-row anomaly click resolves even with the drawer closed.
 
+import { useEffect, useState } from "react";
 import { useStore } from "../state/store";
 import { useCommands } from "../state/commands";
-import { useLibrary } from "../state/queries";
+import { useLibrary, useWhere } from "../state/queries";
 import { GLOBAL_SCOPE } from "../state/store";
 import { MONO } from "../lib/tokens";
+import { copySiteFor } from "../lib/agents";
+import { loadDiff } from "../lib/skl";
 import type { DeployStateName } from "../lib/types";
-
-type ActionKind = "run" | "deferred";
 
 interface ResolveAction {
   label: string;
   hint: string;
   /** the literal `skl …` vector this maps to (echoed in the toast / preview). */
   cmd: string[];
-  kind: ActionKind;
   danger?: boolean;
-  /** real runner (kind === "run"). */
+  /** real runner (absent only on the keep/no-op action). */
   run?: () => void;
+  /** run WITHOUT closing the popover (in-place views like the diff panel). */
+  keepOpen?: boolean;
 }
 
 export function ResolvePopover() {
   const { state, dispatch } = useStore();
   const commands = useCommands();
   const library = useLibrary().data ?? [];
+  const where = useWhere().data;
   const target = state.resolve;
+  // In-place unified-diff panel (drift → "View diff"): null = hidden,
+  // "" = loading. Reset whenever the resolve target changes.
+  const [diffText, setDiffText] = useState<string | null>(null);
+  useEffect(() => setDiffText(null), [target]);
   if (!target) return null;
 
   const { skill, agent, scope, scopePath } = target;
@@ -64,31 +70,17 @@ export function ResolvePopover() {
   const scopeFlag =
     scope === GLOBAL_SCOPE ? ["--global"] : ["--project", scopePath ?? scope];
 
-  // A deferred action: close, echo the command, toast "coming soon" (RISK 9).
-  const defer = (cmd: string[]) => () => {
-    close();
-    dispatch({
-      type: "showToast",
-      toast: {
-        msg: "Coming soon — not yet wired to the engine",
-        cmd: cmd.join(" "),
-        undo: null,
-      },
-    });
-  };
-
   const keep: ResolveAction = {
     label: "Keep as-is",
     hint: "Leave it untouched and close.",
     cmd: [],
-    kind: "deferred",
     run: undefined,
   };
 
   const actions: ResolveAction[] = (() => {
     // Aliased site (recovered pre-fold): the deployment is linked under the WRONG
-    // name. Offer "Realign name" (rename the deployed link to its library skill
-    // name) — a deferred verb, echoed + "coming soon" (RISK 9), never blind-toggled.
+    // name. "Realign name" renames the deployed link to its library skill name
+    // (`skl realign`) — never blind-toggled.
     if (target.aliased) {
       return [
         {
@@ -97,7 +89,11 @@ export function ResolvePopover() {
             ? `Rename this "${skill}" deployment to match its library skill "${target.aliasTarget}".`
             : "Rename the deployment to match its library skill name.",
           cmd: ["skl", "realign", skill, "--agent", agent, ...scopeFlag],
-          kind: "deferred",
+          run: () =>
+            void commands.resolveCopy(
+              ["realign", skill, "--agent", agent, ...scopeFlag],
+              `Realigned ${skill}${target.aliasTarget ? ` → ${target.aliasTarget}` : ""}`,
+            ),
         },
         keep,
       ];
@@ -109,7 +105,17 @@ export function ResolvePopover() {
             label: "View diff",
             hint: "Compare the deployed copy against the library source.",
             cmd: ["skl", "diff", skill, "--agent", agent, ...scopeFlag],
-            kind: "deferred",
+            keepOpen: true,
+            run: () => {
+              setDiffText("");
+              loadDiff(skill, agent, scopeFlag)
+                .then((r) =>
+                  setDiffText(
+                    r.identical ? "(no drift — deployed copy matches the library)" : r.diff,
+                  ),
+                )
+                .catch((err) => setDiffText(`diff failed: ${String(err)}`));
+            },
           },
           // Only a github-vendored skill has an upstream to pull; hide otherwise
           // so `skl update` never runs against a local/linked skill (W6/S4).
@@ -119,69 +125,69 @@ export function ResolvePopover() {
                   label: "Pull upstream",
                   hint: "Re-pull the upstream body into the library (preserves tags).",
                   cmd: ["skl", "update", skill],
-                  kind: "run",
                   run: () => void commands.update(skill),
                 } as ResolveAction,
               ]
             : []),
           {
+            // `skl use --force`: replace the drifted real copy with a clean
+            // symlink to the library version (discards the copy's local edits).
             label: "Overwrite from library",
-            hint: "Replace the drifted deployment with the library version.",
+            hint: "DANGER: replaces the drifted deployment (and its local edits) with the library version.",
             cmd: ["skl", "use", skill, "--agent", agent, ...scopeFlag, "--force"],
-            kind: "deferred",
+            danger: true,
+            run: () =>
+              void commands.resolveCopy(
+                ["use", skill, "--agent", agent, ...scopeFlag, "--force"],
+                `Overwrote ${skill} from the library`,
+              ),
           },
           keep,
         ];
       case "copy": {
-        // Real verbs need the on-disk path of the standalone copy (recovered by
-        // copySiteFor → target.copyPath). When it's known, wire both actions to
-        // the real engine verbs; otherwise fall back to a deferred echo so we
-        // never run a path-less command (Bug 1).
-        const copyPath = target.copyPath ?? null;
+        // Real verbs need the on-disk path of the standalone copy. It is derived
+        // HERE, from the live `where` feed, at render time — the single source
+        // (the dispatcher no longer snapshots it). If the feed can't resolve the
+        // site, the actions are OMITTED (never a path-less command, never a fake
+        // echo): keep-only, with the hint explaining why.
+        const copyPath = where
+          ? (copySiteFor(where, skill, agent, scope)?.path ?? null)
+          : null;
+        if (!copyPath) {
+          return [
+            {
+              ...keep,
+              hint: "The copy's on-disk path could not be recovered from the deployment scan — refresh and retry, or resolve via `skl where` in a terminal.",
+            },
+          ];
+        }
         return [
-          copyPath
-            ? {
-                // `skl import <name> --from <copy> --copy`: adopt the hand-made
-                // copy into the library as a real skill (non-destructive — the
-                // original copy is left in place; --copy doesn't move it).
-                label: "Adopt into library",
-                hint: "Import this hand-made copy into the library as a real skill (leaves the copy in place).",
-                cmd: ["skl", "import", skill, "--from", copyPath, "--copy"],
-                kind: "run",
-                run: () =>
-                  void commands.resolveCopy(
-                    ["import", skill, "--from", copyPath, "--copy"],
-                    `Adopted ${skill} into the library`,
-                  ),
-              }
-            : {
-                label: "Adopt into library",
-                hint: "Import this hand-made copy into the library as a real skill.",
-                cmd: ["skl", "import", skill, "--from", "<copy path>", "--copy"],
-                kind: "deferred",
-              },
-          copyPath
-            ? {
-                // `skl link <name> --at <copy> --force`: collapse the stray copy
-                // into a symlink INTO the library (discards the copy's hand edits).
-                label: "Convert to link",
-                hint: "DANGER: replaces the on-disk copy (and any hand edits) with a symlink to the library.",
-                cmd: ["skl", "link", skill, "--at", copyPath, "--force"],
-                kind: "run",
-                danger: true,
-                run: () =>
-                  void commands.resolveCopy(
-                    ["link", skill, "--at", copyPath, "--force"],
-                    `Converted ${skill} copy to a library link`,
-                  ),
-              }
-            : {
-                label: "Convert to link",
-                hint: "DANGER: replaces the on-disk copy (and any hand edits) with a symlink to the library.",
-                cmd: ["skl", "link", skill, "--at", "<copy path>", "--force"],
-                kind: "deferred",
-                danger: true,
-              },
+          {
+            // `skl import <name> --from <copy> --copy`: adopt the hand-made
+            // copy into the library as a real skill (non-destructive — the
+            // original copy is left in place; --copy doesn't move it).
+            label: "Adopt into library",
+            hint: "Import this hand-made copy into the library as a real skill (leaves the copy in place).",
+            cmd: ["skl", "import", skill, "--from", copyPath, "--copy"],
+            run: () =>
+              void commands.resolveCopy(
+                ["import", skill, "--from", copyPath, "--copy"],
+                `Adopted ${skill} into the library`,
+              ),
+          },
+          {
+            // `skl link <name> --at <copy> --force`: collapse the stray copy
+            // into a symlink INTO the library (discards the copy's hand edits).
+            label: "Convert to link",
+            hint: "DANGER: replaces the on-disk copy (and any hand edits) with a symlink to the library.",
+            cmd: ["skl", "link", skill, "--at", copyPath, "--force"],
+            danger: true,
+            run: () =>
+              void commands.resolveCopy(
+                ["link", skill, "--at", copyPath, "--force"],
+                `Converted ${skill} copy to a library link`,
+              ),
+          },
           keep,
         ];
       }
@@ -191,7 +197,6 @@ export function ResolvePopover() {
             label: "Repair link",
             hint: "Re-create the symlink from the library source.",
             cmd: ["skl", "use", skill, "--agent", agent, ...scopeFlag],
-            kind: "run",
             run: () =>
               void commands.deploy(skill, agent, scope, true, scopePath ?? undefined),
           },
@@ -199,7 +204,6 @@ export function ResolvePopover() {
             label: "Remove dead link",
             hint: "Drop the broken symlink from this surface.",
             cmd: ["skl", "drop", skill, "--agent", agent, ...scopeFlag],
-            kind: "run",
             danger: true,
             run: () =>
               void commands.deploy(skill, agent, scope, false, scopePath ?? undefined),
@@ -214,16 +218,16 @@ export function ResolvePopover() {
   })();
 
   const onPick = (a: ResolveAction) => {
-    if (a === keep) {
-      close();
+    if (!a.run) {
+      close(); // keep / no-op
       return;
     }
-    if (a.kind === "run" && a.run) {
-      close();
-      a.run();
+    if (a.keepOpen) {
+      a.run(); // in-place view (diff panel) — the popover stays up
       return;
     }
-    defer(a.cmd)();
+    close();
+    a.run();
   };
 
   const headingFor: Record<DeployStateName, string> = {
@@ -366,20 +370,6 @@ export function ResolvePopover() {
                 >
                   {a.label}
                 </span>
-                {a.kind === "deferred" && a !== keep ? (
-                  <span
-                    style={{
-                      fontSize: 9.5,
-                      color: "#A1A1AA",
-                      border: "1px solid #ECECEE",
-                      borderRadius: 4,
-                      padding: "0 5px",
-                      fontWeight: 500,
-                    }}
-                  >
-                    coming soon
-                  </span>
-                ) : null}
               </div>
               <div style={{ fontSize: 11.5, color: "#71717A", lineHeight: 1.4 }}>
                 {a.hint}
@@ -402,6 +392,27 @@ export function ResolvePopover() {
             </button>
           ))}
         </div>
+
+        {diffText !== null && (
+          <pre
+            style={{
+              marginTop: 10,
+              maxHeight: 240,
+              overflow: "auto",
+              background: "#F6F6F7",
+              border: "1px solid #ECECEE",
+              borderRadius: 8,
+              padding: "8px 10px",
+              fontFamily: MONO,
+              fontSize: 10.5,
+              lineHeight: 1.5,
+              color: "#3F3F46",
+              whiteSpace: "pre",
+            }}
+          >
+            {diffText === "" ? "loading diff…" : diffText}
+          </pre>
+        )}
 
         <div
           style={{

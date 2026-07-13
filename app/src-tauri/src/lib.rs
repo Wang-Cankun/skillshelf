@@ -24,11 +24,10 @@ struct SklResult {
 const ALLOWED_VERBS: &[&str] = &[
     "ls", "search", "show", "scan", "where", "status", "import", "add",
     "tag", "untag", "retag", "rename", "retire", "unretire", "rm",
-    "use", "drop", "link", "roots", "projects", "outdated", "update", "refresh",
+    "use", "drop", "link", "realign", "roots", "projects", "outdated", "update", "refresh",
     "infer", "index", "new", "init",
     // ADR-0008: multi-agent + drawer feeds. `agents`/`show` back the new
-    // `--json` loaders; `diff` backs a future near-dup affordance (deferred in
-    // the UI but kept allow-listed so it never fails silently at the bridge).
+    // `--json` loaders; `diff` backs the drift "View diff" action.
     "agents", "diff",
 ];
 
