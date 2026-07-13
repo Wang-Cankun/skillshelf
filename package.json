@@ -1,6 +1,6 @@
 {
   "name": "skillshelf",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Agent-first skill registry + manager for Claude Code and compatible agents.",
   "type": "module",
   "license": "MIT",
@@ -25,7 +25,7 @@
     "skl": "./src/cli.ts"
   },
   "scripts": {
-    "preinstall": "bun --version >/dev/null 2>&1 || { echo '\\nskillshelf requires the Bun runtime (https://bun.sh) — its bin is a TypeScript entrypoint, not a compiled Node script.\\nInstall Bun, then:  bun add -g skillshelf   (or run without installing:  bunx skillshelf <command>)\\n' >&2; exit 1; }",
+    "preinstall": "bun --version >/dev/null 2>&1 || { echo '\\nskillshelf requires the Bun runtime (https://bun.sh) \u2014 its bin is a TypeScript entrypoint, not a compiled Node script.\\nInstall Bun, then:  bun add -g skillshelf   (or run without installing:  bunx skillshelf <command>)\\n' >&2; exit 1; }",
     "skl": "bun run src/cli.ts",
     "test": "bun test"
   },
