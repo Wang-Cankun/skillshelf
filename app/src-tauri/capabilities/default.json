@@ -6,7 +6,13 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "opener:allow-open-path",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$HOME/**", "app": true },
+        { "path": "/Volumes/**", "app": true }
+      ]
+    },
     "opener:allow-reveal-item-in-dir",
     "dialog:allow-open",
     "updater:default",

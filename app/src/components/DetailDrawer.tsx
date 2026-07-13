@@ -223,12 +223,18 @@ export function DetailDrawer() {
           <span style={{ flex: 1 }} />
           <button
             onClick={() =>
+              // Open the skill's SOURCE dir as an editor workspace (editing
+              // usually spans several files), focusing the current file. A
+              // LINKED entry opens its real dev repo, not the library symlink.
               void openInEditor(
-                skill ? `${skill.path}/${state.drawerFile}` : undefined,
+                skill
+                  ? (skill.mode === "linked" && skill.linkTarget) || skill.path
+                  : undefined,
+                state.drawerFile,
               )
             }
             style={hdrBtn}
-            title={`Edit ${state.drawerFile}`}
+            title={`Open source dir in editor · ${state.drawerFile}`}
           >
             Edit {fileLabel}
           </button>

@@ -32,6 +32,9 @@
     "createUpdaterArtifacts": false
   },
   "plugins": {
+    "opener": {
+      "requireLiteralLeadingDot": false
+    },
     "updater": {
       "endpoints": [
         "https://github.com/Wang-Cankun/skillshelf/releases/latest/download/latest.json"
