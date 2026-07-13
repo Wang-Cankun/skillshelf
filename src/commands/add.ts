@@ -174,7 +174,6 @@ async function reportDryRun(
   parsed: ParsedSource,
   ref: string,
   discovered: DiscoveredSkill[],
-  domainFolder: string | null,
 ): Promise<number> {
   interface Row {
     name: string;
@@ -189,7 +188,7 @@ async function reportDryRun(
       rows.push({ name: d.name, subpath: d.subpath, verdict: "invalid", willInstall: false, needsForce: false });
       continue;
     }
-    const destDir = destDirFor(ctx.config.libraryPath, domainFolder, d.name);
+    const destDir = destDirFor(ctx.config.libraryPath, d.name);
     if (writesThroughSymlink(ctx.config.libraryPath, destDir)) {
       rows.push({ name: d.name, subpath: d.subpath, verdict: "linked", willInstall: false, needsForce: false });
       continue;
@@ -240,10 +239,11 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return 1;
   }
 
-  // --domain validated once up front (applies to every install path).
-  const domainFolder = flags.domain && flags.domain.trim() !== "" ? flags.domain.trim() : null;
-  if (domainFolder !== null && !SLUG_RE.test(domainFolder)) {
-    ctx.error(`add: invalid --domain "${domainFolder}" — use lowercase letters, digits, and hyphens`);
+  // --domain validated once up front (applies to every install path). It is a taxonomy
+  // tag, never a folder — installs always land flat at library/<name> (ADR-0001).
+  const domain = flags.domain && flags.domain.trim() !== "" ? flags.domain.trim() : null;
+  if (domain !== null && !SLUG_RE.test(domain)) {
+    ctx.error(`add: invalid --domain "${domain}" — use lowercase letters, digits, and hyphens`);
     return 1;
   }
 
@@ -340,7 +340,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         : flags.skill !== null
           ? discovered.filter((d) => flags.skill!.includes(d.name))
           : discovered;
-      return await reportDryRun(ctx, flags, parsed, ref, preview, domainFolder);
+      return await reportDryRun(ctx, flags, parsed, ref, preview);
     }
 
     // ---- selection ----
@@ -395,7 +395,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
         selected[0]!,
         {
           libraryPath: ctx.config.libraryPath,
-          domainFolder,
+          domain,
           nameOverride: flags.name,
           sourceStr: sourceOf(selected[0]!),
           ref,
@@ -474,7 +474,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
           s,
           {
             libraryPath: ctx.config.libraryPath,
-            domainFolder,
+            domain,
             nameOverride: null,
             sourceStr: sourceOf(s),
             ref,

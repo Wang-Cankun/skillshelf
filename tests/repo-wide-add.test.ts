@@ -471,19 +471,21 @@ describe("skl add — review hardening (correctness/conformance)", () => {
     expect(existsSync(join(library, "only", "SKILL.md"))).toBe(true);
   });
 
-  test("--force does not clobber an external tree through a symlinked --domain folder", async () => {
+  test("--domain installs FLAT and never writes through a same-named symlinked dir (ADR-0001 regression)", async () => {
     const extTree = await realpath(await mkdtemp(join(tmpdir(), "skl-domext-")));
     try {
       await writeSkill(join(extTree, "alpha"), "alpha", "Alpha dev", "EXTERNAL DEV BODY");
-      await symlink(extTree, join(library, "tools")); // symlinked DOMAIN folder → external tree
+      await symlink(extTree, join(library, "tools")); // pre-fix, --domain tools wrote THROUGH this
 
       const r = await runCmd(addCmd, [gitSrc, "--all", "--domain", "tools", "--force", "--no-infer", "--json"], { library, env: env() });
       expect(r.code).toBe(0);
-      const out = r.json[0] as { results: { name: string; status: string; reason: string }[] };
+      const out = r.json[0] as { results: { name: string; status: string; domains: string[] }[] };
       const alphaRow = out.results.find((x) => x.name === "alpha")!;
-      expect(alphaRow.status).toBe("skipped");
-      expect(alphaRow.reason).toContain("outside the library");
-      // The external dev tree was NOT written through the symlinked parent.
+      expect(alphaRow.status).toBe("installed");
+      expect(alphaRow.domains).toEqual(["tools"]);
+      // Flat layout: the skill lands at library/alpha, tagged — not under library/tools/.
+      expect(existsSync(join(library, "alpha", "SKILL.md"))).toBe(true);
+      // The external dev tree was NOT written through the symlinked dir.
       expect(await readFile(join(extTree, "alpha", "SKILL.md"), "utf8")).toContain("EXTERNAL DEV BODY");
       expect(existsSync(join(extTree, "bravo"))).toBe(false);
     } finally {

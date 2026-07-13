@@ -49,7 +49,7 @@ async function makeStagedSkill(parent: string, name: string, body?: string): Pro
 function installOpts(libraryPath: string, over: Partial<InstallOptions> = {}): InstallOptions {
   return {
     libraryPath,
-    domainFolder: null,
+    domain: null,
     nameOverride: null,
     sourceStr: "github:owner/repo",
     ref: "abc123",
@@ -146,13 +146,14 @@ describe("vendor.installSkill — copy + provenance + verdict", () => {
     expect(o.reason).toContain("not overwriting");
   });
 
-  test("a domain folder lands the skill under it and tags the taxonomy", async () => {
+  test("--domain tags the taxonomy but the skill lands FLAT (ADR-0001: tags, not folders)", async () => {
     const skill = await makeStagedSkill(tmp, "foo");
-    const o = await installSkill(skill, installOpts(library, { domainFolder: "data" }));
+    const o = await installSkill(skill, installOpts(library, { domain: "data" }));
     expect(o.status).toBe("installed");
-    expect(o.path).toBe(join(library, "data", "foo"));
+    expect(o.path).toBe(join(library, "foo"));
     expect(o.domains).toEqual(["data"]);
-    expect(existsSync(join(library, "data", "foo", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(library, "foo", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(library, "data"))).toBe(false);
   });
 
   test("nameOverride renames the install slug", async () => {
@@ -214,16 +215,18 @@ describe("vendor.installSkill — guard suite", () => {
     expect(devBody).toContain("DEV REPO");
   });
 
-  test("multi mode skips a write through a symlinked DOMAIN folder (ancestor escape)", async () => {
-    // <library>/ext -> /external; installing under --domain ext must not write through it.
+  test("--domain never routes the write through a same-named symlinked dir (regression: flat layout)", async () => {
+    // <library>/ext -> /external. Pre-ADR-0001 leftovers made --domain ext write into
+    // library/ext/foo (through the symlink); flat layout must land at library/foo.
     const external = join(tmp, "external");
     await mkdir(external, { recursive: true });
     await symlink(external, join(library, "ext"));
 
     const skill = await makeStagedSkill(tmp, "foo");
-    const o = await installSkill(skill, installOpts(library, { domainFolder: "ext", multi: true }));
-    expect(o.status).toBe("skipped");
-    expect(o.reason).toContain("symlink");
+    const o = await installSkill(skill, installOpts(library, { domain: "ext", multi: true }));
+    expect(o.status).toBe("installed");
+    expect(o.path).toBe(join(library, "foo"));
+    expect(o.domains).toEqual(["ext"]);
     expect(existsSync(join(external, "foo"))).toBe(false);
   });
 });
@@ -241,9 +244,8 @@ describe("vendor guard primitives (pure-ish, fs-anchored)", () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  test("destDirFor honors the optional domain folder", () => {
-    expect(destDirFor("/lib", null, "foo")).toBe(join("/lib", "foo"));
-    expect(destDirFor("/lib", "data", "foo")).toBe(join("/lib", "data", "foo"));
+  test("destDirFor is always flat under the library root", () => {
+    expect(destDirFor("/lib", "foo")).toBe(join("/lib", "foo"));
   });
 
   test("nearestExisting climbs to the closest on-disk ancestor", () => {

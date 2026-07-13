@@ -59,9 +59,9 @@ export function bodyOf(text: string): string {
 // GUARD SUITE — the checks every library-write path funnels through, ONCE.
 // ---------------------------------------------------------------------------
 
-/** The library destination dir for a slug (under its domain folder, if any). */
-export function destDirFor(libraryPath: string, domainFolder: string | null, name: string): string {
-  return domainFolder ? join(libraryPath, domainFolder, name) : join(libraryPath, name);
+/** The library destination dir for a slug — always flat `library/<name>` (ADR-0001). */
+export function destDirFor(libraryPath: string, name: string): string {
+  return join(libraryPath, name);
 }
 
 /** The nearest ancestor of `p` (incl. `p`) that exists on disk; falls back to `p`. */
@@ -78,7 +78,7 @@ export function nearestExisting(p: string): string {
 /**
  * True if writing to `destDir` would resolve OUTSIDE the library — i.e. the nearest
  * existing component on the way to destDir is (or is reached through) a symlink whose
- * realpath escapes the library. Catches a symlinked DOMAIN folder (`library/<d> ->
+ * realpath escapes the library. Catches a symlinked ancestor dir (`library/<d> ->
  * /external`) that the leaf-only `isSymlink(destDir)` check misses, so `--force` can't
  * clobber an external tree through a symlinked parent (ADR-0004). Both sides anchor to
  * their nearest existing ancestor, so a fresh (not-yet-created) library is not a false
@@ -93,8 +93,8 @@ export function destEscapesLibrary(libraryPath: string, destDir: string): boolea
 /**
  * The symlink-escape guard: would writing `destDir` go THROUGH a symlink into something
  * the library doesn't own — a LINKED leaf entry, OR a destination reached through a
- * symlinked ANCESTOR (e.g. a symlinked --domain folder) whose realpath escapes the
- * library? Writing through either clobbers an external dev repo, even with --force
+ * symlinked ANCESTOR whose realpath escapes the library? Writing through either
+ * clobbers an external dev repo, even with --force
  * (ADR-0004). The two add/dry-run sites that combined `isSymlink(destDir) ||
  * destEscapesLibrary(...)` inline now share this one predicate.
  */
@@ -108,8 +108,8 @@ export function writesThroughSymlink(libraryPath: string, destDir: string): bool
  * beside a tombstone would strand a duplicate and break `skl unretire`, so add/import/
  * link all refuse it regardless of --force (force overwrites an ACTIVE copy, not a
  * retired one). Each command keeps its own bespoke error wording + exit handling; this
- * is the shared PREDICATE they all branch on. Checked against the flat library root
- * (retirement is never under a domain folder); name-validated via entryStatus.
+ * is the shared PREDICATE they all branch on. Checked against the flat library root;
+ * name-validated via entryStatus.
  */
 export function isRetiredOnly(libraryPath: string, name: string): boolean {
   const status = entryStatus(libraryPath, name);
@@ -179,7 +179,8 @@ async function maybeInferTags(
 
 export interface InstallOptions {
   libraryPath: string;
-  domainFolder: string | null;
+  /** taxonomy tag to apply after install — never a folder (ADR-0001) */
+  domain: string | null;
   /** single-skill --name override; ignored in multi mode */
   nameOverride: string | null;
   /** per-skill lockfile `source` string (already carries the @subpath / #subpath) */
@@ -258,7 +259,7 @@ export async function installSkill(
   // (<library>/_retired/<name>), do NOT install a fresh active copy beside it — that
   // strands a duplicate and breaks `skl unretire`. The user must unretire first. This
   // fires regardless of --force (force overwrites an ACTIVE copy, not a retired one).
-  // Checked against the flat library root (retirement is never under a domain folder).
+  // Checked against the flat library root.
   if (isRetiredOnly(opts.libraryPath, rawName)) {
     return {
       ...base,
@@ -268,14 +269,14 @@ export async function installSkill(
     };
   }
 
-  const destDir = destDirFor(opts.libraryPath, opts.domainFolder, rawName);
+  const destDir = destDirFor(opts.libraryPath, rawName);
   const verdict = await driftVerdict(skill, destDir);
   base.verdict = verdict;
 
   // Never copy THROUGH a symlink into something the library doesn't own: a LINKED leaf
-  // entry, OR a destination reached through a symlinked ANCESTOR (e.g. a symlinked
-  // --domain folder) whose realpath escapes the library. Writing through either would
-  // clobber an external dev repo, even with --force (ADR-0004).
+  // entry, OR a destination reached through a symlinked ANCESTOR whose realpath escapes
+  // the library. Writing through either would clobber an external dev repo, even with
+  // --force (ADR-0004).
   const throughSymlink = writesThroughSymlink(opts.libraryPath, destDir);
 
   if (opts.multi) {
@@ -308,7 +309,7 @@ export async function installSkill(
   }
 
   // ---- write into the library ----
-  await ensureDir(opts.domainFolder ? join(opts.libraryPath, opts.domainFolder) : opts.libraryPath);
+  await ensureDir(opts.libraryPath);
   await copySkillDir(skill.dir, destDir);
 
   const installedBody = bodyOf(await readSkillBody(skill.dir));
@@ -327,8 +328,8 @@ export async function installSkill(
   const installed: Skill = {
     name: rawName,
     description: skill.description,
-    primaryDomain: opts.domainFolder,
-    domains: opts.domainFolder ? [opts.domainFolder] : [],
+    primaryDomain: opts.domain,
+    domains: opts.domain ? [opts.domain] : [],
     path: destDir,
     bodyPath: join(destDir, "SKILL.md"),
     refFiles: [],
@@ -337,14 +338,14 @@ export async function installSkill(
     mirrorOf: null,
     contentHash: "",
   };
-  if (opts.domainFolder) await setDomainsForName(opts.libraryPath, rawName, [opts.domainFolder]);
+  if (opts.domain) await setDomainsForName(opts.libraryPath, rawName, [opts.domain]);
 
   let inferred: string[] | null = null;
   if (opts.infer) {
     inferred = await maybeInferTags(installed, warn);
     if (inferred && inferred.length > 0) await setDomainsForName(opts.libraryPath, rawName, inferred);
   }
-  const domains = inferred && inferred.length > 0 ? inferred : opts.domainFolder ? [opts.domainFolder] : [];
+  const domains = inferred && inferred.length > 0 ? inferred : opts.domain ? [opts.domain] : [];
 
   return {
     ...base,
