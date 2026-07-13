@@ -1,11 +1,8 @@
 # skillshelf
 
-**A package manager for your agent skills — one canonical library, loaded on demand, never all at once.**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE) [![Bun](https://img.shields.io/badge/Bun-%E2%89%A51.2-black?logo=bun)](https://bun.sh) [![CI](https://img.shields.io/github/actions/workflow/status/Wang-Cankun/skillshelf/ci.yml?branch=main)](https://github.com/Wang-Cankun/skillshelf/actions) [![npm](https://img.shields.io/npm/v/skillshelf.svg)](https://www.npmjs.com/package/skillshelf)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Bun](https://img.shields.io/badge/Bun-%E2%89%A51.2-black?logo=bun)](https://bun.sh)
-[![CI](https://img.shields.io/github/actions/workflow/status/Wang-Cankun/skillshelf/ci.yml?branch=main)](https://github.com/Wang-Cankun/skillshelf/actions)
-[![npm](https://img.shields.io/npm/v/skillshelf.svg)](https://www.npmjs.com/package/skillshelf)
+**A package manager for your agent skills — one canonical library, loaded on demand, never all at once.**
 
 Your skills are scattered across **every agent you use** — `~/.claude/skills`, `~/.codex/skills`,
 `~/.cursor/skills`, Obsidian vaults, and a dozen per-project `.claude` dirs. Copies drift, you
@@ -222,7 +219,7 @@ Domains and tags can be inferred and re-run by an LLM via `skl infer`. **This is
 the entire core (search, ls, show, use, bundles, add, update) works fully without any LLM.**
 Inference has three mutually exclusive modes:
 
-```
+```text
 skl infer [--emit | --apply <file.json> | --provider <name>] \
           [--base-url <url>] [--model <id>] [--include-retired] [--json]
 ```
