@@ -28,14 +28,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Apple Silicon
+          # macOS universal — one .dmg that runs on both Apple Silicon and
+          # Intel, cross-compiled on an ARM runner. Do NOT split this back into
+          # two jobs: GitHub retired the `macos-13` Intel runner, so an Intel
+          # job never gets scheduled and hangs until the 24h timeout kills the
+          # whole release (this is what happened to app-v0.3.2).
           - platform: macos-latest
-            rust-target: aarch64-apple-darwin
-            args: "--target aarch64-apple-darwin"
-          # Intel macOS
-          - platform: macos-13
-            rust-target: x86_64-apple-darwin
-            args: "--target x86_64-apple-darwin"
+            rust-target: aarch64-apple-darwin,x86_64-apple-darwin
+            args: "--target universal-apple-darwin"
           # Linux
           - platform: ubuntu-22.04
             rust-target: x86_64-unknown-linux-gnu

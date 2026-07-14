@@ -33,9 +33,15 @@ Never use a `v*` tag for the desktop app.
 
 The desktop release is fully automated by
 [`.github/workflows/release-app.yml`](../.github/workflows/release-app.yml).
-On an `app-v*` tag it builds installers for macOS (Apple Silicon + Intel),
-Linux, and Windows via [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action),
-then publishes them to a **draft** GitHub Release.
+On an `app-v*` tag it builds installers for macOS, Linux, and Windows via
+[`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action), then
+publishes them to a **draft** GitHub Release.
+
+The macOS build is a **universal binary** (`--target universal-apple-darwin`):
+a single `.dmg` that runs on both Apple Silicon and Intel, cross-compiled on an
+ARM runner. Do not split it back into per-arch jobs — GitHub retired the
+`macos-13` Intel runner, so an Intel job is never scheduled and hangs until the
+24h timeout cancels the entire release.
 
 ### Cut a release
 
@@ -173,7 +179,7 @@ unsigned cask app still triggers Gatekeeper.
      version "X.Y.Z"
      sha256 "<sha256 of the .dmg>"
 
-     url "https://github.com/Wang-Cankun/skillshelf/releases/download/app-v#{version}/skillshelf_#{version}_aarch64.dmg"
+     url "https://github.com/Wang-Cankun/skillshelf/releases/download/app-v#{version}/skillshelf_#{version}_universal.dmg"
      name "skillshelf"
      desc "Agent-first skill registry + manager"
      homepage "https://github.com/Wang-Cankun/skillshelf"
@@ -182,8 +188,9 @@ unsigned cask app still triggers Gatekeeper.
    end
    ```
 
-   Get the checksum with `shasum -a 256 skillshelf_X.Y.Z_aarch64.dmg`. For a
-   universal/Intel build, add an `on_arch` / second `url` as needed.
+   Get the checksum with `shasum -a 256 skillshelf_X.Y.Z_universal.dmg`. The
+   macOS build is universal, so one `url` covers both architectures — no
+   `on_arch` block needed.
 
 3. Users then run:
 
