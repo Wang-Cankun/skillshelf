@@ -36,7 +36,6 @@ export type SortDir = "asc" | "desc";
 export type GroupMode = "list" | "domain" | "family" | "vendor";
 export type DrawerTab = "rendered" | "raw" | "expl";
 /** Bulk bar mode (delta 2): enable links, remove unlinks (destructive tint). */
-export type BulkMode = "enable" | "remove";
 
 export type Filter =
   | { kind: "source"; value: "vendored" | "local" }
@@ -101,8 +100,6 @@ export interface State {
   sortDir: SortDir;
   group: GroupMode;
   selected: Record<string, boolean>;
-  /** bulk-bar intent (delta 2); the bar shows when `selected` is non-empty. */
-  bulkMode: BulkMode;
 
   // optimistic overrides (rolled back on mutation error)
   deployOverrides: Record<string, "on" | "off">; // `${skill}|${agent}|${scope}`
@@ -157,7 +154,6 @@ export const initialState: State = {
   sortDir: "asc",
   group: "list",
   selected: {},
-  bulkMode: "enable",
   deployOverrides: {},
   retired: {},
   unretired: {},
@@ -189,7 +185,6 @@ export type Action =
   | { type: "toggleSelect"; name: string }
   | { type: "setSelectedMany"; names: string[]; value: boolean }
   | { type: "clearSelection" }
-  | { type: "setBulkMode"; mode: BulkMode }
   // optimistic overrides
   | { type: "setDeployOverride"; key: string; value: "on" | "off" }
   | { type: "clearDeployOverride"; key: string }
@@ -323,8 +318,6 @@ export function reducer(state: State, action: Action): State {
     }
     case "clearSelection":
       return { ...state, selected: {} };
-    case "setBulkMode":
-      return { ...state, bulkMode: action.mode };
     case "setDeployOverride":
       return {
         ...state,

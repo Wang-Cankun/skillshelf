@@ -67,6 +67,8 @@ function actionBtn(disabled: boolean, accent = "#3F3F46"): React.CSSProperties {
 }
 
 export function MainPane() {
+  const { state } = useStore();
+  const hasSelection = Object.values(state.selected).some(Boolean);
   return (
     <main
       style={{
@@ -83,6 +85,21 @@ export function MainPane() {
       <CountBar />
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         <SkillList />
+        {hasSelection ? (
+          // Room for the floating BulkBar: a spacer so the last rows can scroll
+          // clear of it, plus a sticky fade so rows don't peek around its edges.
+          <div
+            aria-hidden
+            style={{
+              position: "sticky",
+              bottom: 0,
+              height: 96,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(to bottom, rgba(250,250,250,0), #FAFAFA 70%)",
+            }}
+          />
+        ) : null}
       </div>
     </main>
   );

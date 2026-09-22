@@ -4,6 +4,7 @@
 
 import { useEffect } from "react";
 import { useStore } from "../state/store";
+import { bulkBarVisible } from "./BulkBar";
 import { MONO } from "../lib/tokens";
 
 export function Toast() {
@@ -23,7 +24,9 @@ export function Toast() {
       style={{
         position: "fixed",
         left: "50%",
-        bottom: 46,
+        // Stack above the BulkBar (bottom 42, ~56 tall) when it's showing —
+        // deploy toggles keep the selection, so both are on screen together.
+        bottom: bulkBarVisible(state) ? 108 : 46,
         transform: "translateX(-50%)",
         zIndex: 60,
         display: "flex",

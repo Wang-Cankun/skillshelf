@@ -7,7 +7,13 @@
 // The `{kind:"needs"}` filter and the `attention` sort both consult the agents
 // report (anomaly state lives there, not on Skill), which this component owns.
 
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useStore } from "../state/store";
 import { useCommands } from "../state/commands";
 import { useLibrary, useAgents, useWhere } from "../state/queries";
@@ -197,6 +203,26 @@ export function SkillList() {
     visibleNames.length > 0 && visibleNames.every((n) => state.selected[n]);
   const someSelected = visibleNames.some((n) => state.selected[n]);
 
+  // ⌘A / Ctrl+A selects every visible row (outside text fields and overlays).
+  const overlayOpen =
+    !!state.drawer || !!state.confirm || !!state.resolve || !!state.inherited;
+  useEffect(() => {
+    if (overlayOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a") return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+      )
+        return;
+      e.preventDefault();
+      dispatch({ type: "setSelectedMany", names: visibleNames, value: true });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <div style={{ padding: "14px 16px" }}>
       <div
@@ -230,7 +256,9 @@ export function SkillList() {
             aria-label={allSelected ? "deselect all" : "select all"}
             aria-pressed={allSelected}
             title={
-              allSelected ? "Deselect all" : `Select all ${visibleNames.length}`
+              allSelected
+                ? "Deselect all"
+                : `Select all ${visibleNames.length} (⌘A)`
             }
             style={{
               width: 22,
@@ -248,6 +276,28 @@ export function SkillList() {
           </button>
           <span style={headStyle}>SKILL</span>
           <span style={{ flex: 1 }} />
+          {someSelected && !allSelected ? (
+            <button
+              onClick={() => {
+                const sel = visibleNames.filter((n) => state.selected[n]);
+                const unsel = visibleNames.filter((n) => !state.selected[n]);
+                dispatch({ type: "setSelectedMany", names: sel, value: false });
+                dispatch({ type: "setSelectedMany", names: unsel, value: true });
+              }}
+              title="Invert selection among visible rows"
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                fontSize: 11,
+                color: "#2563EB",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              invert
+            </button>
+          ) : null}
           <span style={{ fontFamily: MONO, fontSize: 11, color: "#9A9AA2" }}>
             {visibleNames.length}
           </span>
