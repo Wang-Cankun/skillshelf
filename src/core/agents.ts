@@ -105,14 +105,14 @@ export function agentIdForSurface(
   return agentIdForSurfaceCore(surface, ids);
 }
 
-/** Relative subdirectory under .<id>/ where skills live (agent/skills for pi, skills otherwise). */
-function skillsSuffix(id: string): string {
+/** Global-only suffix: Pi uses ~/.pi/agent/skills but projects use .pi/skills. */
+function globalSkillsSuffix(id: string): string {
   return id === "pi" ? join("agent", "skills") : "skills";
 }
 
 /** Absolute path to an agent's global skills dir. */
 function globalDir(id: string, home: string): string {
-  return join(home, `.${id}`, skillsSuffix(id));
+  return join(home, `.${id}`, globalSkillsSuffix(id));
 }
 
 /**
@@ -161,8 +161,8 @@ export function computeAgentsReport(
     id: a.id,
     name: a.name,
     short: a.short,
-    global: a.global ?? `~/.${a.id}/${skillsSuffix(a.id)}`,
-    projConvention: a.projConvention ?? `.${a.id}/${skillsSuffix(a.id)}`,
+    global: a.global ?? `~/.${a.id}/${globalSkillsSuffix(a.id)}`,
+    projConvention: a.projConvention ?? `.${a.id}/skills`,
     installed: existsSync(globalDir(a.id, home)),
     // Default true (the ~/.x/skills inheritance convention all seeds follow); a
     // custom config entry may opt out with inheritsGlobal:false. `?? true` keeps
@@ -206,7 +206,7 @@ export function agentDeployDir(
   // a named project: resolve as an absolute path, or a dir under cwd.
   const proj = scope.project;
   const root = proj.startsWith(sep) ? proj : join(cwd, proj);
-  return join(root, `.${agentId}`, skillsSuffix(agentId));
+  return join(root, `.${agentId}`, "skills");
 }
 
 /** True if `id` is a known agent. */
@@ -266,7 +266,7 @@ export function resolveReadTarget(
   let extraSurfaces: string[] = [];
   if (projectDir) {
     const ids = agentId ? [agentId] : AGENT_IDS;
-    extraSurfaces = ids.map((id) => join(projectDir, `.${id}`, skillsSuffix(id)));
+    extraSurfaces = ids.map((id) => agentDeployDir(id, { project: projectDir }, home, cwd));
   }
 
   return { rest, agentId, projectDir, extraSurfaces };
@@ -338,7 +338,7 @@ export function parseDeployTarget(
     scope = project.split(sep).filter(Boolean).pop() || project;
   } else {
     // default: the cwd project's dir for this agent (legacy behaviour for claude).
-    dir = join(cwd, `.${effectiveAgent}`, skillsSuffix(effectiveAgent));
+    dir = agentDeployDir(effectiveAgent, { project: cwd }, home, cwd);
     scope = cwd.split(sep).filter(Boolean).pop() || "project";
   }
 

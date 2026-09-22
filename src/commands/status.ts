@@ -4,7 +4,7 @@
 
 import { join } from "node:path";
 import type { Ctx, Skill } from "../types.ts";
-import { resolveReadTarget } from "../core/agents.ts";
+import { agentDeployDir, resolveReadTarget } from "../core/agents.ts";
 import {
   pathExists,
   isSymlink,
@@ -40,7 +40,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const baseDir = rt.projectDir ?? process.cwd();
     const agentId = rt.agentId ?? "claude";
     const cwd = baseDir;
-    const skillsDir = join(baseDir, `.${agentId}`, "skills");
+    const skillsDir = agentDeployDir(agentId, { project: baseDir });
 
     const skills = await ctx.loadLibrary();
     // index library skills by their realpath for matching

@@ -218,6 +218,33 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
   });
 });
 
+describe("Pi scope-specific paths", () => {
+  test("global remains nested while projects use .pi/skills", () => {
+    expect(agentDeployDir("pi", "global", HOME, "/cwd")).toBe("/home/u/.pi/agent/skills");
+    expect(agentDeployDir("pi", { project: "/tmp/p" }, HOME, "/cwd")).toBe("/tmp/p/.pi/skills");
+    expect(agentDeployDir("pi", { project: "rel" }, HOME, "/cwd")).toBe("/cwd/rel/.pi/skills");
+    const report = computeAgentsReport({ surfaces: [], sites: [], problems: [] }, HOME);
+    const pi = report.agents.find((a) => a.id === "pi")!;
+    expect(pi.global).toBe("~/.pi/agent/skills");
+    expect(pi.projConvention).toBe(".pi/skills");
+  });
+
+  test("implicit project, explicit project, and read targets agree", () => {
+    for (const flags of [[], ["--project", "/cwd"]]) {
+      const parsed = parseDeployTarget(["alpha", "--agent", "pi", ...flags], HOME, "/cwd");
+      if ("error" in parsed) throw new Error(parsed.error);
+      expect(parsed.target.dir).toBe("/cwd/.pi/skills");
+    }
+    const read = resolveReadTarget(["--agent", "pi", "--project", "/cwd"], HOME, "/other");
+    if ("error" in read) throw new Error(read.error);
+    expect(read.extraSurfaces).toEqual(["/cwd/.pi/skills"]);
+    const all = resolveReadTarget(["--project", "/cwd"], HOME, "/other");
+    if ("error" in all) throw new Error(all.error);
+    expect(all.extraSurfaces).toContain("/cwd/.pi/skills");
+    expect(all.extraSurfaces).not.toContain("/cwd/.pi/agent/skills");
+  });
+});
+
 describe("agentDeployDir", () => {
   test("global = ~/.<id>/skills", () => {
     expect(agentDeployDir("claude", "global", HOME, "/cwd")).toBe("/home/u/.claude/skills");

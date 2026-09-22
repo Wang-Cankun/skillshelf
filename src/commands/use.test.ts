@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run as useRun } from "./use.ts";
 import { run as dropRun } from "./drop.ts";
+import { run as statusRun } from "./status.ts";
 import { loadLibrary } from "../core/library.ts";
 import type { Ctx } from "../types.ts";
 
@@ -46,6 +47,24 @@ describe("skl use/drop — single-skill deploy (friction #2)", () => {
   afterEach(async () => {
     process.chdir(prevCwd);
     await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("Pi use/status/drop agree on the project skill directory", async () => {
+    const flags = ["--agent", "pi", "--project", project, "--json"];
+    expect(await useRun(["alpha", ...flags], makeCtx(library).ctx)).toBe(0);
+    const link = join(project, ".pi", "skills", "alpha");
+    expect(existsSync(link)).toBe(true);
+    expect(await realpath(link)).toBe(join(library, "alpha"));
+    expect(existsSync(join(project, ".pi", "agent", "skills"))).toBe(false);
+    const status = makeCtx(library);
+    expect(await statusRun(flags, status.ctx)).toBe(0);
+    expect(status.json[0]).toMatchObject({
+      skillsDir: join(project, ".pi", "skills"),
+      linkedCount: 1,
+      linked: [{ skill: "alpha", inLibrary: true }],
+    });
+    expect(await dropRun(["alpha", ...flags], makeCtx(library).ctx)).toBe(0);
+    expect(existsSync(link)).toBe(false);
   });
 
   test("`use <skill>` deploys exactly one skill (kind: skill)", async () => {
