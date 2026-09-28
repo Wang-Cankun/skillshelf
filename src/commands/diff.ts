@@ -1,5 +1,5 @@
-// `skl diff <name>` — unified diff between a DEPLOYED site's SKILL.md and the
-// library skill's SKILL.md, for one agent surface. Read-only (an L2 fact per
+// `skl diff <name>` — compare complete deployed and library skill directories,
+// with unified diffs for changed text files. Read-only (an L2 fact per
 // ADR-0007: two runs can't disagree). The engine verb behind the UI's drift
 // "View diff" action. A clean symlink deployment trivially reports identical —
 // its realpath IS the library copy.
@@ -9,13 +9,13 @@ import { existsSync } from "node:fs";
 import type { Ctx } from "../types.ts";
 import { parseDeployTarget } from "../core/agents.ts";
 import { findByName } from "../core/library.ts";
-import { readSkillBody, unifiedDiff } from "../core/fetch.ts";
-import { isSymlink, realpathOrSelfAsync } from "../lib/fs.ts";
+import { compareSkillTrees } from "../core/skill-tree.ts";
+import { isSymlink } from "../lib/fs.ts";
 import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
   name: "diff",
-  summary: "Unified diff of a deployed copy's SKILL.md against the library skill",
+  summary: "Compare a deployed skill's full directory against the library (text diffs included)",
   usage: "skl diff <name> [--agent <id>] [--global | --project <name>] [--json]",
 } as const;
 
@@ -51,17 +51,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       return 1;
     }
 
-    // A symlink resolving to the library skill can't drift — same bytes.
-    const siteReal = await realpathOrSelfAsync(site);
-    const libReal = await realpathOrSelfAsync(skill.path);
-    const deployedBody = siteReal === libReal ? null : await readSkillBody(site);
-    const libraryBody = await readSkillBody(skill.path);
-    const text =
-      deployedBody === null
-        ? ""
-        : await unifiedDiff(libraryBody, deployedBody, `library/${name}/SKILL.md`, `${site}/SKILL.md`);
-
-    const identical = text.trim() === "";
+    const { identical, diff: text } = await compareSkillTrees(skill.path, site, true);
     const result: CommandResult = {
       json: { name, site, library: skill.path, identical, diff: text },
       human: (emit) => {

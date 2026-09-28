@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { mkdirSync, writeFileSync, symlinkSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, symlinkSync, readFileSync, cpSync } from "node:fs";
 import * as diff from "../src/commands/diff.ts";
 import { runCmd, tempProject, FIXTURE_LIBRARY } from "./helpers.ts";
 
@@ -33,9 +33,7 @@ describe("skl diff", () => {
     const p = await tempProject();
     cleanups.push(p.cleanup);
     const site = join(p.path, ".claude", "skills", "rnaseq-qc");
-    mkdirSync(site, { recursive: true });
-    const libBody = readFileSync(join(FIXTURE_LIBRARY, "rnaseq-qc", "SKILL.md"), "utf8");
-    writeFileSync(join(site, "SKILL.md"), libBody);
+    cpSync(join(FIXTURE_LIBRARY, "rnaseq-qc"), site, { recursive: true });
 
     const r = await runCmd(diff, ["rnaseq-qc", "--json"], { cwd: p.path });
     expect(r.code).toBe(0);

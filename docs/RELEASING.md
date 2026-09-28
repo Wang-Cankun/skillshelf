@@ -152,8 +152,9 @@ To turn it on:
    gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD   # the password you chose
    ```
 
-5. The bundle already sets `createUpdaterArtifacts: true`, so the next `app-v*`
-   release emits the per-platform update archives + `latest.json`. Because the
+5. Set `bundle.createUpdaterArtifacts` to `true` in
+   `app/src-tauri/tauri.conf.json` (it is currently `false`). With signing configured,
+   the next `app-v*` release emits the per-platform update archives + `latest.json`. Because the
    endpoint points at `releases/latest/download/latest.json`, **publish the
    release** (not just leave it as a draft) for clients to discover updates.
 

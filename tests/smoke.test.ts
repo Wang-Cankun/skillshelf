@@ -25,6 +25,52 @@ describe("CLI smoke (subprocess)", () => {
     expect(r.stdout).toContain("Commands:");
   });
 
+  test.each(["--help", "-h"])("%s prints global help", async (flag) => {
+    const r = await runCli([flag]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("Commands:");
+    expect(r.stderr).toBe("");
+  });
+
+  test.each([
+    ["update", "--help"],
+    ["add", "--help"],
+    ["rm", "rnaseq-qc", "--help"],
+    ["retire", "rnaseq-qc", "-h"],
+    ["mv", "rnaseq-qc", "renamed", "--help"],
+    ["new", "--help", "help-test"],
+    ["init", "-h"],
+    ["update", "--json", "-h"],
+  ])("help flags bypass execution: %j", async (...args) => {
+    const p = await tempProject();
+    cleanups.push(p.cleanup);
+    const t = await tempLibrary();
+    cleanups.push(t.cleanup);
+    const env = {
+      HOME: p.path,
+      SKILLSHELF_CONFIG: join(p.path, "config.json"),
+      SKILLSHELF_GLOBAL_CORE: join(p.path, ".claude", "skills"),
+    };
+    const canonical = args[0] === "mv" ? "rename" : args[0]!;
+    const expected = await runCli(["help", canonical], { env });
+    // A malformed configured path makes loadContext fail if help reaches it.
+    await writeFile(env.SKILLSHELF_CONFIG, JSON.stringify({ globalCore: 42 }));
+    const r = await runCli(args, { cwd: p.path, library: t.path, env });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe(expected.stdout);
+    expect(r.stdout).toContain(`Usage: skl ${canonical}`);
+    expect(r.stderr).toBe("");
+    expect(existsSync(join(t.path, "rnaseq-qc", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(t.path, "_retired", "rnaseq-qc"))).toBe(false);
+    expect(existsSync(env.SKILLSHELF_GLOBAL_CORE)).toBe(false);
+  });
+
+  test("unknown command with --help still exits non-zero", async () => {
+    const r = await runCli(["frobnicate", "--help"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("Unknown command: frobnicate");
+  });
+
   test("unknown command exits non-zero", async () => {
     const r = await runCli(["frobnicate"]);
     expect(r.code).toBe(1);

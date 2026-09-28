@@ -23,6 +23,7 @@ import {
 import { knownAgentSurfacePaths } from "../core/surfaces.ts";
 import { resolveReadTarget } from "../core/agents.ts";
 import { safeSymlink, removeSymlink } from "../lib/fs.ts";
+import { compareSkillTrees } from "../core/skill-tree.ts";
 import { render, type CommandResult } from "../core/report.ts";
 
 export const meta = {
@@ -113,6 +114,13 @@ export async function remediate(
       if (!opts.dryRun) await removeSymlink(s.path, { force: true });
       out.push({ name: s.name, path: s.path, action, applied: !opts.dryRun, note: opts.dryRun ? "would remove dead link" : "removed dead link" });
     } else if (action === "dedupe-copy" && opts.fix) {
+      // Inventory is a snapshot; verify again at the destructive boundary.
+      const identical = await compareSkillTrees(join(libraryPath, s.name), s.path)
+        .then((result) => result.identical, () => false);
+      if (!identical) {
+        out.push({ name: s.name, path: s.path, action: "manual", applied: false, note: "copy differs or could not be compared; left untouched" });
+        continue;
+      }
       if (!opts.dryRun) await safeSymlink(join(libraryPath, s.name), s.path, { force: true });
       out.push({ name: s.name, path: s.path, action, applied: !opts.dryRun, note: opts.dryRun ? "would replace identical copy with a symlink into the library" : "deduped copy -> symlink into library" });
     } else {

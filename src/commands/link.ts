@@ -15,7 +15,7 @@
 //                                        the bytes (for skills you actively develop in their own
 //                                        git repo). Name defaults to the dev-repo dir's basename.
 //
-//   --force   --at:   replace even if <path>'s body differs from the library copy (the divergent
+//   --force   --at:   replace even if <path>'s tree differs from the library copy (the divergent
 //                     copy is DISCARDED). Without it, a content mismatch is refused — pick a
 //                     winner: keep library (this, with --force) or make <path> canonical
 //                     (`skl import <name> --from <path> --force`).
@@ -29,9 +29,8 @@
 import { join, resolve, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import type { Ctx } from "../types.ts";
-import { parseFrontmatter } from "../lib/frontmatter.ts";
+import { compareSkillTrees } from "../core/skill-tree.ts";
 import { removeEntry } from "../core/provenance.ts";
 import {
   isDirectory,
@@ -85,18 +84,6 @@ function parseFlags(argv: string[]): { flags: Flags } | { error: string } {
     }
   }
   return { flags };
-}
-
-/** sha-256 of a SKILL.md body (frontmatter stripped) — matches crawl/dedupe hashing. */
-async function bodyHash(skillMdPath: string): Promise<string | null> {
-  if (!existsSync(skillMdPath)) return null;
-  try {
-    const raw = await Bun.file(skillMdPath).text();
-    const { body } = parseFrontmatter(raw);
-    return createHash("sha256").update(body, "utf8").digest("hex");
-  } catch {
-    return null;
-  }
 }
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
@@ -273,7 +260,7 @@ async function runAt(flags: Flags, ctx: Ctx): Promise<number> {
     }
 
     // If the target exists as a real dir, require it to look like a skill and compare
-    // content. A body mismatch means a real decision the tool won't make silently.
+    // the complete tree. A mismatch needs an explicit choice of which copy wins.
     if (existsSync(atPath) && !isSymlink(atPath)) {
       if (!(await isDirectory(atPath))) {
         ctx.error(`skl link: --at must be a directory (the redundant copy): ${atPath}`);
@@ -287,11 +274,7 @@ async function runAt(flags: Flags, ctx: Ctx): Promise<number> {
         return 1;
       }
       if (existsSync(atSkillMd) && !flags.force) {
-        const [a, b] = await Promise.all([
-          bodyHash(atSkillMd),
-          bodyHash(join(libDir, "SKILL.md")),
-        ]);
-        if (a !== b) {
+        if (!(await compareSkillTrees(libDir, atPath)).identical) {
           ctx.error(
             `skl link: ${atPath} differs from the library copy of '${name}'.`,
           );

@@ -2,7 +2,8 @@
 
 Complete flag-level reference for every `skl` command. Read the section you need; don't load
 the whole file unless you're auditing the surface. Every command accepts `--json` (structured
-output) and `--help`. Exit 0 = success, exit 1 = error (errors go to stderr).
+output) and `--help` / `-h` (prints usage without executing the command).
+Exit 0 = success, exit 1 = error (errors go to stderr); `update` also returns 2 for divergence.
 
 ## Contents
 
@@ -19,7 +20,7 @@ output) and `--help`. Exit 0 = success, exit 1 = error (errors go to stderr).
 ## Invocation & state files
 
 - Binary: `skl` (installed via `bun add -g skillshelf`); run ad-hoc with `bunx skillshelf <cmd>`.
-  Requires Bun ≥ 1.0 — the bin is a TypeScript entrypoint, not a Node build (`npm i` won't work).
+  Requires Bun ≥ 1.2.0 — the bin is a TypeScript entrypoint, not a Node build (`npm i` won't work).
 - **`~/.skillshelf/config.json`** — `{ "library": "...", "globalCore": "..." }`. Created by `init`.
   Also persists scan roots.
 - **`<library>/taxonomy.json`** — `{ version, skills: { name: [domains…] } }`. Written by
@@ -29,8 +30,15 @@ output) and `--help`. Exit 0 = success, exit 1 = error (errors go to stderr).
   for hand-written (`import`) or `new` skills.
 - **`<library>/INDEX.md`** — auto-generated catalog grouped by domain. Re-run with `index`.
 - **`<library>/_retired/<name>/`** — soft-deleted skills.
-- Env overrides: `SKILLSHELF_LIBRARY` (highest precedence for library path),
+- Env overrides: `SKILLSHELF_CONFIG` (config file path, default `~/.skillshelf/config.json`),
+  `SKILLSHELF_LIBRARY` (highest precedence for library path),
   `SKILLSHELF_GLOBAL_CORE` (where global-core symlinks land, default `~/.claude/skills`).
+- For experiments, isolate `HOME`, `SKILLSHELF_CONFIG`, `SKILLSHELF_LIBRARY`, and
+  `SKILLSHELF_GLOBAL_CORE`, and run from a disposable project directory. A library override
+  alone does not isolate config or deployment writes.
+- CLI installation and this skill's deployment are separate. After updating the CLI, resolve
+  the active `skl` skill with `skl show skl --json` and compare it with the intended source;
+  preserve local frontmatter customizations when syncing the manual and reference files.
 
 ---
 
@@ -79,10 +87,12 @@ Multi-agent matrix: for each known agent × scope, each skill's deployment state
 `⚠ drift`, `□ copy`, `✗ dead`.
 
 ## use
-`skl use <bundle|skill> [--agent <id>] [--global | --project <name>] [--force] [--json]`
-Symlink a bundle (domain) **or** a single skill into an agent's skills dir. Default target
-`./.claude/skills/`. `--agent <id>` changes the agent; `--global` targets `~/<agent>/skills`;
-`--project <name>` targets `./<name>/skills`. Idempotent — reports `linked`/`already`/`conflict`.
+`skl use <bundle|skill>... [--agent <id>] [--global | --project <dir>] [--force] [--json]`
+Symlink named skills or bundles (domains) into an agent's skills dir. Default target
+`./.claude/skills/`. `--agent <id>` changes the agent; `--project <dir>` accepts an absolute
+or cwd-relative project root and targets `<dir>/.<id>/skills` (default id `claude`).
+`--global` normally targets `~/.<id>/skills`; Pi uses `~/.pi/agent/skills`.
+Check the returned `skillsDir` when selecting a target. Idempotent — reports `linked`/`already`/`conflict`.
 Refuses to clobber a real file by default (conflict); `--force` replaces the real entry with the
 library symlink instead (reported `overwritten`) — the "overwrite from library" drift remediation.
 It discards that copy's local edits, so `skl diff` first.
@@ -101,8 +111,11 @@ already-occupied destination name. Already-aligned is a no-op (`already`).
 
 ## diff
 `skl diff <name> [--agent <id>] [--global | --project <name>] [--json]`
-Read-only unified diff of a deployed copy's `SKILL.md` against the library skill, for one agent
-surface. A clean symlink deployment trivially reports `identical` (its realpath IS the library
+Read-only comparison of the complete deployed skill directory against the library, including
+frontmatter, reference files, scripts, binary files, permissions, and symlink targets. Changed
+text files get unified diffs; added/removed files and other differences get path summaries.
+Unreadable entries fail the comparison rather than reporting identical.
+A clean symlink deployment trivially reports `identical` (its realpath IS the library
 copy). JSON carries `{name, site, library, identical, diff}`. Use before `use --force` or
 `update` to see what a drifted copy actually changed.
 
@@ -194,8 +207,11 @@ frontmatter `name` + taxonomy key + lockfile key in one pass. `<new>` must be a 
 **Does not** repoint external deploy symlinks — re-run `skl use` or check `skl where` after.
 
 ## retire
-`skl retire <name> [--json]` — Soft-delete into `_retired/<name>/`: excluded from bundles/deploys,
-marked retired, fully reversible via `unretire`. Prefer this over `rm` for anything you might want back.
+`skl retire <name>... [--json]` — Soft-delete into `_retired/<name>/`: excluded from future
+bundle resolution and deployment, fully reversible via `unretire`. Existing deployments are
+not removed and may become dead links. Drop them while the skill is active; for already-retired
+skills inspect `where <name> --prune --dry-run` before pruning the reported dead links.
+Include `--project <dir>` for project surfaces that are not registered scan roots.
 
 ## unretire
 `skl unretire <name> [--json]` — Restore a retired skill to the active library (inverse of `retire`).
@@ -232,7 +248,8 @@ any diverged (non-fatal), `1` on error.
 `skl infer [--emit | --apply <file.json> | --provider <name>] [--base-url <url>] [--model <id>] [--include-retired] [--json]`
 The one judgment verb: AI domain tagging over the library. Three mutually exclusive modes:
 - `--emit` — print `{instruction, schema, corpus}` for an agent (you) to reason over. **No API
-  call.** This is the default inside Claude Code (`$CLAUDECODE` set). You produce a proposal, then:
+  call.** Use this explicitly in any host agent (including Codex). Bare `infer` only auto-emits
+  in detected Claude environments. You produce a proposal, then:
 - `--apply <file.json>` — write the agent's proposal into `taxonomy.json`.
 - `--provider <name>` — skillshelf itself calls an OpenAI-compatible endpoint and auto-applies.
   Providers: `openai`, `openrouter`, `groq`, `ollama`, `custom`. Key comes from env/dotenv, never a flag.

@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, symlink, rm, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, cp, chmod, symlink, rm, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { remediate } from "./where.ts";
 import { run as refreshRun } from "./refresh.ts";
 import { run as statusRun } from "./status.ts";
+import { run as diffRun } from "./diff.ts";
+import { run as linkRun } from "./link.ts";
 import { isSymlink, realpathOrSelf } from "../lib/fs.ts";
 import { loadLibrary } from "../core/library.ts";
 import { inventoryDeployments, remediationFor } from "../core/deployments.ts";
@@ -145,5 +147,58 @@ describe("where remediation + refresh + status drift (friction #6)", () => {
     } finally {
       process.chdir(prev);
     }
+  });
+
+  test.each(["reference", "extra-file", "binary", "metadata", "mode", "symlink"])(
+    "%s differences survive cleanup and appear in diff",
+    async (variant) => {
+      const original = join(library, "alpha");
+      await mkdir(join(original, "references"));
+      await writeFile(join(original, "references", "guide.md"), "original\n");
+      const project = join(tmp, "project");
+      const surface = join(project, ".claude", "skills");
+      const copy = join(surface, "alpha");
+      await cp(original, copy, { recursive: true });
+      let changed = "references/guide.md";
+      if (variant === "reference") await writeFile(join(copy, changed), "local edit\n");
+      if (variant === "extra-file") {
+        changed = "notes.txt";
+        await writeFile(join(copy, changed), "local only\n");
+      }
+      if (variant === "binary") await writeFile(join(copy, changed), Buffer.from([0, 255, 1]));
+      if (variant === "metadata") {
+        changed = "SKILL.md";
+        await writeFile(join(copy, changed), "---\nname: alpha\ndescription: a\ndisable-model-invocation: true\n---\n\nbody\n");
+      }
+      if (variant === "mode") await chmod(join(copy, changed), 0o755);
+      if (variant === "symlink") {
+        await rm(join(copy, changed));
+        await symlink("../SKILL.md", join(copy, changed));
+      }
+      const { ctx, json } = makeCtx(library);
+      expect(await diffRun(["alpha", "--project", project, "--json"], ctx)).toBe(0);
+      expect(json[0]).toMatchObject({ identical: false });
+      expect((json[0] as { diff: string }).diff).toContain(changed);
+      const report = await inventoryDeployments([surface], library, await loadLibrary(library));
+      expect(report.sites[0]!.drift).toBe(true);
+      const outcomes = await remediate(report.sites, library, { fix: true, dryRun: false });
+      expect(outcomes[0]!.applied).toBe(false);
+      expect(isSymlink(copy)).toBe(false);
+      expect(await linkRun(["alpha", "--at", copy], ctx)).toBe(1);
+      expect(isSymlink(copy)).toBe(false);
+      expect(existsSync(join(copy, changed))).toBe(true);
+    },
+  );
+
+  test("cleanup rechecks a copy changed after inventory", async () => {
+    const surface = join(tmp, "surface");
+    const copy = join(surface, "alpha");
+    await cp(join(library, "alpha"), copy, { recursive: true });
+    const report = await inventoryDeployments([surface], library, await loadLibrary(library));
+    expect(report.sites[0]!.drift).toBe(false);
+    await writeFile(join(copy, "notes.txt"), "keep me");
+    const outcomes = await remediate(report.sites, library, { fix: true, dryRun: false });
+    expect(outcomes[0]!.applied).toBe(false);
+    expect(await readFile(join(copy, "notes.txt"), "utf8")).toBe("keep me");
   });
 });

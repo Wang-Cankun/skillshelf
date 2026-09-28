@@ -7,12 +7,13 @@ set -euo pipefail
 
 SBX="${1:?need sandbox dir}"
 EVAL="${2:?need eval id A|B|C}"
-SKL="/Users/wang.13246/.bun/bin/skl"   # absolute: PATH may lose ~/.bun after HOME override
+SKL="$(command -v skl)"   # resolve before HOME changes; PATH may contain ~/.bun/bin
 
 rm -rf "$SBX"
 mkdir -p "$SBX/home" "$SBX/project"
 export HOME="$SBX/home"
 export SKILLSHELF_LIBRARY="$SBX/library"
+export SKILLSHELF_CONFIG="$SBX/home/.skillshelf/config.json"
 export SKILLSHELF_GLOBAL_CORE="$SBX/home/.claude/skills"
 mkdir -p "$SKILLSHELF_GLOBAL_CORE"
 

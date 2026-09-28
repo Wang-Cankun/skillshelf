@@ -24,7 +24,7 @@ added and *active* only once `use`d. For a repo holding several skills, discover
 Goal: skills strewn across `~/.claude/skills`, vaults, and project dirs become one curated library.
 
 ```bash
-# 1. Register where they live, then take a READ-ONLY inventory (moves nothing).
+# 1. Register roots (writes config), then inventory without moving skills.
 skl scan --add-root ~/.claude/skills
 skl scan --add-root ~/notes/.agents/skills
 skl scan                       # candidates + duplicate/drift groups + a recommended canonical
@@ -32,10 +32,15 @@ skl scan                       # candidates + duplicate/drift groups + a recomme
 # 2. Adopt the keepers one at a time. `import` MOVES + leaves a symlink-back by default.
 skl import rnaseq-qc --from ~/.claude/skills/rnaseq-qc
 skl import deploy-check --from ~/projects/web/.claude/skills/deploy-check --copy   # in a repo → copy
-skl import rnaseq-qc --from ~/projects/lab/.claude/skills/rnaseq-qc --force        # drift loser → overwrite
+# For a divergent duplicate, compare and choose the version to keep FIRST.
+skl diff rnaseq-qc --agent claude --project ~/projects/lab
+# Only if the library version wins: explicitly discard the divergent deployment.
+skl use rnaseq-qc --agent claude --project ~/projects/lab --force
+# ALTERNATIVE, not a next step: if the project copy wins, preserve its source:
+# skl import rnaseq-qc --from ~/projects/lab/.claude/skills/rnaseq-qc --copy --force
 
 # 3. Tag the now-populated library in ONE pass (domain is tags, so this happens AFTER import).
-skl infer --emit               # inside Claude Code → emits a payload; you reason, then:
+skl infer --emit               # any host agent → emits a payload; you reason, then:
 # (write proposal.json) skl infer --apply proposal.json
 skl index
 ```
@@ -57,16 +62,17 @@ skl refresh --dry-run && skl refresh
 # an aliased link (deployed under the wrong name):
 skl realign <deployed-name> --agent <id> --global
 # a genuinely drifted copy — inspect, then decide which side wins:
-skl diff <name> --agent <id>            # what did the copy change?
-skl use <name> --agent <id> --force     # library wins: replace the copy with the symlink
-# (copy wins instead → `skl import <name> --from <copy path> --force` to pull it INTO the library)
+skl diff <name> --agent <id> --project <dir>        # inspect the full skill directory
+skl use <name> --agent <id> --project <dir> --force # only if the library version wins
+# For a global deployment use --global instead of --project <dir> on BOTH commands.
+# Alternative if the copy wins: `skl import <name> --from <copy path> --copy --force`.
 ```
 
 Why: `where` is the cross-agent source of truth (ADR-0003/0008). `--fix` only does the safe,
 mechanical repairs (dead links + content-identical dedupe); genuine drift (`⚠ drifted copy`)
 it reports but won't silently resolve — that's a human/agent judgment call: `diff` informs it,
-then `use --force` (library wins) or `import --force` (copy wins) executes it. Preview with
-`--dry-run` first and show the user.
+then `use --force` (library wins) or `import --copy --force` (copy wins) executes it. The
+`--dry-run` previews above apply to `where` and `refresh`; `use` and `import` do not support it.
 
 ## 4. Develop a skill in its own repo, then stabilize it
 
@@ -88,7 +94,7 @@ Why: linked entries (ADR-0004) are for active development — the library points
 instead of copying it, so there's no second source to drift. When the skill settles, swap to an
 owned copy so the library holds the bytes and `update` can track an upstream if you want.
 
-## 5. AI-tag the library inside Claude Code
+## 5. AI-tag the library in a host agent
 
 Goal: assign domains across the library using your own reasoning (no external API).
 
@@ -102,27 +108,33 @@ skl index
 skl ls --sort domain                          # eyeball the result
 ```
 
-Why `--emit`/`--apply` instead of `--provider`: inside Claude Code you *are* the model — emit
+Why `--emit`/`--apply` instead of `--provider`: inside Codex, Claude Code, or another host agent,
+you *are* the model — emit
 hands you the corpus, you tag, apply writes it back for review. No API key, no network, and the
 user can inspect the proposal before it lands. Only use `--provider` when running headless
 without an agent in the loop.
 
 ## 6. Safely remove a skill
 
-Goal: get a skill out of the way without losing work or breaking deploys.
+Goal: deactivate a skill, then archive its library entry without losing work.
 
 ```bash
-skl where <name>                # see everywhere it's deployed first
+skl where <name> --json         # inventory known surfaces; include --project <dir> as needed
+# Repeat for each managed deployment, while the skill is still active:
+skl drop <name> --agent <id> --project <dir>
+# Global deployment instead: skl drop <name> --agent <id> --global
 skl retire <name>               # soft-delete → _retired/ (reversible)
 # … later, if truly done:
 skl rm <name> --dry-run         # preview
 skl rm <name>                   # retired skills delete without --force
 ```
 
-Why retire-then-rm: `retire` is reversible (`unretire`) and immediately removes the skill from
-bundles/deploys, so it's the safe default. Hard `rm` of a *live owned* skill needs `--force`
-(it destroys real bytes); a retired or linked entry deletes freely. Check `where` first so you
-know what deploys will go stale.
+`retire` is reversible (`unretire`) and excludes the skill from future bundles/deployments,
+but does not remove existing deployment links or real copies. Verify each `drop` result;
+copies and foreign links need separate review. If already retired, `drop` cannot resolve it:
+use `skl where <name> --prune --dry-run` then `skl where <name> --prune` for dead links,
+adding the same `--project <dir>` to both commands for unregistered projects. Hard `rm` of a
+live owned skill needs `--force`; a retired or linked entry deletes without it.
 
 ## Quick decision reminders
 

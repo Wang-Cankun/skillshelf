@@ -1,13 +1,6 @@
 ---
 name: skl
-description: >-
-  Install, deploy, find, organize, audit, and clean up agent skills with the
-  `skl` (skillshelf) CLI — one canonical library, deployed on demand. Use when
-  the user says "install this skill", "add a skill from GitHub", "deploy/activate
-  these skills", "what skills do I have", "where is this skill deployed", "my
-  skills are scattered", "tag/organize my skills", "remove a skill", "is this
-  skill out of date", or mentions skillshelf / `skl`. Also when they say "skill"
-  loosely about managing reusable agent instructions (not writing app code).
+description: "Manage standalone skills and their deployments with skillshelf (skl): discover, install, activate, deactivate, update, and organize them. Use for library and deployment management, not instruction writing or plugin packaging."
 ---
 
 # Driving the `skl` CLI
@@ -37,13 +30,16 @@ and `INDEX.md` in sync — hand-edits drift).
    following the symlink would clobber the user's live dev repo. "Skipped (linked)" is correct.
 2. **Curator boundary** — `add` writes the library; `use`/`drop` write agent dirs. Installing and
    deploying are two steps (`add` then `use`); `add` never makes a skill active.
-3. **Never clobber real files.** `use` won't overwrite a real file in a skills dir (only an
-   explicit `use --force` replaces a drifted copy — `skl diff` it first); `import`/`link`
-   won't write through symlinks or into the library. If a command refuses, surface it — don't force.
+3. **Choose which copy to keep before overwriting.** `diff` compares the full skill directory.
+   `use --force` keeps the library version; `import --from <path> --copy --force` keeps the
+   external version in the library while preserving its source. `link --at` and `where --fix`
+   only dedupe matching trees. If a command refuses, report the conflict before choosing a winner.
 4. **`import` decides no domain** — adopt first (`scan`→`import`), tag after (`tag`/`infer`).
 5. **Rename doesn't repoint deploys** — re-run `skl use` (or check `skl where`) after `rename`.
 6. **`--json` whenever you'll parse.** Human-readable text is only for showing the user.
-7. **Reversible by default** — prefer `retire` over `rm`; `--dry-run` destructive ops when unsure.
+7. **Reversible by default** — drop deployments while the skill is active, then `retire` rather
+   than `rm`. Retiring alone leaves stale links; see the safe-remove recipe for cleanup.
+   Use `--dry-run` only on commands that list it in their help.
 
 ## Intent → command
 
@@ -59,7 +55,7 @@ Full flags in `references/commands.md`; multi-step recipes in `references/workfl
 | Fix a misnamed (aliased) deployment | `skl realign <deployed-name>` |
 | See how a deployed copy drifted, then overwrite it | `skl diff <name>` → `skl use <name> --force` |
 | Install a third-party skill | `skl add github:owner/repo[/path]` (then `skl use`) |
-| Consolidate scattered skills | `skl scan` → `skl import <name> --from <path>` → `skl infer` |
+| Consolidate scattered skills | `skl scan` → `skl import <name> --from <path>` → `skl infer --emit` → `skl infer --apply <file>` |
 | Develop a skill in its own repo | `skl link --from <dev-repo>` |
 | Create a new skill | `skl new <name> --domain <d> --desc "…"` |
 | Tag / organize | `skl tag` · `untag` · `retag` · `infer` |
@@ -78,8 +74,9 @@ the user, then propose moves.
 - **Don't tag a fresh install into a big existing domain just to group it.** Tagging 5 new skills
   `coding` to "bundle them" silently lumps them with every other `coding` skill on the next
   `skl use coding`. Leave a new install untagged, or give it its own tag.
-- **`infer` is the only place judgment enters.** Inside Claude Code it defaults to `--emit` (hands you
-  a payload; you write the proposal, then `skl infer --apply <file>`). No API unless `--provider`/`--base-url` is set.
+- **Agent-driven tagging:** use `skl infer --emit` explicitly in Codex, Claude Code, and other
+  agents; write the proposal, then `skl infer --apply <file>`. Only Claude environments are
+  auto-detected by bare `infer`. No API unless `--provider`/`--base-url` is set.
 
 ## Reference files
 

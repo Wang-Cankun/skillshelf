@@ -31,7 +31,7 @@ implementation detail lives in `docs/ARCHITECTURE.md`.
 - **Orphaned** — a tracked (OWNED) skill whose upstream subpath has vanished: the repo still
   clones, but no skill with the same `name` exists anywhere in the fresh checkout. `update`
   reports it and **keeps the library copy** — it never auto-deletes (ADR-0004, ADR-0013). The
-  copy is now effectively local until the user `skl remove`s it or it reappears upstream.
+  copy is now effectively local until the user deletes it with `skl rm` or it reappears upstream.
   _Avoid_: "deleted", "missing" (the library copy is intact; only the *upstream* is gone)
 
 - **Relocated** — a tracked skill found at a **new subpath under the same `name`** (an upstream

@@ -150,6 +150,11 @@ async function main(rawArgv: string[]): Promise<number> {
     return 1;
   }
 
+  if (rawArgv.includes("--help") || rawArgv.includes("-h")) {
+    console.log(commandHelp(mod));
+    return 0;
+  }
+
   let ctx: Ctx;
   try {
     ctx = await loadContext();

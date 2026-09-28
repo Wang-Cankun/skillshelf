@@ -8,6 +8,23 @@
 ## CLI (`src/`)
 - Run: `bun run skl -- <command>` (or `bun run src/cli.ts`)
 - Test: `bun test`
+- Running from source uses your real home by default. `SKILLSHELF_LIBRARY` alone
+  does not isolate config writes. For manual experiments, use a disposable sandbox
+  and run deployment commands from its project directory:
+
+  ```sh
+  REPO="$PWD"
+  SBX="$(mktemp -d)"
+  mkdir -p "$SBX/home" "$SBX/project"
+  (
+    export HOME="$SBX/home"
+    export SKILLSHELF_LIBRARY="$SBX/library"
+    export SKILLSHELF_CONFIG="$SBX/home/.skillshelf/config.json"
+    export SKILLSHELF_GLOBAL_CORE="$SBX/home/.claude/skills"
+    cd "$SBX/project"
+    bun run "$REPO/src/cli.ts" init
+  )
+  ```
 
 ## App (`app/`, React 19 + Vite + Tauri)
 - `cd app && bun install`

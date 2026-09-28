@@ -290,11 +290,16 @@ skl infer --base-url http://localhost:11434/v1 --model llama3.1
 
 | Setting | What it controls | Default |
 |---|---|---|
+| `SKILLSHELF_CONFIG` | path to the config file read and written by the CLI (env override) | `~/.skillshelf/config.json` |
 | `SKILLSHELF_LIBRARY` | path to the canonical library (env, highest precedence) | `~/.skillshelf/library` |
 | `~/.skillshelf/config.json` | `{ "library": "...", "globalCore": "..." }` | — |
 | `SKILLSHELF_GLOBAL_CORE` | where global-core skills are symlinked | `~/.claude/skills` |
 
-Library path resolution: `SKILLSHELF_LIBRARY` → `config.json` → default. See the
+Library path resolution: `SKILLSHELF_LIBRARY` → `config.json` → default.
+`SKILLSHELF_LIBRARY` alone does not isolate config writes. For experiments, redirect
+`HOME`, `SKILLSHELF_CONFIG`, and the library/deployment paths using the sandbox
+example in [AGENTS.md](./AGENTS.md).
+See the
 [AI taxonomy](#ai-taxonomy--inference) section for the `SKILLSHELF_LLM_*` / `OPENAI_*` /
 `SKILLSHELF_ENV_FILE` inference variables.
 

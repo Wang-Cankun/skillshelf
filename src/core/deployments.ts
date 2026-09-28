@@ -11,33 +11,15 @@ import { existsSync, type Dirent } from "node:fs";
 import { readdir, readlink } from "node:fs/promises";
 import type { DeploymentKind, DeploymentReport, DeploymentSite, Skill } from "../types.ts";
 import { realpathOrSelf, isSymlink } from "../lib/fs.ts";
-import { hashContent } from "./crawl.ts";
-import { parseFrontmatter } from "../lib/frontmatter.ts";
+import { compareSkillTrees } from "./skill-tree.ts";
 
 const SKILL_FILE = "SKILL.md";
 
 /**
- * Hash a candidate's SKILL.md body (frontmatter stripped, same as crawl) AND return its
- * frontmatter `description`. Drift must consider BOTH: the body, and the description —
- * because the deployed `description` is load-bearing (agents read it to decide when to
- * trigger a skill), so a copy with an identical body but a customized description is a
- * real divergence that `where --fix` must NOT silently dedupe away.
- */
-async function readDeployed(skillDir: string): Promise<{ hash: string; description: string } | null> {
-  try {
-    const raw = await Bun.file(join(skillDir, SKILL_FILE)).text();
-    const fm = parseFrontmatter(raw);
-    return { hash: hashContent(fm.body), description: String(fm.data.description ?? "") };
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Inventory every deployment surface: for each direct entry, decide whether it is
  * a clean symlink into the library, a symlink to a foreign source, a real copy
- * (possibly drifted), or a dead link. `libSkills` supplies library names + body
- * hashes for drift detection. Surfaces are realpath-de-duplicated (Dropbox aliases)
+ * (possibly drifted), or a dead link. Compare complete trees before declaring a
+ * copy redundant. Surfaces are realpath-de-duplicated (Dropbox aliases)
  * and missing surfaces are skipped.
  */
 export async function inventoryDeployments(
@@ -48,8 +30,7 @@ export async function inventoryDeployments(
   const libReal = realpathOrSelf(libraryPath);
   const libPrefix = libReal.endsWith(sep) ? libReal : libReal + sep;
   const libNames = new Set(libSkills.map((s) => s.name));
-  const libHash = new Map(libSkills.map((s) => [s.name, s.contentHash] as const));
-  const libDesc = new Map(libSkills.map((s) => [s.name, s.description] as const));
+  const libPaths = new Map(libSkills.map((s) => [s.name, s.path] as const));
   // realpath -> library skill name, for skills that are themselves link-shelved
   // (library/<name> is a symlink out to a dev repo). A deployment link that
   // resolves to such a skill's realpath is a CLEAN library deploy, not a
@@ -123,15 +104,10 @@ export async function inventoryDeployments(
           kind = "source";
         } else {
           kind = "copy";
-          const want = libHash.get(e.name);
+          const want = libPaths.get(e.name);
           if (want) {
-            const got = await readDeployed(full);
-            // Drift if the body differs OR the (load-bearing) description differs —
-            // either makes this copy non-identical, so `where --fix` leaves it `manual`
-            // rather than replacing it with a symlink and discarding the difference.
-            drift =
-              got != null &&
-              (got.hash !== want || got.description !== (libDesc.get(e.name) ?? ""));
+            drift = await compareSkillTrees(want, full)
+              .then((result) => !result.identical, () => true);
           }
         }
       } else {
@@ -164,7 +140,7 @@ export async function inventoryDeployments(
  * non-destructive remediations are auto-applied (skillshelf never guesses which copy
  * wins). Everything that needs a human decision is "manual".
  *   - remove-dead : the symlink's target is gone — removing it loses nothing.
- *   - dedupe-copy : a real copy whose body MATCHES the library (inLibrary && !drift) —
+ *   - dedupe-copy : a real copy whose complete tree matches the library (inLibrary && !drift) —
  *                   safe to replace with a symlink into the library.
  *   - manual      : drifted copy / foreign-link / untracked copy — a real decision
  *                   (which wins, or import) that --fix must not make silently.

@@ -409,7 +409,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
             fromRef: entry.ref,
             toRef: repo.ref,
             outcome: "orphaned",
-            note: "no longer published upstream; library copy kept (skl remove to delete)",
+            note: "no longer published upstream; library copy kept (skl rm to delete)",
           });
         }
 
