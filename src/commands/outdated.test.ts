@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, symlink, rm, realpath } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, writeFile, symlink, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { run, mapLimit } from "./outdated.ts";
+import { run } from "./outdated.ts";
+import { mapLimit } from "../lib/async.ts";
 import type { Ctx } from "../types.ts";
+import { runCli } from "../../tests/helpers.ts";
 
 function makeCtx(libraryPath: string) {
   const json: unknown[] = [];
@@ -132,6 +134,41 @@ describe("skl outdated — online ref-compare flags a moved upstream as stale", 
   });
   afterEach(async () => {
     await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("checks each repo once while keeping per-skill current/stale verdicts", async () => {
+    const currentRef = await gitOut(upstream, ["rev-parse", "HEAD"]);
+    const lockPath = join(library, "shelf.lock.json");
+    const lock = await Bun.file(lockPath).json();
+    for (const name of ["current", "stale"]) {
+      await mkdir(join(library, name));
+      await writeFile(join(library, name, "SKILL.md"), `---\nname: ${name}\n---\nbody\n`);
+      lock.entries[name] = { ...lock.entries.foo, name, source: `git:${upstream}#skills/${name}`, ...(name === "current" ? { ref: currentRef } : {}) };
+    }
+    await writeFile(lockPath, JSON.stringify(lock));
+    const bin = join(tmp, "bin");
+    await mkdir(bin);
+    const wrapper = join(bin, "git");
+    await writeFile(wrapper, '#!/bin/sh\nif [ "$1" = "ls-remote" ]; then printf "probe\\n" >> "$PROBE_LOG"; fi\nexec "$REAL_GIT" "$@"\n');
+    await chmod(wrapper, 0o755);
+    const log = join(tmp, "probes.log");
+    const env = {
+      HOME: tmp,
+      SKILLSHELF_CONFIG: join(tmp, "config.json"),
+      SKILLSHELF_GLOBAL_CORE: join(tmp, ".claude", "skills"),
+      PATH: `${bin}:${process.env.PATH}`,
+      REAL_GIT: Bun.which("git")!,
+      PROBE_LOG: log,
+    };
+    const first = await runCli(["outdated", "--json"], { cwd: tmp, library, env });
+    expect(first.code).toBe(2);
+    const report = JSON.parse(first.stdout);
+    expect(report.rows.find((r: { name: string }) => r.name === "current").status).toBe("current");
+    expect(report.rows.find((r: { name: string }) => r.name === "stale").status).toBe("stale");
+    expect((await Bun.file(log).text()).trim().split("\n")).toHaveLength(1);
+    // A later invocation must ask upstream again, not reuse a cached HEAD.
+    await runCli(["outdated", "--json"], { cwd: tmp, library, env });
+    expect((await Bun.file(log).text()).trim().split("\n")).toHaveLength(2);
   });
 
   test("an owned entry whose upstream HEAD advanced is status 'stale' (exit 2)", async () => {

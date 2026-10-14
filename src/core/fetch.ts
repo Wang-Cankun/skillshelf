@@ -15,6 +15,7 @@ import { existsSync, lstatSync, realpathSync, type Dirent } from "node:fs";
 import { mkdtemp, rm, readdir, cp } from "node:fs/promises";
 import { isDirectory, realpathOrSelf } from "../lib/fs.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
+import { mapLimit } from "../lib/async.ts";
 
 export type Channel = "github" | "vercel-registry" | "git";
 
@@ -462,6 +463,7 @@ export async function discoverSkills(root: string, subpath = ""): Promise<Discov
   const containers = cleanSub
     ? [base]
     : DISCOVERY_CONTAINERS.map((c) => (c ? join(root, c) : root));
+  const candidates: Array<{ dir: string; requireValid: boolean }> = [];
   for (const container of containers) {
     if (!existsSync(container)) continue;
     const isRepoRoot = realpathOrSelf(container) === rootReal;
@@ -469,12 +471,12 @@ export async function discoverSkills(root: string, subpath = ""): Promise<Discov
       // The container itself is a skill (e.g. the repo root holds SKILL.md). The repo
       // root is lenient so a bare single-skill repo with a sparse SKILL.md still
       // resolves (today's behavior); deeper containers stay gated.
-      add(await buildDiscovered(container, rootReal, { requireValid: !isRepoRoot }));
+      candidates.push({ dir: container, requireValid: !isRepoRoot });
       continue; // a skill dir has no child skills to scan
     }
     for (const child of await childDirs(container, rootReal)) {
       if (isSkillDir(child)) {
-        add(await buildDiscovered(child, rootReal, { requireValid: true })); // flat depth-1
+        candidates.push({ dir: child, requireValid: true }); // flat depth-1
         continue;
       }
       // Catalog (depth-2) is scanned ONLY under the real `skills/`-family containers,
@@ -482,11 +484,16 @@ export async function discoverSkills(root: string, subpath = ""): Promise<Discov
       if (isRepoRoot) continue;
       for (const grandchild of await childDirs(child, rootReal)) {
         if (isSkillDir(grandchild)) {
-          add(await buildDiscovered(grandchild, rootReal, { requireValid: true })); // catalog depth-2
+          candidates.push({ dir: grandchild, requireValid: true }); // catalog depth-2
         }
       }
     }
   }
+
+  const discovered = await mapLimit(candidates, 16, (candidate) =>
+    buildDiscovered(candidate.dir, rootReal, candidate),
+  );
+  for (const skill of discovered) add(skill);
 
   // 2) Recursive fallback ONLY if the conventional scan found nothing.
   if (byReal.size === 0) await recurseDiscover(base, rootReal, 0, add, new Set<string>());

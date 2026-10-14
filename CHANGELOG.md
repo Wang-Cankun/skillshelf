@@ -178,6 +178,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skl rm` no longer deletes a live skill without `--force` when an `active` + `_retired` twin exists.
 - `skl refresh` treats a link to the library root itself as `foreign` (left), not `pruned`.
 
+## [0.7.2] - 2026-10-14
+
+### Changed
+- The CLI loads only the selected command. Plain `skl ls` skips unused JSON metadata.
+- Library loading and repo discovery read skills with bounded concurrency.
+- `skl outdated` shares one upstream HEAD request per repo within each run.
+- Library writes remain sequential. Skill ordering, JSON fields, and deployment guards remain unchanged.
+
+## [app-v0.3.5] - 2026-10-14
+
+### Changed
+- The app loads Markdown rendering and syntax highlighting when a preview opens.
+- Config and agent queries share an in-flight inventory request. Completed and failed requests are not cached.
+
 ## [0.2.0]
 
 ### Added
@@ -220,6 +234,8 @@ Initial release.
   host-agent reasoning, `--apply` to write proposals into overlays, and a provider-agnostic
   OpenAI-compatible API mode (`--provider` / `--base-url`).
 
-[Unreleased]: https://github.com/Wang-Cankun/skillshelf/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Wang-Cankun/skillshelf/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/Wang-Cankun/skillshelf/compare/v0.7.1...v0.7.2
+[app-v0.3.5]: https://github.com/Wang-Cankun/skillshelf/compare/app-v0.3.4...app-v0.3.5
 [0.2.0]: https://github.com/Wang-Cankun/skillshelf/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Wang-Cankun/skillshelf/releases/tag/v0.1.0

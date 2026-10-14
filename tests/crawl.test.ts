@@ -87,6 +87,25 @@ describe("crawl rules", () => {
     expect(skills.filter((s) => s.name === "beta").length).toBe(1);
   });
 
+  test("a larger crawl preserves root order and the first alias's metadata", async () => {
+    const root = await scratch();
+    const roots: string[] = [];
+    const names = Array.from({ length: 40 }, (_, i) => `sample-${i}`);
+    for (const name of names) roots.push(await skill(root, name, ["coding"]));
+    const aliasRoot = join(root, "alias-root");
+    await mkdir(aliasRoot);
+    const alias = join(aliasRoot, "alias");
+    await symlink(roots[0]!, alias);
+    roots.push(aliasRoot);
+    const { skills } = await crawl(roots, {
+      primaryDomainOf: (dir) => dir === alias ? "wrong-alias" : "docs",
+    });
+    expect(skills.map((s) => s.name)).toEqual(names);
+    expect(skills[0]!.path).toBe(roots[0]!);
+    expect(skills[0]!.primaryDomain).toBe("docs");
+    expect(skills[0]!.discoveredRoot).toBe(roots[0]!);
+  });
+
   test("bridge mirror: .agents/skills entries get mirrorOf set, not double-counted as canonical", async () => {
     const root = await scratch();
     // canonical .claude/skills/commit

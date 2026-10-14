@@ -171,7 +171,9 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       // empty-bundle case keeps its distinct human message while JSON still emits the
       // full {bundle, skills:[]} shape (verbatim).
       const result: CommandResult = {
-        json: { bundle: bundle.name, skills: toJson(rows, ctx.libraryPath, deployCounts) },
+        json: json
+          ? { bundle: bundle.name, skills: toJson(rows, ctx.libraryPath, deployCounts) }
+          : null,
         human: (emit) => {
           if (rows.length === 0) {
             emit(`Bundle "${bundle.name}" has no skills.`);
@@ -187,7 +189,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
 
     const listed = applySort(all ? skills : activeSkills(skills));
     const result: CommandResult = {
-      json: toJson(listed, ctx.libraryPath, deployCounts),
+      json: json ? toJson(listed, ctx.libraryPath, deployCounts) : null,
       human: (emit) => emitHuman(emit, listed),
     };
     render(ctx, json, result);

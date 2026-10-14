@@ -1,7 +1,7 @@
 // skl outdated — per locked skill, check the upstream latest commit/ref and
 // mark which installed skills are stale (upstream moved past the installed ref).
 //
-// github channel: `gh api` / `git ls-remote` (via core/fetch).
+// github channel: `gh api` / `git ls-remote` (via core/fetch), once per repo per run.
 // vercel-registry channel: `skills info` (degrades gracefully if absent).
 //
 // Read command: supports --json.
@@ -13,7 +13,8 @@ import { readLockfile } from "../core/provenance.ts";
 import { entryMode, entryModeInfo, loadLibrary, findByName } from "../core/library.ts";
 import { hashContent } from "../core/crawl.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
-import { parseStoredSource, latestRef } from "../core/fetch.ts";
+import { parseStoredSource, latestRef, type RefResult } from "../core/fetch.ts";
+import { mapLimit } from "../lib/async.ts";
 import { classify } from "../core/reconcile.ts";
 import { render, outdatedStatusMark, outdatedRefInfo, type CommandResult } from "../core/report.ts";
 
@@ -56,9 +57,20 @@ function localBodyHash(name: string, library: Skill[], libraryPath: string): str
   return null;
 }
 
-async function checkEntry(entry: LockEntry, library: Skill[], libraryPath: string): Promise<OutdatedRow> {
+async function checkEntry(
+  entry: LockEntry,
+  library: Skill[],
+  libraryPath: string,
+  refs: Map<string, Promise<RefResult>>,
+): Promise<OutdatedRow> {
   const parsed = parseStoredSource(entry.source);
-  const res = await latestRef(parsed);
+  const key = parsed.channel === "git" ? `git:${parsed.localPath}` : parsed.source;
+  let request = refs.get(key);
+  if (!request) {
+    request = latestRef(parsed);
+    refs.set(key, request);
+  }
+  const res = await request;
   if (!res.ok) {
     return {
       name: entry.name,
@@ -210,38 +222,6 @@ function checkEntryLocal(entry: LockEntry, library: Skill[], libraryPath: string
     : { ...base, status: "current", note: "matches installed baseline (offline)" };
 }
 
-/**
- * Resolve an array through an async fn with BOUNDED concurrency, preserving input order.
- * `outdated` probes an upstream ref per tracked skill; firing one `git ls-remote` for the
- * WHOLE lockfile at once (unbounded Promise.all) opens dozens of simultaneous TLS handshakes
- * that a flaky network / connection cap turns into a storm of transient "unable to access"
- * failures — every one collapsing to status "unknown". A small pool caps in-flight probes so
- * they succeed instead of overwhelming the transport (a failed probe degrades to "unknown",
- * not a retry — a status check must not hang on a flaky host).
- *
- * `fn` MUST resolve (never reject): a rejection would tear down the pool via Promise.all
- * while sibling workers keep running (risking an unhandled rejection). Every current caller
- * branch is throw-free by contract; a future throwing `fn` must catch internally.
- */
-export async function mapLimit<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    for (let i = next++; i < items.length; i = next++) {
-      out[i] = await fn(items[i]!, i);
-    }
-  }
-  // Clamp to >=1 worker: a limit of 0 (or negative) would spawn none, leaving `out` full
-  // of undefined holes. min() with items.length avoids spawning idle workers.
-  const workerCount = Math.max(1, Math.min(limit, items.length));
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  return out;
-}
-
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   const json = argv.includes("--json");
   const checkLocal = argv.includes("--check-local");
@@ -260,9 +240,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const library = await loadLibrary(libraryPath);
 
     // Bounded concurrency (not an unbounded Promise.all): the online checkEntry path
-    // makes a network probe per skill, and firing all of them at once storms the transport
+    // shares one probe per repo, and firing all repos at once storms the transport
     // into transient failures (→ status "unknown"). Offline branches (linked/adopted/
     // --check-local) resolve instantly and cost nothing extra under the pool.
+    const refs = new Map<string, Promise<RefResult>>();
     const PROBE_CONCURRENCY = 6;
     const rows = await mapLimit(entries, PROBE_CONCURRENCY, (e) =>
       entryMode(libraryPath, e.name) === "linked"
@@ -276,7 +257,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
             : Promise.resolve(adoptedRow(e))
           : checkLocal
             ? Promise.resolve(checkEntryLocal(e, library, libraryPath))
-            : checkEntry(e, library, libraryPath),
+            : checkEntry(e, library, libraryPath, refs),
     );
 
     // Augment: LINKED library skills not already represented by a lock entry get a

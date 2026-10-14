@@ -4,17 +4,11 @@
 // lifecycle). Every fact is backed by the live `skl show`/`skl agents` feeds;
 // the Explanation tab is an honest "coming soon" placeholder (ADR-0007).
 
-import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeSanitize from "rehype-sanitize";
-import hljs from "highlight.js/lib/common";
-import "highlight.js/styles/github.css";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useStore } from "../state/store";
 import { useShow, useLibrary, useAgents, useConfig } from "../state/queries";
 import { useCommands } from "../state/commands";
 import { projectScopeName } from "../lib/skl";
-import { stripFrontmatter } from "../lib/derive";
 import { allDomains } from "../lib/select";
 import { openInEditor, revealInFinder } from "../lib/shell";
 import { DomainMenu } from "./DomainMenu";
@@ -27,6 +21,8 @@ import { MONO } from "../lib/tokens";
 import { GLOBAL_SCOPE } from "../state/store";
 import type { AgentsReport, RefFile } from "../lib/types";
 import type { DrawerTab } from "../state/store";
+
+const FilePreview = lazy(() => import("./FilePreview"));
 
 const EMPTY_AGENTS: AgentsReport = { agents: [], scopes: [], deployments: {} };
 const DEFAULT_FILES: RefFile[] = [{ path: "SKILL.md", kind: "md", depth: 0 }];
@@ -104,9 +100,6 @@ export function DetailDrawer() {
     (d) => !removedTags.includes(d),
   );
   const refFiles = show?.refFiles ?? DEFAULT_FILES;
-  // Only SKILL.md (and other markdown) gets prose rendering; code / data files
-  // are shown verbatim so the navigator can preview anything in the dir.
-  const isMd = state.drawerFile.toLowerCase().endsWith(".md");
   const fileLabel = state.drawerFile.split("/").pop() ?? state.drawerFile;
 
   // ── Anti-sparse agent × scope sub-matrix (delta 3 / RISK 3) ───────────────
@@ -452,23 +445,17 @@ export function DetailDrawer() {
                 padding: "22px 28px",
               }}
             >
-              {state.drawerTab === "rendered" &&
-                (!show?.body ? (
-                  <div style={{ color: "#9A9AA2", fontSize: 13 }}>Loading…</div>
-                ) : isMd ? (
-                  <div className="md-body" style={{ maxWidth: 760 }}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeSanitize]}
-                    >
-                      {stripFrontmatter(show.body)}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  // Non-markdown (code, data, plain text): preview verbatim
-                  // with syntax highlighting — markdown rendering would mangle it.
-                  <CodeView code={show.body} file={state.drawerFile} />
-                ))}
+              {state.drawerTab === "rendered" && (
+                <Suspense
+                  fallback={<div style={{ color: "#9A9AA2", fontSize: 13 }}>Loading…</div>}
+                >
+                  {show?.body ? (
+                    <FilePreview body={show.body} file={state.drawerFile} />
+                  ) : (
+                    <div style={{ color: "#9A9AA2", fontSize: 13 }}>Loading…</div>
+                  )}
+                </Suspense>
+              )}
               {state.drawerTab === "raw" && (
                 <pre
                   style={{
@@ -939,90 +926,6 @@ const lifeBtn: React.CSSProperties = {
   cursor: "pointer",
   fontFamily: "inherit",
 };
-
-// File extension → highlight.js language. Unmapped extensions render plain
-// (no auto-detect — predictable beats clever for lockfiles / unknown text).
-const EXT_LANG: Record<string, string> = {
-  ts: "typescript",
-  tsx: "typescript",
-  mts: "typescript",
-  cts: "typescript",
-  js: "javascript",
-  jsx: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  json: "json",
-  py: "python",
-  rb: "ruby",
-  go: "go",
-  rs: "rust",
-  java: "java",
-  c: "c",
-  h: "c",
-  cpp: "cpp",
-  cc: "cpp",
-  hpp: "cpp",
-  cs: "csharp",
-  sh: "bash",
-  bash: "bash",
-  zsh: "bash",
-  fish: "bash",
-  yml: "yaml",
-  yaml: "yaml",
-  toml: "ini",
-  ini: "ini",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "xml",
-  xml: "xml",
-  svg: "xml",
-  sql: "sql",
-  php: "php",
-  swift: "swift",
-  kt: "kotlin",
-  lua: "lua",
-  r: "r",
-  pl: "perl",
-  dockerfile: "dockerfile",
-  makefile: "makefile",
-};
-
-function CodeView({ code, file }: { code: string; file: string }) {
-  const base = file.split("/").pop() ?? file;
-  const ext = (base.includes(".") ? base.split(".").pop()! : base).toLowerCase();
-  const lang = EXT_LANG[ext];
-  const html = useMemo(() => {
-    if (!lang || !hljs.getLanguage(lang)) return null;
-    try {
-      return hljs.highlight(code, { language: lang }).value;
-    } catch {
-      return null;
-    }
-  }, [code, lang]);
-  const preStyle: React.CSSProperties = {
-    fontFamily: MONO,
-    fontSize: 11.5,
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word",
-    color: "#3F3F46",
-    lineHeight: 1.6,
-    margin: 0,
-    background: "transparent",
-  };
-  if (html) {
-    return (
-      <pre style={preStyle}>
-        <code
-          className="hljs"
-          style={{ background: "transparent", padding: 0 }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      </pre>
-    );
-  }
-  return <pre style={preStyle}>{code}</pre>;
-}
 
 function ProvRow({
   label,

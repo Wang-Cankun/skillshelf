@@ -65,6 +65,20 @@ describe("CLI smoke (subprocess)", () => {
     expect(existsSync(env.SKILLSHELF_GLOBAL_CORE)).toBe(false);
   });
 
+  test("every advertised command has reachable command-specific help", async () => {
+    const help = await runCli(["help"]);
+    expect(help.code).toBe(0);
+    const names = [...help.stdout.matchAll(/^  (\S+)\s{2,}/gm)].map((m) => m[1]!);
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      const r = await runCli(["help", name]);
+      expect(r.code).toBe(0);
+      expect(r.stdout).toStartWith(`${name} — `);
+      expect(r.stdout).toContain(`Usage: skl ${name}`);
+      expect(r.stderr).toBe("");
+    }
+  });
+
   test("unknown command with --help still exits non-zero", async () => {
     const r = await runCli(["frobnicate", "--help"]);
     expect(r.code).toBe(1);

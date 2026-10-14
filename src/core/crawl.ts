@@ -15,6 +15,7 @@ import { existsSync, type Dirent } from "node:fs";
 import type { Skill } from "../types.ts";
 import { parseFrontmatter } from "../lib/frontmatter.ts";
 import { realpathOrSelf, isDirectory } from "../lib/fs.ts";
+import { mapLimit } from "../lib/async.ts";
 
 /** Expand a parent dir (like ~/Documents/GitHub) into candidate skill roots. */
 export async function expandProjectRoots(parent: string): Promise<string[]> {
@@ -229,8 +230,8 @@ export async function crawl(
     effectiveRoots.push(r);
   }
 
-  // Map realpath(skillDir) -> Skill, so aliased copies collapse.
-  const byReal = new Map<string, Skill>();
+  // Group aliases before reading, so the first readable path still wins.
+  const byReal = new Map<string, Found[]>();
   // Track canonical (.claude / non-.agents) skill dirs by realpath of body,
   // so .agents mirrors can point mirrorOf at them.
   const claudeByName = new Map<string, string>(); // name -> canonical skill dir path
@@ -241,6 +242,7 @@ export async function crawl(
     retired: boolean;
     isAgents: boolean;
     root: string;
+    order: number;
   }
   const found: Found[] = [];
   for (const root of effectiveRoots) {
@@ -248,7 +250,7 @@ export async function crawl(
     for (const d of dirs) {
       // A skill dir is a bridge mirror if it lives under a `.agents` path.
       const isAgents = pathHasSegment(d.dir, ".agents");
-      found.push({ dir: d.dir, retired: d.retired, isAgents, root });
+      found.push({ dir: d.dir, retired: d.retired, isAgents, root, order: found.length });
     }
   }
 
@@ -261,23 +263,29 @@ export async function crawl(
 
   for (const f of found) {
     const real = realpathOrSelf(f.dir);
-    if (byReal.has(real)) continue; // aliased duplicate dir
-
-    let mirrorOf: string | null = null;
-    if (f.isAgents) {
-      const name = basename(f.dir);
-      mirrorOf = claudeByName.get(name) ?? null;
-    }
-    const primaryDomain = opts.primaryDomainOf?.(f.dir) ?? null;
-    const skill = await buildSkill(f.dir, {
-      retired: f.retired,
-      mirrorOf,
-      primaryDomain,
-      discoveredRoot: f.root,
-    });
-    if (skill) byReal.set(real, skill);
+    const aliases = byReal.get(real) ?? [];
+    aliases.push(f);
+    byReal.set(real, aliases);
   }
 
-  return { skills: [...byReal.values()], dedupedRoots };
+  const loaded = await mapLimit([...byReal.values()], 16, async (aliases) => {
+    for (const f of aliases) {
+      const mirrorOf = f.isAgents ? claudeByName.get(basename(f.dir)) ?? null : null;
+      const primaryDomain = opts.primaryDomainOf?.(f.dir) ?? null;
+      const skill = await buildSkill(f.dir, {
+        retired: f.retired,
+        mirrorOf,
+        primaryDomain,
+        discoveredRoot: f.root,
+      });
+      if (skill) return { skill, order: f.order };
+    }
+    return null;
+  });
+  const skills = loaded
+    .filter((s) => s !== null)
+    .sort((a, b) => a.order - b.order)
+    .map((s) => s.skill);
+  return { skills, dedupedRoots };
 }
 

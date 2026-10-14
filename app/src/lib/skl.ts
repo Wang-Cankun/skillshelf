@@ -157,6 +157,20 @@ export async function loadOutdated(): Promise<OutdatedReport> {
   return deriveOutdated(augmentLibrary(realLibrary, realWhere));
 }
 
+// Config and agent queries share the pending scan, not a cached inventory.
+let agentsRequest: Promise<AgentsReport> | undefined;
+
+function loadAgentInventory(): Promise<AgentsReport> {
+  if (!agentsRequest) {
+    agentsRequest = invokeJson(["agents", "--json"], AgentsReportSchema)
+      .then((report) => ({ ...report, agents: normalizeAgents(report.agents) }))
+      .finally(() => {
+        agentsRequest = undefined;
+      });
+  }
+  return agentsRequest;
+}
+
 export async function loadConfig(): Promise<AppConfig> {
   if (IS_TAURI) {
     // `skl projects --json` -> `{ projects: string[] }` for the nav scopes, and
@@ -166,9 +180,9 @@ export async function loadConfig(): Promise<AppConfig> {
     // — the round-trip the `agents add/rm` write verb persists (ADR-0010 delta 4).
     const [{ projects }, report] = await Promise.all([
       invokeJson(["projects", "--json"], ConfigSchema),
-      invokeJson(["agents", "--json"], AgentsReportSchema),
+      loadAgentInventory(),
     ]);
-    const agents = normalizeAgents(report.agents).filter((a) => a.custom === true);
+    const agents = report.agents.filter((a) => a.custom === true);
     return { projects, agents };
   }
   return realConfig;
@@ -178,8 +192,8 @@ export async function loadAgents(): Promise<AgentsReport> {
   if (IS_TAURI) {
     // The engine already merges the config `agents` block + persisted-project
     // scopes into `agents --json` (S1), so only the display filter remains.
-    const report = await invokeJson(["agents", "--json"], AgentsReportSchema);
-    return { ...report, agents: resolveVisibleAgents(normalizeAgents(report.agents)) };
+    const report = await loadAgentInventory();
+    return { ...report, agents: resolveVisibleAgents(report.agents) };
   }
   // browser: reconstruct from the real `where` feed, and inject the custom
   // agents + persisted-but-empty project scopes the engine would have merged.

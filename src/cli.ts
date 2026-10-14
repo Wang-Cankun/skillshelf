@@ -12,100 +12,63 @@
 // (package.json bin -> ./src/cli.ts).
 
 import type { CommandModule, Ctx } from "./types.ts";
-import { loadContext } from "./config.ts";
 
-import * as search from "./commands/search.ts";
-import * as ls from "./commands/ls.ts";
-import * as status from "./commands/status.ts";
-import * as show from "./commands/show.ts";
-import * as index from "./commands/index.ts";
-import * as use from "./commands/use.ts";
-import * as drop from "./commands/drop.ts";
-import * as realign from "./commands/realign.ts";
-import * as diffCmd from "./commands/diff.ts";
-import * as init from "./commands/init.ts";
-import * as add from "./commands/add.ts";
-import * as outdated from "./commands/outdated.ts";
-import * as update from "./commands/update.ts";
-import * as infer from "./commands/infer.ts";
-import * as newCmd from "./commands/new.ts";
-import * as scan from "./commands/scan.ts";
-import * as roots from "./commands/roots.ts";
-import * as projects from "./commands/projects.ts";
-import * as importCmd from "./commands/import.ts";
-import * as link from "./commands/link.ts";
-import * as track from "./commands/track.ts";
-import * as untrack from "./commands/untrack.ts";
-import * as migrate from "./commands/migrate.ts";
-import * as where from "./commands/where.ts";
-import * as agents from "./commands/agents.ts";
-import * as tag from "./commands/tag.ts";
-import * as untag from "./commands/untag.ts";
-import * as retag from "./commands/retag.ts";
-import * as rm from "./commands/rm.ts";
-import * as retire from "./commands/retire.ts";
-import * as unretire from "./commands/unretire.ts";
-import * as rename from "./commands/rename.ts";
-import * as refresh from "./commands/refresh.ts";
+// Registration order = display order in help. Load only the selected command.
+const MODULES = {
+  search: () => import("./commands/search.ts"),
+  ls: () => import("./commands/ls.ts"),
+  status: () => import("./commands/status.ts"),
+  where: () => import("./commands/where.ts"),
+  agents: () => import("./commands/agents.ts"),
+  show: () => import("./commands/show.ts"),
+  use: () => import("./commands/use.ts"),
+  drop: () => import("./commands/drop.ts"),
+  realign: () => import("./commands/realign.ts"),
+  diff: () => import("./commands/diff.ts"),
+  refresh: () => import("./commands/refresh.ts"),
+  add: () => import("./commands/add.ts"),
+  scan: () => import("./commands/scan.ts"),
+  roots: () => import("./commands/roots.ts"),
+  projects: () => import("./commands/projects.ts"),
+  import: () => import("./commands/import.ts"),
+  link: () => import("./commands/link.ts"),
+  track: () => import("./commands/track.ts"),
+  untrack: () => import("./commands/untrack.ts"),
+  migrate: () => import("./commands/migrate.ts"),
+  tag: () => import("./commands/tag.ts"),
+  untag: () => import("./commands/untag.ts"),
+  retag: () => import("./commands/retag.ts"),
+  retire: () => import("./commands/retire.ts"),
+  unretire: () => import("./commands/unretire.ts"),
+  rename: () => import("./commands/rename.ts"),
+  rm: () => import("./commands/rm.ts"),
+  outdated: () => import("./commands/outdated.ts"),
+  update: () => import("./commands/update.ts"),
+  init: () => import("./commands/init.ts"),
+  new: () => import("./commands/new.ts"),
+  index: () => import("./commands/index.ts"),
+  infer: () => import("./commands/infer.ts"),
+} satisfies Record<string, () => Promise<CommandModule>>;
 
-// Registration order = display order in help.
-const MODULES: CommandModule[] = [
-  search,
-  ls,
-  status,
-  where,
-  agents,
-  show,
-  use,
-  drop,
-  realign,
-  diffCmd,
-  refresh,
-  add,
-  scan,
-  roots,
-  projects,
-  importCmd,
-  link,
-  track,
-  untrack,
-  migrate,
-  tag,
-  untag,
-  retag,
-  retire,
-  unretire,
-  rename,
-  rm,
-  outdated,
-  update,
-  init,
-  newCmd,
-  index,
-  infer,
-];
-
-const COMMANDS = new Map<string, CommandModule>();
-for (const mod of MODULES) {
-  COMMANDS.set(mod.meta.name, mod);
-}
+const COMMANDS = new Map<string, () => Promise<CommandModule>>(Object.entries(MODULES));
 
 // Command aliases (not shown in the help listing; resolve to the canonical module).
 const ALIASES: Record<string, string> = { mv: "rename" };
 for (const [alias, target] of Object.entries(ALIASES)) {
-  const mod = COMMANDS.get(target);
-  if (mod) COMMANDS.set(alias, mod);
+  const load = COMMANDS.get(target);
+  if (load) COMMANDS.set(alias, load);
 }
 
-function helpText(): string {
+async function helpText(): Promise<string> {
+  const modules = await Promise.all(Object.values(MODULES).map((load) => load()));
   const lines: string[] = [];
   lines.push("skl — skillshelf: agent-first skill registry + manager");
   lines.push("");
   lines.push("Usage: skl <command> [args] [--json]");
   lines.push("");
   lines.push("Commands:");
-  const width = Math.max(...MODULES.map((m) => m.meta.name.length));
-  for (const mod of MODULES) {
+  const width = Math.max(...modules.map((m) => m.meta.name.length));
+  for (const mod of modules) {
     lines.push(`  ${mod.meta.name.padEnd(width)}  ${mod.meta.summary}`);
   }
   lines.push("");
@@ -121,35 +84,36 @@ async function main(rawArgv: string[]): Promise<number> {
   // No subcommand -> help.
   const first = rawArgv[0];
   if (first === undefined || first === "--help" || first === "-h") {
-    console.log(helpText());
+    console.log(await helpText());
     return 0;
   }
 
   if (first === "help") {
     const target = rawArgv[1];
     if (target !== undefined) {
-      const mod = COMMANDS.get(target);
-      if (mod) {
-        console.log(commandHelp(mod));
+      const load = COMMANDS.get(target);
+      if (load) {
+        console.log(commandHelp(await load()));
         return 0;
       }
       console.error(`Unknown command: ${target}`);
       console.error("");
-      console.error(helpText());
+      console.error(await helpText());
       return 1;
     }
-    console.log(helpText());
+    console.log(await helpText());
     return 0;
   }
 
-  const mod = COMMANDS.get(first);
-  if (!mod) {
+  const load = COMMANDS.get(first);
+  if (!load) {
     console.error(`Unknown command: ${first}`);
     console.error("");
-    console.error(helpText());
+    console.error(await helpText());
     return 1;
   }
 
+  const mod = await load();
   if (rawArgv.includes("--help") || rawArgv.includes("-h")) {
     console.log(commandHelp(mod));
     return 0;
@@ -157,6 +121,7 @@ async function main(rawArgv: string[]): Promise<number> {
 
   let ctx: Ctx;
   try {
+    const { loadContext } = await import("./config.ts");
     ctx = await loadContext();
   } catch (err) {
     console.error(`Failed to initialize skillshelf: ${err instanceof Error ? err.message : String(err)}`);
