@@ -6,7 +6,7 @@ import type { Ctx, Skill, Provenance } from "../types.ts";
 import { activeSkills, entryModeInfo } from "../core/library.ts";
 import { resolveBundle } from "../core/bundle.ts";
 import { inventoryDeployments } from "../core/deployments.ts";
-import { knownAgentSurfacePaths } from "../core/surfaces.ts";
+import { deploymentSurfaces } from "../core/surfaces.ts";
 import { isCleanSite } from "../core/agents.ts";
 import { oneLine } from "../core/lifecycle.ts";
 import { render, type CommandResult } from "../core/report.ts";
@@ -121,7 +121,7 @@ function originLabel(prov: Provenance | null): string | null {
 async function deployCountsFor(ctx: Ctx, lib: Skill[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   try {
-    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths()];
+    const surfaces = deploymentSurfaces(ctx);
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
     for (const site of report.sites) {
       // "clean" = the ✓ states in `skl where` (linked OR canonical source), shared

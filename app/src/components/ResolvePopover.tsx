@@ -20,7 +20,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../state/store";
 import { useCommands } from "../state/commands";
-import { useLibrary, useWhere } from "../state/queries";
+import { useAgents, useLibrary, useWhere } from "../state/queries";
 import { GLOBAL_SCOPE } from "../state/store";
 import { MONO } from "../lib/tokens";
 import { copySiteFor } from "../lib/agents";
@@ -44,6 +44,7 @@ export function ResolvePopover() {
   const commands = useCommands();
   const library = useLibrary().data ?? [];
   const where = useWhere().data;
+  const agents = useAgents().data?.agents;
   const target = state.resolve;
   // In-place unified-diff panel (drift → "View diff"): null = hidden,
   // "" = loading. Reset whenever the resolve target changes.
@@ -151,7 +152,7 @@ export function ResolvePopover() {
         // site, the actions are OMITTED (never a path-less command, never a fake
         // echo): keep-only, with the hint explaining why.
         const copyPath = where
-          ? (copySiteFor(where, skill, agent, scope)?.path ?? null)
+          ? (copySiteFor(where, skill, agent, scope, agents)?.path ?? null)
           : null;
         if (!copyPath) {
           return [
@@ -193,20 +194,23 @@ export function ResolvePopover() {
       }
       case "dead":
         return [
-          {
+          ...(!skillMeta || skillMeta.retired || state.retired[skill] ? [] : [{
             label: "Repair link",
             hint: "Re-create the symlink from the library source.",
             cmd: ["skl", "use", skill, "--agent", agent, ...scopeFlag],
             run: () =>
               void commands.deploy(skill, agent, scope, true, scopePath ?? undefined),
-          },
+          }]),
           {
             label: "Remove dead link",
-            hint: "Drop the broken symlink from this surface.",
-            cmd: ["skl", "drop", skill, "--agent", agent, ...scopeFlag],
+            hint: "Remove only this dead symlink. Live links and real copies are preserved.",
+            cmd: ["skl", "drop", skill, "--dead", "--agent", agent, ...scopeFlag],
             danger: true,
             run: () =>
-              void commands.deploy(skill, agent, scope, false, scopePath ?? undefined),
+              void commands.resolveCopy(
+                ["drop", skill, "--dead", "--agent", agent, ...scopeFlag],
+                `Removed dead link ${skill} · ${agent} (${scope})`,
+              ),
           },
         ];
       default:

@@ -43,8 +43,9 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
       });
       return;
     }
-    await qc.invalidateQueries({ queryKey: qk.config });
-    await qc.invalidateQueries({ queryKey: qk.agents });
+    await Promise.all([qk.config, qk.agents, qk.where, qk.library].map((queryKey) =>
+      qc.invalidateQueries({ queryKey }),
+    ));
   };
 
   // add-custom form.
@@ -116,8 +117,9 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
       });
       return;
     }
-    await qc.invalidateQueries({ queryKey: qk.config });
-    await qc.invalidateQueries({ queryKey: qk.agents });
+    await Promise.all([qk.config, qk.agents, qk.where, qk.library].map((queryKey) =>
+      qc.invalidateQueries({ queryKey }),
+    ));
     dispatch({
       type: "showToast",
       toast: {
@@ -303,6 +305,7 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
                 Icon (optional)
               </div>
               <input
+                autoCorrect="off"
                 value={iconQuery}
                 onChange={(e) => setIconQuery(e.target.value)}
                 placeholder="Search icons…"
@@ -461,6 +464,7 @@ function Field({
     <label style={{ display: "block" }}>
       <span style={{ fontSize: 10.5, color: "#A1A1AA" }}>{label}</span>
       <input
+        autoCorrect="off"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

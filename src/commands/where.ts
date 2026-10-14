@@ -20,7 +20,7 @@ import {
   remediationFor,
   type RemediationAction,
 } from "../core/deployments.ts";
-import { knownAgentSurfacePaths } from "../core/surfaces.ts";
+import { deploymentSurfaces } from "../core/surfaces.ts";
 import { resolveReadTarget } from "../core/agents.ts";
 import { safeSymlink, removeSymlink } from "../lib/fs.ts";
 import { compareSkillTrees } from "../core/skill-tree.ts";
@@ -134,7 +134,7 @@ export async function remediate(
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   // Extract --agent/--project first (read-side targeting), then parse where's own
   // flags from what remains.
-  const rt = resolveReadTarget(argv);
+  const rt = resolveReadTarget(argv, undefined, undefined, ctx.config.agents);
   if ("error" in rt) {
     ctx.error(`skl where: ${rt.error}`);
     ctx.error(`usage: ${meta.usage}`);
@@ -155,7 +155,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // shows up without manual `skl scan --add-root`. Plus any --project surfaces
     // injected for THIS invocation only (verify a deploy you just made).
     // inventoryDeployments realpath-de-duplicates and skips missing dirs.
-    const surfaces = [...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths(), ...rt.extraSurfaces];
+    const surfaces = deploymentSurfaces(ctx, rt.extraSurfaces);
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
 
     // --- remediation (--prune / --fix) -----------------------------------

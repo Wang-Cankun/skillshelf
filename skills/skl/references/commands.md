@@ -98,8 +98,11 @@ library symlink instead (reported `overwritten`) — the "overwrite from library
 It discards that copy's local edits, so `skl diff` first.
 
 ## drop
-`skl drop <bundle|skill> [--agent <id>] [--global | --project <name>] [--json]`
+`skl drop <bundle|skill>... [--dead] [--agent <id>] [--global | --project <name>] [--json]`
 Inverse of `use`: removes the bundle's/skill's symlinks. Idempotent; never touches real files.
+`--dead` removes only dead symlinks with the exact supplied names in the selected surface;
+works even after retirement/removal and does not expand bundles. Live links and real copies
+are skipped with exit 1. Ordinary `drop` also returns 1 when unmanaged entries are skipped.
 
 ## realign
 `skl realign <deployed-name> [--agent <id>] [--global | --project <name>] [--json]`

@@ -6,15 +6,15 @@
 //   skl agents --json        full AgentsReport { agents, scopes, deployments }
 //   skl agents <name>        one skill's row across agents × scopes
 
-import { basename, join, sep } from "node:path";
+import { basename, sep } from "node:path";
 import type { AgentConfigEntry, Ctx } from "../types.ts";
 import { inventoryDeployments } from "../core/deployments.ts";
-import { knownAgentSurfacePaths } from "../core/surfaces.ts";
+import { deploymentSurfaces } from "../core/surfaces.ts";
 import { render, type CommandResult } from "../core/report.ts";
 import {
   computeAgentsReport,
-  knownAgentIds,
   resolveReadTarget,
+  validAgentConfig,
   type DeployState,
 } from "../core/agents.ts";
 
@@ -54,7 +54,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     return runConfigSubverb(argv, ctx);
   }
   try {
-    const rt = resolveReadTarget(argv);
+    const rt = resolveReadTarget(argv, undefined, undefined, ctx.config.agents);
     if ("error" in rt) {
       ctx.error(`skl agents: ${rt.error}`);
       ctx.error("usage: " + meta.usage);
@@ -64,28 +64,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const name = rt.rest.find((a) => !a.startsWith("--")) ?? null;
 
     const lib = await ctx.loadLibrary();
-    // Effective agent ids = built-in seeds + custom config agents (so a custom
-    // agent's project/global skills dirs are scanned for inventory).
-    const agentIds = new Set<string>(knownAgentIds());
-    for (const a of ctx.config.agents) {
-      if (a && typeof a.id === "string" && a.id.trim() !== "") agentIds.add(a.id);
-    }
-    // Config-project surfaces (ADR-0010 §5a): scan each persisted project dir for
-    // every effective agent so a deployed config-project is inventoried.
-    const projectSurfaces: string[] = [];
-    for (const proj of ctx.config.projects) {
-      for (const id of agentIds) projectSurfaces.push(join(proj, `.${id}`, "skills"));
-    }
-    // Same surface union as `skl where` (+ any --project surfaces for this call,
-    // + persisted config-project surfaces) so the agent matrix sees the same
-    // reality and can verify an ad-hoc OR persisted project deploy.
-    const surfaces = [
-      ...ctx.roots,
-      ctx.config.globalCoreTarget,
-      ...knownAgentSurfacePaths(),
-      ...projectSurfaces,
-      ...rt.extraSurfaces,
-    ];
+    const surfaces = deploymentSurfaces(ctx, rt.extraSurfaces);
     const report = await inventoryDeployments(surfaces, ctx.libraryPath, lib);
     // Empty persisted projects still appear as scope rows (basename = scope name);
     // custom agents merge into the matrix. Deployments stay FS-derived.
@@ -239,6 +218,10 @@ async function runConfigSubverb(argv: string[], ctx: Ctx): Promise<number> {
     ...(hidden ? { hidden: true } : {}),
     ...(inheritsGlobal ? {} : { inheritsGlobal: false }),
   };
+  if (!validAgentConfig(entry)) {
+    ctx.error("skl agents add: invalid agent id or paths; global must be absolute or ~/ and project convention must stay inside the project");
+    return 1;
+  }
   const agents = await ctx.addAgent(entry);
   const result: CommandResult = {
     json: { agents, added: true },

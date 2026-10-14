@@ -34,7 +34,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     // from library" drift remediation. Consumed here; parseDeployTarget rejects
     // unknown flags.
     const force = argv.includes("--force");
-    const parsed = parseDeployTarget(argv.filter((a) => a !== "--force"));
+    const parsed = parseDeployTarget(argv.filter((a) => a !== "--force"), undefined, undefined, ctx.config.agents);
     if ("error" in parsed) {
       ctx.error(`skl use: ${parsed.error}`);
       ctx.error("usage: " + meta.usage);

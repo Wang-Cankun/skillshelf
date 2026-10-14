@@ -56,6 +56,33 @@ export function agentIdForSurface(surface: string, ids: readonly string[]): stri
   return null;
 }
 
+export interface AgentPaths {
+  id: string;
+  global?: string;
+  projConvention?: string;
+}
+
+/** Match configured paths before falling back to conventional dot-directories. */
+export function configuredSurface(
+  surface: string,
+  home: string | null,
+  agents: readonly AgentPaths[],
+): { agentId: string; scope: string } | null {
+  const path = surface.replace(/\\/g, "/").replace(/\/$/, "");
+  for (const agent of agents) {
+    const global = agent.global?.replace(/^~(?=\/)/, home ?? "~").replace(/\\/g, "/").replace(/\/$/, "");
+    if (global === path) return { agentId: agent.id, scope: "Global" };
+  }
+  for (const agent of agents) {
+    const convention = agent.projConvention?.replace(/\\/g, "/");
+    if (convention && path.endsWith(`/${convention}`)) {
+      const root = path.slice(0, -convention.length - 1);
+      return { agentId: agent.id, scope: root.split("/").filter(Boolean).pop() ?? "Global" };
+    }
+  }
+  return null;
+}
+
 /**
  * Scope of a surface for a given agent: "Global" when the surface sits directly
  * under HOME (e.g. ~/.claude/skills); otherwise the enclosing project's dir name.
@@ -142,7 +169,7 @@ export const RANK: Record<DeployState, number> = {
  */
 export function foldAgentMatrix(
   sites: DeploymentSite[],
-  opts: { home: string | null; agentIds: readonly string[]; extraScopes?: string[] },
+  opts: { home: string | null; agentIds: readonly string[]; agents?: readonly AgentPaths[]; extraScopes?: string[] },
 ): AgentMatrix {
   const { home, agentIds } = opts;
   const deployments: Record<string, Record<string, AgentDeployment>> = {};
@@ -154,9 +181,10 @@ export function foldAgentMatrix(
 
   for (const site of sites) {
     if (!isAgentMatrixSurface(site.surface)) continue;
-    const agentId = agentIdForSurface(site.surface, agentIds);
+    const configured = configuredSurface(site.surface, home, opts.agents ?? []);
+    const agentId = configured?.agentId ?? agentIdForSurface(site.surface, agentIds);
     if (!agentId) continue;
-    const scope = scopeForSurface(site.surface, agentId, home);
+    const scope = configured?.scope ?? scopeForSurface(site.surface, agentId, home);
     if (scope !== "Global") scopeSet.add(scope);
     const state = stateForSite(site);
 

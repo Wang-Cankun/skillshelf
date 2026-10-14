@@ -111,6 +111,7 @@ function ScopeSwitcher() {
   const commands = useCommands();
   const projects = useConfig().data?.projects ?? [];
   const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const tab = (
     label: string,
@@ -121,6 +122,7 @@ function ScopeSwitcher() {
     <button
       key={label}
       onClick={onClick}
+      disabled={removing !== null}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -163,6 +165,18 @@ function ScopeSwitcher() {
     }
   };
 
+  const removeProject = async (path: string) => {
+    if (removing !== null) return;
+    setRemoving(path);
+    try {
+      const ok = await commands.removeProject(path);
+      if (ok && state.scopePath === path)
+        dispatch({ type: "setScope", scope: GLOBAL_SCOPE });
+    } finally {
+      setRemoving(null);
+    }
+  };
+
   return (
     <div
       style={{
@@ -184,13 +198,34 @@ function ScopeSwitcher() {
       )}
       {projects.map((p) => {
         const nm = projectScopeName(p);
-        return tab(nm, state.scope === nm, () =>
-          dispatch({ type: "setScope", scope: nm, scopePath: p }),
+        return (
+          <div key={p} style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+            {tab(nm, state.scopePath === p, () =>
+              dispatch({ type: "setScope", scope: nm, scopePath: p }),
+            )}
+            <button
+              aria-label={`Remove project ${nm}`}
+              title={`Remove ${p} from Skillshelf; files and deployed skills are kept`}
+              onClick={() => void removeProject(p)}
+              disabled={adding || removing !== null}
+              style={{
+                background: "none",
+                border: "none",
+                color: sub,
+                padding: "4px 6px",
+                cursor: adding || removing !== null ? "default" : "pointer",
+                fontSize: 14,
+                fontFamily: "inherit",
+              }}
+            >
+              {removing === p ? "…" : "×"}
+            </button>
+          </div>
         );
       })}
       <button
         onClick={() => void addProject()}
-        disabled={adding}
+        disabled={adding || removing !== null}
         style={{
           height: 42,
           padding: "0 11px",
@@ -243,6 +278,7 @@ function LibraryToolbar() {
         }}
       >
         <input
+          autoCorrect="off"
           aria-label="search skills"
           value={state.search}
           onChange={(e) => dispatch({ type: "setSearch", search: e.target.value })}

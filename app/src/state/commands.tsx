@@ -271,8 +271,8 @@ export function useCommands() {
   );
 
   // ── Add / remove a persisted nav project (§5a) ──────────────────────────
-  // Pure navigation state (never deployment truth). Invalidates qk.config (the
-  // scope list) and qk.agents (the report unions empty-project scopes in S1).
+  // Registration changes the inventory scope, so refresh raw sites, deployment
+  // counts, and the agent matrix together with the navigation list.
   const addProject = useCallback(
     async (path: string): Promise<boolean> => {
       const res = await addProjectCmd(path);
@@ -283,7 +283,7 @@ export function useCommands() {
         });
         return false;
       }
-      await invalidate([qk.config, qk.agents]);
+      await invalidate([qk.config, qk.agents, qk.where, qk.library]);
       return true;
     },
     [dispatch, invalidate],
@@ -299,7 +299,7 @@ export function useCommands() {
         });
         return false;
       }
-      await invalidate([qk.config, qk.agents]);
+      await invalidate([qk.config, qk.agents, qk.where, qk.library]);
       return true;
     },
     [dispatch, invalidate],

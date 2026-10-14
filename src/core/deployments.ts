@@ -7,6 +7,7 @@
 // Computed from reality — no stored state. See docs/adr (deployment visibility).
 
 import { join, sep } from "node:path";
+import { homedir } from "node:os";
 import { existsSync, type Dirent } from "node:fs";
 import { readdir, readlink } from "node:fs/promises";
 import type { DeploymentKind, DeploymentReport, DeploymentSite, Skill } from "../types.ts";
@@ -132,7 +133,7 @@ export async function inventoryDeployments(
       : a.surface < b.surface ? -1 : a.surface > b.surface ? 1 : 0,
   );
   const problems = sites.filter((s) => s.kind !== "linked" && s.kind !== "source");
-  return { surfaces: realSurfaces, sites, problems };
+  return { home: homedir(), surfaces: realSurfaces, sites, problems };
 }
 
 /**

@@ -153,6 +153,7 @@ export function DomainMenu({
         >
           <div style={{ padding: 7, borderBottom: "1px solid #F0F0F1" }}>
             <input
+              autoCorrect="off"
               ref={inputRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}

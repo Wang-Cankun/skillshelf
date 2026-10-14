@@ -165,6 +165,8 @@ export interface DeploymentSite {
  * the scanned surfaces, classified. Derived from reality (no stored state).
  */
 export interface DeploymentReport {
+  /** Explicit scope anchor; a project-only inventory cannot infer HOME. */
+  home?: string;
   /** surfaces actually scanned (existing dirs, realpath-de-duplicated) */
   surfaces: string[];
   /** every classified entry across all surfaces */

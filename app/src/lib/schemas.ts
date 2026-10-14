@@ -43,6 +43,7 @@ export const DeploymentSiteSchema = z
 
 export const DeploymentReportSchema = z
   .object({
+    home: z.string().optional(),
     surfaces: z.array(z.string()),
     sites: z.array(DeploymentSiteSchema),
     problems: z.array(DeploymentSiteSchema),

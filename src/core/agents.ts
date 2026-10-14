@@ -8,7 +8,7 @@
 // the deployment state of each skill? Computed from reality — no stored state.
 
 import { homedir } from "node:os";
-import { join, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
 import type { AgentConfigEntry, DeploymentReport, DeploymentSite } from "../types.ts";
 // The surface→agent→scope fold lives in the node-free shared module so the app's
@@ -146,6 +146,7 @@ export function computeAgentsReport(
   const { scopes, deployments } = foldAgentMatrix(report.sites, {
     home,
     agentIds: ids,
+    agents: merged,
     extraScopes: opts.extraScopes,
   });
 
@@ -163,7 +164,7 @@ export function computeAgentsReport(
     short: a.short,
     global: a.global ?? `~/.${a.id}/${globalSkillsSuffix(a.id)}`,
     projConvention: a.projConvention ?? `.${a.id}/skills`,
-    installed: existsSync(globalDir(a.id, home)),
+    installed: existsSync(agentDeployDir(a.id, "global", home, process.cwd(), opts.agents)),
     // Default true (the ~/.x/skills inheritance convention all seeds follow); a
     // custom config entry may opt out with inheritsGlobal:false. `?? true` keeps
     // legacy config entries (no flag) inheriting, preserving today's behaviour.
@@ -192,31 +193,53 @@ function mergeAgents(custom: AgentConfigEntry[]): AgentConfigEntry[] {
     const prev = byId.get(c.id);
     byId.set(c.id, prev ? { ...prev, ...c } : { ...c });
   }
-  return [...byId.values()].filter((a) => !a.hidden);
+  return [...byId.values()].filter((a) => !a.hidden).map((a) => ({
+    ...a,
+    global: a.global ?? `~/.${a.id}/${globalSkillsSuffix(a.id)}`,
+    projConvention: a.projConvention ?? `.${a.id}/skills`,
+  }));
 }
 
-/** Resolve an agent's deploy dir for a scope: global (~/.<id>/skills) or a project. */
+/** Reject paths that could make a project deployment escape the selected project. */
+export function validAgentConfig(agent: AgentConfigEntry): boolean {
+  return /^[a-z0-9][a-z0-9-]*$/.test(agent.id) &&
+    (agent.global === undefined || (typeof agent.global === "string" &&
+      (isAbsolute(agent.global) || agent.global.startsWith("~/")))) &&
+    (agent.projConvention === undefined || (typeof agent.projConvention === "string" &&
+      agent.projConvention.length > 0 && !isAbsolute(agent.projConvention) &&
+      !agent.projConvention.startsWith("~") &&
+      agent.projConvention.split(/[\\/]/).every((part) => part !== ".." && part !== "." && part !== "")));
+}
+
+/** Resolve an agent's configured deploy dir, falling back to built-in conventions. */
 export function agentDeployDir(
   agentId: string,
   scope: "global" | { project: string },
   home: string = homedir(),
   cwd: string = process.cwd(),
+  custom: AgentConfigEntry[] = [],
 ): string {
-  if (scope === "global") return globalDir(agentId, home);
+  const agent = custom.find((a) => a.id === agentId);
+  if (agent && !validAgentConfig(agent)) throw new Error(`invalid paths for agent "${agentId}"`);
+  if (scope === "global") {
+    if (!agent?.global) return globalDir(agentId, home);
+    return agent.global.startsWith("~/")
+      ? resolve(home, agent.global.slice(2)) : resolve(agent.global);
+  }
   // a named project: resolve as an absolute path, or a dir under cwd.
   const proj = scope.project;
   const root = proj.startsWith(sep) ? proj : join(cwd, proj);
-  return join(root, `.${agentId}`, "skills");
+  return join(root, ...(agent?.projConvention ?? `.${agentId}/skills`).split(/[\\/]/));
 }
 
 /** True if `id` is a known agent. */
-export function isKnownAgent(id: string): boolean {
-  return AGENT_IDS.includes(id);
+export function isKnownAgent(id: string, custom: AgentConfigEntry[] = []): boolean {
+  return AGENT_IDS.includes(id) || custom.some((a) => a.id === id && !a.hidden && validAgentConfig(a));
 }
 
 /** All known agent ids (the registry order). */
-export function knownAgentIds(): string[] {
-  return [...AGENT_IDS];
+export function knownAgentIds(custom: AgentConfigEntry[] = []): string[] {
+  return [...new Set([...AGENT_IDS, ...custom.filter((a) => !a.hidden && validAgentConfig(a)).map((a) => a.id)])];
 }
 
 /**
@@ -235,6 +258,7 @@ export function resolveReadTarget(
   argv: string[],
   home: string = homedir(),
   cwd: string = process.cwd(),
+  custom: AgentConfigEntry[] = [],
 ):
   | { rest: string[]; agentId: string | null; projectDir: string | null; extraSurfaces: string[] }
   | { error: string } {
@@ -256,7 +280,7 @@ export function resolveReadTarget(
     }
   }
 
-  if (agentId !== null && !isKnownAgent(agentId)) {
+  if (agentId !== null && !isKnownAgent(agentId, custom)) {
     return { error: `unknown agent "${agentId}" (known: ${AGENT_IDS.join(", ")})` };
   }
 
@@ -265,8 +289,8 @@ export function resolveReadTarget(
 
   let extraSurfaces: string[] = [];
   if (projectDir) {
-    const ids = agentId ? [agentId] : AGENT_IDS;
-    extraSurfaces = ids.map((id) => agentDeployDir(id, { project: projectDir }, home, cwd));
+    const ids = agentId ? [agentId] : knownAgentIds(custom);
+    extraSurfaces = ids.map((id) => agentDeployDir(id, { project: projectDir }, home, cwd, custom));
   }
 
   return { rest, agentId, projectDir, extraSurfaces };
@@ -294,6 +318,7 @@ export function parseDeployTarget(
   argv: string[],
   home: string = homedir(),
   cwd: string = process.cwd(),
+  custom: AgentConfigEntry[] = [],
 ): { positionals: string[]; target: DeployTarget } | { error: string } {
   let agentId: string | null = null;
   let global = false;
@@ -324,21 +349,21 @@ export function parseDeployTarget(
     return { error: "--global and --project are mutually exclusive" };
   }
   const effectiveAgent = agentId ?? "claude";
-  if (!isKnownAgent(effectiveAgent)) {
+  if (!isKnownAgent(effectiveAgent, custom)) {
     return { error: `unknown agent "${effectiveAgent}" (known: ${AGENT_IDS.join(", ")})` };
   }
 
   let dir: string;
   let scope: string;
   if (global) {
-    dir = agentDeployDir(effectiveAgent, "global", home, cwd);
+    dir = agentDeployDir(effectiveAgent, "global", home, cwd, custom);
     scope = "Global";
   } else if (project) {
-    dir = agentDeployDir(effectiveAgent, { project }, home, cwd);
+    dir = agentDeployDir(effectiveAgent, { project }, home, cwd, custom);
     scope = project.split(sep).filter(Boolean).pop() || project;
   } else {
     // default: the cwd project's dir for this agent (legacy behaviour for claude).
-    dir = agentDeployDir(effectiveAgent, { project: cwd }, home, cwd);
+    dir = agentDeployDir(effectiveAgent, { project: cwd }, home, cwd, custom);
     scope = cwd.split(sep).filter(Boolean).pop() || "project";
   }
 

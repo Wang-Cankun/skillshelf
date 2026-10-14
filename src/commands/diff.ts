@@ -22,7 +22,7 @@ export const meta = {
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     const json = argv.includes("--json");
-    const parsed = parseDeployTarget(argv);
+    const parsed = parseDeployTarget(argv, undefined, undefined, ctx.config.agents);
     if ("error" in parsed) {
       ctx.error(`skl diff: ${parsed.error}`);
       ctx.error("usage: " + meta.usage);

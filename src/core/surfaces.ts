@@ -12,6 +12,21 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { Ctx } from "../types.ts";
+import { agentDeployDir, knownAgentIds } from "./agents.ts";
+
+/** Shared inventory scope for the raw deployment map and the agent matrix. */
+export function deploymentSurfaces(ctx: Ctx, extra: string[] = []): string[] {
+  const custom = ctx.config.agents ?? [];
+  const ids = knownAgentIds(custom);
+  return [
+    ...ctx.roots, ctx.config.globalCoreTarget, ...knownAgentSurfacePaths(),
+    ...ids.map((id) => agentDeployDir(id, "global", undefined, undefined, custom)),
+    ...(ctx.config.projects ?? []).flatMap((project) =>
+      ids.map((id) => agentDeployDir(id, { project }, undefined, undefined, custom))),
+    ...extra,
+  ];
+}
 
 /** A known agent and its global skill-dir convention. */
 export interface AgentSurface {

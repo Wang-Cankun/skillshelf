@@ -8,6 +8,7 @@
 import { homedir } from "node:os";
 import { join, resolve, isAbsolute } from "node:path";
 import { existsSync } from "node:fs";
+import { validAgentConfig } from "./core/agents.ts";
 import type { AgentConfigEntry, Config, ConfigFile, Ctx, RootEntry, Skill } from "./types.ts";
 
 export const DEFAULT_CONFIG_FILE = join(homedir(), ".skillshelf", "config.json");
@@ -256,7 +257,8 @@ function normalizeAgents(input: unknown): AgentConfigEntry[] {
   const out: AgentConfigEntry[] = [];
   for (const a of input) {
     if (a && typeof a === "object" && typeof (a as { id?: unknown }).id === "string" && (a as { id: string }).id.trim() !== "") {
-      out.push(a as AgentConfigEntry);
+      const agent = a as AgentConfigEntry;
+      if (validAgentConfig(agent)) out.push({ ...agent, ...(agent.global ? { global: abs(agent.global) } : {}) });
     }
   }
   return out;
@@ -277,6 +279,7 @@ export async function addAgent(
   entry: AgentConfigEntry,
 ): Promise<AgentConfigEntry[]> {
   const id = entry.id.trim();
+  if (!validAgentConfig({ ...entry, id })) throw new Error("invalid agent id or paths: global must be absolute or ~/; project convention must stay inside the project");
   const current = (await readConfigFile(configFilePath)) ?? {};
   const persisted = normalizeAgents(current.agents);
   const next = persisted.filter((a) => a.id !== id);

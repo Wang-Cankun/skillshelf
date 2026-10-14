@@ -61,14 +61,24 @@ ARM runner. Do not split it back into per-arch jobs — GitHub retired the
 You can also run it manually (no tag) via **Actions → Release App →
 Run workflow** (`workflow_dispatch`).
 
-### Unsigned downloads (default)
+### Ad-hoc macOS signing (default)
 
-Out of the box the macOS app is **unsigned and un-notarized**. Gatekeeper will
-refuse to open it on first launch with a double-click. Until macOS signing is
-added (below), tell users to:
+`app/src-tauri/tauri.conf.json` sets `bundle.macOS.signingIdentity` to `"-"`.
+Tauri signs the complete app bundle during local and CI builds without an Apple
+Developer account, certificate, or GitHub secret. Users do not need to sign it
+again. This binds the bundle metadata and resources into the signature instead
+of relying on the executable's linker signature.
 
-> **Right-click the app → Open → Open** (the one-time override), or run
-> `xattr -dr com.apple.quarantine /Applications/skillshelf.app`.
+The app is **not notarized**. After attempting to open a downloaded app, users
+may need to choose **System Settings → Privacy & Security → Open Anyway**.
+Documents access still requires consent, and a new build may require consent
+again because an ad-hoc signature identifies that specific build.
+
+Verify the packaged app before publishing:
+
+```sh
+codesign --verify --strict --verbose=2 /path/to/skillshelf.app
+```
 
 Windows will show a SmartScreen warning until a code-signing cert is added
 (not covered here). Linux `.AppImage`/`.deb` artifacts have no such gate.
@@ -101,8 +111,10 @@ gh secret set APPLE_PASSWORD               # the app-specific password
 gh secret set APPLE_TEAM_ID                # your Apple Team ID
 ```
 
-The workflow already references all six as optional env vars — once they exist,
-the next `app-v*` release is signed + notarized with no workflow changes.
+Uncomment all six `APPLE_*` variables in the `Build and release` step of
+`.github/workflows/release-app.yml`. `APPLE_SIGNING_IDENTITY` overrides the ad-hoc
+default in the Tauri config. With the secrets and variables configured, the next
+`app-v*` release uses Developer ID signing and notarization.
 
 ---
 
@@ -218,5 +230,6 @@ Bump `version` + `sha256` in the cask on each desktop release.
 | `TAURI_SIGNING_PRIVATE_KEY`          | Updater artifact signing | optional  |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Updater artifact signing | optional  |
 
-With **none** of the optional secrets set, releases build unsigned and the
-updater stays inert — the pipeline still produces installers + a GitHub Release.
+With **none** of the optional secrets set, macOS releases use ad-hoc signing,
+Windows releases remain unsigned, and the updater stays inert. The pipeline
+still produces installers and a draft GitHub Release.

@@ -37,6 +37,7 @@ export interface DeploymentSite {
 }
 
 export interface DeploymentReport {
+  home?: string;
   surfaces: string[];
   sites: DeploymentSite[];
   problems: DeploymentSite[];

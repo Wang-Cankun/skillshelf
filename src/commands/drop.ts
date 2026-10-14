@@ -3,6 +3,9 @@
 // skills; never touches real files or links to unrelated skills. Idempotent.
 
 import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { unlink } from "node:fs/promises";
+import { SLUG_RE } from "../core/lifecycle.ts";
 import type { Ctx, Skill } from "../types.ts";
 import { resolveBundle } from "../core/bundle.ts";
 import { findByName } from "../core/library.ts";
@@ -12,7 +15,7 @@ import { isSymlink, realpathOrSelf, realpathOrSelfAsync, removeSymlink } from ".
 export const meta = {
   name: "drop",
   summary: "Remove bundle(s)/skill(s) symlinks from an agent's skills dir (default: ./.claude/skills/)",
-  usage: "skl drop <bundle|skill>... [--agent <id>] [--global | --project <name>] [--json]",
+  usage: "skl drop <bundle|skill>... [--dead] [--agent <id>] [--global | --project <name>] [--json]",
 } as const;
 
 interface DropResult {
@@ -24,7 +27,8 @@ interface DropResult {
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
     const json = argv.includes("--json");
-    const parsed = parseDeployTarget(argv);
+    const deadOnly = argv.includes("--dead");
+    const parsed = parseDeployTarget(argv.filter((a) => a !== "--dead"), undefined, undefined, ctx.config.agents);
     if ("error" in parsed) {
       ctx.error(`skl drop: ${parsed.error}`);
       ctx.error("usage: " + meta.usage);
@@ -36,6 +40,34 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     if (!bundleName) {
       ctx.error("usage: " + meta.usage);
       return 1;
+    }
+
+    // Exact names, independent of library membership: retired/removed skills may
+    // still have dangling links. Never expand bundles or delete real contents.
+    if (deadOnly) {
+      if (positionals.some((name) => !SLUG_RE.test(name))) {
+        ctx.error("skl drop --dead: expected skill names (no paths or bundles)");
+        return 1;
+      }
+      const results: DropResult[] = [];
+      for (const name of new Set(positionals)) {
+        const link = join(target.dir, name);
+        let status: DropResult["status"] = "absent";
+        if (existsSync(link)) status = "skipped";
+        else if (isSymlink(link)) {
+          await unlink(link); // unlink cannot recursively delete a raced-in directory
+          status = "removed";
+        }
+        results.push({ name, link, status });
+      }
+      const removed = results.filter((r) => r.status === "removed").length;
+      if (json) ctx.json({ skillsDir: target.dir, agent: target.agentId, scope: target.scope, results, removed });
+      else for (const r of results) ctx.log(`${r.name} [${r.status}]`);
+      if (results.some((r) => r.status === "skipped")) {
+        ctx.error("skl drop --dead: skipped entries that are not dead symlinks; left untouched");
+        return 1;
+      }
+      return 0;
     }
 
     // Include retired so a bundle that was `use`d (which excludes retired) and a
@@ -75,7 +107,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       const link = join(skillsDir, s.name);
 
       if (!isSymlink(link)) {
-        results.push({ name: s.name, link, status: "absent" });
+        results.push({ name: s.name, link, status: existsSync(link) ? "skipped" : "absent" });
         continue;
       }
 
@@ -108,6 +140,10 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
       }
     }
 
+    if (results.some((r) => r.status === "skipped")) {
+      ctx.error("skl drop: skipped unmanaged entries; left untouched");
+      return 1;
+    }
     return 0;
   } catch (err) {
     ctx.error(`skl drop failed: ${err instanceof Error ? err.message : String(err)}`);

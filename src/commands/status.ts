@@ -28,7 +28,7 @@ interface LinkedEntry {
 
 export async function run(argv: string[], ctx: Ctx): Promise<number> {
   try {
-    const rt = resolveReadTarget(argv);
+    const rt = resolveReadTarget(argv, undefined, undefined, ctx.config.agents);
     if ("error" in rt) {
       ctx.error(`skl status: ${rt.error}`);
       ctx.error("usage: " + meta.usage);
@@ -40,7 +40,7 @@ export async function run(argv: string[], ctx: Ctx): Promise<number> {
     const baseDir = rt.projectDir ?? process.cwd();
     const agentId = rt.agentId ?? "claude";
     const cwd = baseDir;
-    const skillsDir = agentDeployDir(agentId, { project: baseDir });
+    const skillsDir = agentDeployDir(agentId, { project: baseDir }, undefined, undefined, ctx.config.agents);
 
     const skills = await ctx.loadLibrary();
     // index library skills by their realpath for matching

@@ -20,6 +20,7 @@ import {
   agentIdForSurface as agentIdForSurfaceCore,
   scopeForSurface as scopeForSurfaceCore,
   foldAgentMatrix,
+  configuredSurface,
 } from "@core/agent-matrix.ts";
 
 // Registry seeds — the agents this user actually deploys to: Claude Code,
@@ -169,7 +170,7 @@ export function deriveAgentsReport(
   where: DeploymentReport,
   opts: { agents?: AgentInfo[]; extraScopes?: string[] } = {},
 ): AgentsReport {
-  const home = inferHome(where.surfaces);
+  const home = where.home ?? inferHome(where.surfaces);
   // Merge seeds + custom agents FIRST and pass the merged id set as `agentIds`,
   // so a custom surface (e.g. a `pi` project dir) is detected by the fold — a
   // small correctness improvement matching the engine. extraScopes (§5a) union
@@ -178,6 +179,7 @@ export function deriveAgentsReport(
   const { scopes, deployments } = foldAgentMatrix([...where.sites, ...where.problems], {
     home,
     agentIds: merged.map((a) => a.id),
+    agents: merged,
     extraScopes: opts.extraScopes,
   });
 
@@ -210,12 +212,14 @@ export function aliasedSiteFor(
   skill: string,
   agentId: string,
   scope: string,
+  agents: AgentInfo[] = AGENT_SEEDS,
 ): DeploymentSite | null {
-  const home = inferHome(where.surfaces);
+  const home = where.home ?? inferHome(where.surfaces);
   for (const site of [...where.sites, ...where.problems]) {
     if (site.kind !== "aliased" || site.name !== skill) continue;
-    if (agentIdForSurface(site.surface) !== agentId) continue;
-    if (scopeForSurface(site.surface, home) !== scope) continue;
+    const configured = configuredSurface(site.surface, home, agents);
+    if ((configured?.agentId ?? agentIdForSurfaceCore(site.surface, agents.map((a) => a.id))) !== agentId) continue;
+    if ((configured?.scope ?? scopeForSurfaceCore(site.surface, agentId, home)) !== scope) continue;
     return site;
   }
   return null;
@@ -233,13 +237,15 @@ export function copySiteFor(
   skill: string,
   agentId: string,
   scope: string,
+  agents: AgentInfo[] = AGENT_SEEDS,
 ): DeploymentSite | null {
-  const home = inferHome(where.surfaces);
+  const home = where.home ?? inferHome(where.surfaces);
   for (const site of [...where.sites, ...where.problems]) {
     if (site.kind !== "copy" && site.kind !== "foreign-link") continue;
     if (site.name !== skill) continue;
-    if (agentIdForSurface(site.surface) !== agentId) continue;
-    if (scopeForSurface(site.surface, home) !== scope) continue;
+    const configured = configuredSurface(site.surface, home, agents);
+    if ((configured?.agentId ?? agentIdForSurfaceCore(site.surface, agents.map((a) => a.id))) !== agentId) continue;
+    if ((configured?.scope ?? scopeForSurfaceCore(site.surface, agentId, home)) !== scope) continue;
     return site;
   }
   return null;

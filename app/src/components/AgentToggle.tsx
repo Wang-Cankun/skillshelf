@@ -41,6 +41,7 @@ export interface AgentToggleProps {
   scopePath?: string;
   size?: number;
   readOnly?: boolean;
+  retired?: boolean;
 }
 
 // drift/copy/dead are the warning glyphs; "aliased" surfaces as "drift" through
@@ -58,6 +59,7 @@ function AgentToggleImpl({
   scopePath,
   size = 28,
   readOnly = false,
+  retired = false,
 }: AgentToggleProps) {
   const { state, dispatch } = useStore();
   const report = useAgents().data ?? EMPTY_AGENTS;
@@ -88,9 +90,10 @@ function AgentToggleImpl({
   const isAnomaly = ANOMALY.has(cell as DeployStateName);
   const isSource = cell === "source";
   const icon = iconFor(agent);
+  const disabled = readOnly || (retired && cell !== "dead");
 
   const onClick = () => {
-    if (readOnly || isSource) return;
+    if (disabled || isSource) return;
     if (isInherited) {
       // Inherited cells are NOT toggles: a global skill cannot be locally
       // disabled (no per-project denylist). Open the info+pin popover instead.
@@ -106,7 +109,7 @@ function AgentToggleImpl({
       // the distinction from the raw `where` feed so ResolvePopover can realign.
       const alias =
         anomaly === "drift" && where
-          ? aliasedSiteFor(where, skill, agentId, scope)
+          ? aliasedSiteFor(where, skill, agentId, scope, report.agents)
           : null;
       // The `copy` site's on-disk path is NOT snapshotted here — ResolvePopover
       // derives it from the live `where` feed at render time (single source).
@@ -136,7 +139,7 @@ function AgentToggleImpl({
 
   const dim = size * 0.62; // inner icon size
   const tint = icon.color;
-  const cursor = readOnly || isSource ? "default" : "pointer";
+  const cursor = disabled || isSource ? "default" : "pointer";
 
   const baseLabel: Record<DeployStateName, string> = {
     clean: "linked",
@@ -157,7 +160,7 @@ function AgentToggleImpl({
     <button
       type="button"
       onClick={onClick}
-      disabled={readOnly}
+      disabled={disabled}
       aria-label={`${agent.short ?? agentId} · ${label}`}
       aria-pressed={enabled || isInherited}
       title={`${agent.name ?? agentId} — ${label}`}

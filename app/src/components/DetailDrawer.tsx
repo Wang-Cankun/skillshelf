@@ -95,8 +95,8 @@ export function DetailDrawer() {
 
   const isVendored = skill?.source === "vendored";
   // Retired = server truth OR optimistic retire, unless optimistically unretired.
-  // A retired skill can't be deployed (footgun), so the drawer swaps its
-  // DEPLOYMENTS matrix for a muted note and its LIFECYCLE Retire → Unretire.
+  // Keep existing deployments visible; retired cells allow dead-link cleanup
+  // but cannot create new deployments. LIFECYCLE changes Retire → Unretire.
   const isRetired =
     (skill?.retired || state.retired[name]) && !state.unretired[name];
   const removedTags = state.removedTags[name] ?? [];
@@ -668,36 +668,7 @@ export function DetailDrawer() {
               </div>
             ) : null}
 
-            {/* AGENTS × SCOPE sub-matrix (delta 3, anti-sparse): one row per
-                scope where this skill lives (Global + deployed projects only),
-                columns = agents, cells = the shared AgentToggle (size 30).
-                "+ Add to project…" is the only way to surface a fresh row.
-                Retired skills aren't deployed anywhere, so the matrix is
-                replaced with a muted note (deploying a retired skill is a
-                footgun — unretire first). */}
-            {isRetired ? (
-              <div
-                style={{
-                  padding: "15px 16px",
-                  borderBottom: "1px solid #EFEFF1",
-                }}
-              >
-                <div style={{ ...CAPTION, marginBottom: 9 }}>DEPLOYMENTS</div>
-                <div
-                  style={{
-                    background: "#F6F6F7",
-                    border: "1px solid #ECECEE",
-                    borderRadius: 8,
-                    padding: "8px 10px",
-                    fontSize: 11.5,
-                    lineHeight: 1.55,
-                    color: "#71717A",
-                  }}
-                >
-                  Retired — not deployed anywhere. Unretire to deploy.
-                </div>
-              </div>
-            ) : (
+            {/* Keep the deployment matrix visible after retirement: links/copies remain. */}
             <div
               style={{ padding: "15px 16px", borderBottom: "1px solid #EFEFF1" }}
             >
@@ -716,6 +687,12 @@ export function DetailDrawer() {
                   scope × agent
                 </span>
               </div>
+
+              {isRetired && (
+                <p style={{ fontSize: 11.5, color: "#71717A", marginBottom: 12 }}>
+                  Retired — existing links and copies remain visible below. Remove dead links here; unretire before deploying.
+                </p>
+              )}
 
               {/* agent column header */}
               <div
@@ -783,12 +760,13 @@ export function DetailDrawer() {
                       scope={scope}
                       scopePath={scopePath}
                       size={30}
+                      retired={isRetired}
                     />
                   ))}
                 </div>
               ))}
 
-              <AddToProjectPicker
+              {!isRetired && <AddToProjectPicker
                 shownScopes={shownScopes}
                 onPicked={(path) =>
                   setExtraScopes((prev) =>
@@ -797,7 +775,7 @@ export function DetailDrawer() {
                       : [...prev, projectScopeName(path)],
                   )
                 }
-              />
+              />}
 
               <div
                 style={{
@@ -810,7 +788,6 @@ export function DetailDrawer() {
                 warning cells open a resolve flow · live from skl where
               </div>
             </div>
-            )}
 
             {/* TAGS */}
             <div
@@ -884,6 +861,7 @@ export function DetailDrawer() {
               {renameTo !== null && (
                 <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
                   <input
+                    autoCorrect="off"
                     autoFocus
                     value={renameTo}
                     onChange={(e) =>

@@ -112,6 +112,7 @@ export function RemoveModal() {
           confirm
         </div>
         <input
+          autoCorrect="off"
           aria-label="type skill name to confirm"
           value={state.confirmText}
           onChange={(e) =>

@@ -1,6 +1,6 @@
 // Workbench shell (ADR-0008 §3). Mirrors the mockup's top-level structure:
-// top bar (46px) · three panes (sidebar 234 · main · inspector 312) · health
-// strip (30px), plus the global overlays (undo toast, type-to-confirm Remove,
+// top bar (46px) · three panes (sidebar 234 · main · inspector 312),
+// plus the global overlays (undo toast, type-to-confirm Remove,
 // detail drawer). Every pane is a self-contained container reading the store /
 // queries / commands directly — App only composes + owns the load/empty gate.
 
@@ -15,7 +15,6 @@ import {
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { MainPane } from "./components/MainPane";
-import { HealthStrip } from "./components/HealthStrip";
 import { ErrorBanner, FeedErrorBanner } from "./components/ErrorBanner";
 import { UpdateResultsBanner } from "./components/UpdateResultsBanner";
 import { Toast } from "./components/Toast";
@@ -131,7 +130,6 @@ export default function App() {
           )}
         </div>
       </div>
-      <HealthStrip />
 
       {/* global overlays */}
       <Toast />
