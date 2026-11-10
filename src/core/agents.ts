@@ -72,15 +72,16 @@ interface AgentSeed {
   short: string;
 }
 // ENGINE seed list — the full set of agents `skl` can DETECT on disk (claude,
-// codex, cursor, opencode, gemini, pi). `pi` is now a first-class engine-seeded
-// agent, matching the app-side seed list in `app/src/lib/agents.ts` (claude,
-// codex, pi), which shows only the agents a given user actually deploys to and
-// reconstructs the report in the browser dev fallback. The two lists are NOT
-// meant to match exactly: the engine errs toward broad detection (cursor,
-// opencode, gemini included), the app toward the user's real surfaces, and
-// custom/overridden agents flow through config (delta 4) on both sides. If you
-// add/remove an id here, decide deliberately whether the app list should follow
-// — see the matching comment over AGENT_SEEDS in app/src/lib/agents.ts.
+// codex, cursor, opencode, gemini, pi, omp). `pi` and `omp` are first-class
+// engine-seeded agents, matching the app-side seed list in
+// `app/src/lib/agents.ts` (claude, codex, pi, omp), which shows only the agents
+// a given user actually deploys to and reconstructs the report in the browser
+// dev fallback. The two lists are NOT meant to match exactly: the engine errs
+// toward broad detection (cursor, opencode, gemini included), the app toward
+// the user's real surfaces, and custom/overridden agents flow through config
+// (delta 4) on both sides. If you add/remove an id here, decide deliberately
+// whether the app list should follow — see the matching comment over
+// AGENT_SEEDS in app/src/lib/agents.ts.
 const AGENT_SEEDS: AgentSeed[] = [
   { id: "claude", name: "Claude Code", short: "Claude" },
   { id: "codex", name: "Codex", short: "Codex" },
@@ -88,6 +89,7 @@ const AGENT_SEEDS: AgentSeed[] = [
   { id: "opencode", name: "OpenCode", short: "OpenCode" },
   { id: "gemini", name: "Gemini", short: "Gemini" },
   { id: "pi", name: "Pi", short: "Pi" },
+  { id: "omp", name: "Oh My Pi", short: "OMP" },
 ];
 
 const AGENT_IDS = AGENT_SEEDS.map((a) => a.id);
@@ -105,9 +107,9 @@ export function agentIdForSurface(
   return agentIdForSurfaceCore(surface, ids);
 }
 
-/** Global-only suffix: Pi uses ~/.pi/agent/skills but projects use .pi/skills. */
+/** Global-only suffix: Pi and Oh My Pi use ~/.<id>/agent/skills but projects use .<id>/skills. */
 function globalSkillsSuffix(id: string): string {
-  return id === "pi" ? join("agent", "skills") : "skills";
+  return id === "pi" || id === "omp" ? join("agent", "skills") : "skills";
 }
 
 /** Absolute path to an agent's global skills dir. */

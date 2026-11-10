@@ -53,6 +53,7 @@ export function knownAgentSurfaces(home: string = homedir()): AgentSurface[] {
     // can disagree with the (empty) matrix. See agents.test.ts coverage check.
     { agent: "gemini", path: join(home, ".gemini", "skills") },
     { agent: "pi", path: join(home, ".pi", "agent", "skills") },
+    { agent: "omp", path: join(home, ".omp", "agent", "skills") },
   ];
 }
 

@@ -24,17 +24,17 @@ import {
 } from "@core/agent-matrix.ts";
 
 // Registry seeds — the agents this user actually deploys to: Claude Code,
-// Codex, and Pi. `installed` is overridden at runtime if the real feed knows
-// better; these are the defaults. (To add more agents, append here AND extend
-// the inferHome regex below + the Rust agent surface set.)
+// Codex, Pi, and Oh My Pi. `installed` is overridden at runtime if the real
+// feed knows better; these are the defaults. (To add more agents, append here
+// AND extend the inferHome regex below + the Rust agent surface set.)
 //
 // This list INTENTIONALLY diverges from the ENGINE seed list in
-// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, pi). The engine
-// errs toward broad on-disk detection; the app shows the user's real agents and
-// reconstructs the report in the browser dev fallback. The two are NOT meant to
-// match exactly — net-new/overridden agents flow through the config `agents`
-// block (delta 4) on both sides. Keep this comment in sync with its twin over
-// AGENT_SEEDS in src/core/agents.ts when changing either list.
+// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, pi, omp). The
+// engine errs toward broad on-disk detection; the app shows the user's real
+// agents and reconstructs the report in the browser dev fallback. The two are
+// NOT meant to match exactly — net-new/overridden agents flow through the
+// config `agents` block (delta 4) on both sides. Keep this comment in sync with
+// its twin over AGENT_SEEDS in src/core/agents.ts when changing either list.
 export const AGENT_SEEDS: AgentInfo[] = [
   {
     id: "claude",
@@ -60,6 +60,15 @@ export const AGENT_SEEDS: AgentInfo[] = [
     short: "Pi",
     global: "~/.pi/agent/skills",
     projConvention: ".pi/skills",
+    installed: true,
+    inheritsGlobal: true,
+  },
+  {
+    id: "omp",
+    name: "Oh My Pi",
+    short: "OMP",
+    global: "~/.omp/agent/skills",
+    projConvention: ".omp/skills",
     installed: true,
     inheritsGlobal: true,
   },
@@ -122,9 +131,9 @@ function inferHome(surfaces: string[]): string | null {
       parents.push(flat[1]);
       continue;
     }
-    // pi nests skills under agent/skills (~/.pi/agent/skills), not ~/.pi/skills.
-    const piNested = s.match(/^(.*)\/\.pi\/agent\/skills?$/);
-    if (piNested) parents.push(piNested[1]);
+    // pi and omp nest skills under agent/skills (~/.<id>/agent/skills), not ~/.<id>/skills.
+    const nested = s.match(/^(.*)\/\.(pi|omp)\/agent\/skills?$/);
+    if (nested) parents.push(nested[1]);
   }
   if (!parents.length) return null;
   if (parents.length === 1) return parents[0];

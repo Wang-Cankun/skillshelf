@@ -112,8 +112,8 @@ describe("computeAgentsReport", () => {
   };
   const r = computeAgentsReport(report, HOME);
 
-  test("registers the 6 known agents (installed=false under a fake HOME)", () => {
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi"]);
+  test("registers the 7 known agents (installed=false under a fake HOME)", () => {
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp"]);
     expect(r.agents.every((a) => a.installed === false)).toBe(true);
     expect(r.agents[0]!.global).toBe("~/.claude/skills");
   });
@@ -149,6 +149,7 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
       "opencode",
       "gemini",
       "pi",
+      "omp",
       "walrus",
     ]);
   });
@@ -187,7 +188,7 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
   });
   test("no opts is backward-compatible (seed-only, default extraScopes)", () => {
     const r = computeAgentsReport(baseReport, HOME);
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi"]);
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp"]);
   });
 
   test("inheritsGlobal: all seeds default true; report carries the flag", () => {
@@ -218,30 +219,40 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
   });
 });
 
-describe("Pi scope-specific paths", () => {
-  test("global remains nested while projects use .pi/skills", () => {
+describe("Pi and OMP scope-specific paths", () => {
+  test("global remains nested while projects use .<id>/skills", () => {
     expect(agentDeployDir("pi", "global", HOME, "/cwd")).toBe("/home/u/.pi/agent/skills");
     expect(agentDeployDir("pi", { project: "/tmp/p" }, HOME, "/cwd")).toBe("/tmp/p/.pi/skills");
     expect(agentDeployDir("pi", { project: "rel" }, HOME, "/cwd")).toBe("/cwd/rel/.pi/skills");
+    expect(agentDeployDir("omp", "global", HOME, "/cwd")).toBe("/home/u/.omp/agent/skills");
+    expect(agentDeployDir("omp", { project: "/tmp/p" }, HOME, "/cwd")).toBe("/tmp/p/.omp/skills");
+    expect(agentDeployDir("omp", { project: "rel" }, HOME, "/cwd")).toBe("/cwd/rel/.omp/skills");
     const report = computeAgentsReport({ surfaces: [], sites: [], problems: [] }, HOME);
     const pi = report.agents.find((a) => a.id === "pi")!;
     expect(pi.global).toBe("~/.pi/agent/skills");
     expect(pi.projConvention).toBe(".pi/skills");
+    const omp = report.agents.find((a) => a.id === "omp")!;
+    expect(omp.global).toBe("~/.omp/agent/skills");
+    expect(omp.projConvention).toBe(".omp/skills");
   });
 
   test("implicit project, explicit project, and read targets agree", () => {
-    for (const flags of [[], ["--project", "/cwd"]]) {
-      const parsed = parseDeployTarget(["alpha", "--agent", "pi", ...flags], HOME, "/cwd");
-      if ("error" in parsed) throw new Error(parsed.error);
-      expect(parsed.target.dir).toBe("/cwd/.pi/skills");
+    for (const id of ["pi", "omp"] as const) {
+      for (const flags of [[], ["--project", "/cwd"]]) {
+        const parsed = parseDeployTarget(["alpha", "--agent", id, ...flags], HOME, "/cwd");
+        if ("error" in parsed) throw new Error(parsed.error);
+        expect(parsed.target.dir).toBe(`/cwd/.${id}/skills`);
+      }
+      const read = resolveReadTarget(["--agent", id, "--project", "/cwd"], HOME, "/other");
+      if ("error" in read) throw new Error(read.error);
+      expect(read.extraSurfaces).toEqual([`/cwd/.${id}/skills`]);
     }
-    const read = resolveReadTarget(["--agent", "pi", "--project", "/cwd"], HOME, "/other");
-    if ("error" in read) throw new Error(read.error);
-    expect(read.extraSurfaces).toEqual(["/cwd/.pi/skills"]);
     const all = resolveReadTarget(["--project", "/cwd"], HOME, "/other");
     if ("error" in all) throw new Error(all.error);
     expect(all.extraSurfaces).toContain("/cwd/.pi/skills");
     expect(all.extraSurfaces).not.toContain("/cwd/.pi/agent/skills");
+    expect(all.extraSurfaces).toContain("/cwd/.omp/skills");
+    expect(all.extraSurfaces).not.toContain("/cwd/.omp/agent/skills");
   });
 });
 

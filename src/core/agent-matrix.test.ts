@@ -14,7 +14,7 @@ import {
 } from "./agent-matrix.ts";
 
 const HOME = "/home/u";
-const IDS = ["claude", "codex", "cursor", "opencode", "gemini", "pi"] as const;
+const IDS = ["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp"] as const;
 
 function site(p: Partial<DeploymentSite> & { name: string; surface: string }): DeploymentSite {
   return {

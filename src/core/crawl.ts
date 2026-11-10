@@ -162,9 +162,10 @@ async function discoverSkillDirs(
   // skills — EXCEPT the known agent skill-grouping dot-dirs, which must stay
   // reachable when scanning a project parent. skillshelf is agent-agnostic
   // (ADR-0003): these track the cross-agent ecosystem (`.claude`, `.codex`,
-  // `.opencode`, `.cursor`) plus Claude's `.agents` bridge format. (A root passed
-  // in directly, e.g. `.codex/skills`, is never filtered here; only its children.)
-  const ALLOW_DOT = new Set([".claude", ".agents", ".codex", ".opencode", ".cursor"]);
+  // `.opencode`, `.cursor`, `.gemini`, `.pi`, `.omp`) plus Claude's `.agents`
+  // bridge format. (A root passed in directly, e.g. `.codex/skills`, is never
+  // filtered here; only its children.)
+  const ALLOW_DOT = new Set([".claude", ".agents", ".codex", ".opencode", ".cursor", ".gemini", ".pi", ".omp"]);
   const MAX_DEPTH = 8;
 
   async function recurse(dir: string, depth: number, retired: boolean): Promise<void> {

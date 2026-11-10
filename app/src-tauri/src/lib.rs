@@ -263,8 +263,9 @@ fn watched_dirs() -> Vec<PathBuf> {
         ] {
             dirs.push(home.join(agent).join("skills"));
         }
-        // pi nests skills under agent/skills/ (not .pi/skills/)
+        // pi and omp nest skills under agent/skills/ (not .<id>/skills/)
         dirs.push(home.join(".pi").join("agent").join("skills"));
+        dirs.push(home.join(".omp").join("agent").join("skills"));
     }
 
     if let Some(agents) = cfg.as_ref().and_then(|c| c.get("agents")).and_then(|v| v.as_array()) {
