@@ -54,6 +54,8 @@ export function knownAgentSurfaces(home: string = homedir()): AgentSurface[] {
     { agent: "gemini", path: join(home, ".gemini", "skills") },
     { agent: "pi", path: join(home, ".pi", "agent", "skills") },
     { agent: "omp", path: join(home, ".omp", "agent", "skills") },
+    { agent: "antigravity", path: join(home, ".gemini", "antigravity-cli", "skills") },
+    { agent: "antigravity", path: join(home, ".gemini", "antigravity", "skills") },
   ];
 }
 

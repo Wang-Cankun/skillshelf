@@ -70,18 +70,20 @@ interface AgentSeed {
   id: string;
   name: string;
   short: string;
+  global?: string;
+  projConvention?: string;
 }
 // ENGINE seed list — the full set of agents `skl` can DETECT on disk (claude,
-// codex, cursor, opencode, gemini, pi, omp). `pi` and `omp` are first-class
-// engine-seeded agents, matching the app-side seed list in
-// `app/src/lib/agents.ts` (claude, codex, pi, omp), which shows only the agents
-// a given user actually deploys to and reconstructs the report in the browser
-// dev fallback. The two lists are NOT meant to match exactly: the engine errs
-// toward broad detection (cursor, opencode, gemini included), the app toward
-// the user's real surfaces, and custom/overridden agents flow through config
-// (delta 4) on both sides. If you add/remove an id here, decide deliberately
-// whether the app list should follow — see the matching comment over
-// AGENT_SEEDS in app/src/lib/agents.ts.
+// codex, cursor, opencode, gemini, pi, omp, antigravity). `pi`, `omp`, and
+// `antigravity` are first-class engine-seeded agents, matching the app-side seed
+// list in `app/src/lib/agents.ts` (claude, codex, pi, omp, antigravity), which
+// shows only the agents a given user actually deploys to and reconstructs the
+// report in the browser dev fallback. The two lists are NOT meant to match
+// exactly: the engine errs toward broad detection (cursor, opencode, gemini
+// included), the app toward the user's real surfaces, and custom/overridden
+// agents flow through config (delta 4) on both sides. If you add/remove an id
+// here, decide deliberately whether the app list should follow — see the
+// matching comment over AGENT_SEEDS in app/src/lib/agents.ts.
 const AGENT_SEEDS: AgentSeed[] = [
   { id: "claude", name: "Claude Code", short: "Claude" },
   { id: "codex", name: "Codex", short: "Codex" },
@@ -90,7 +92,28 @@ const AGENT_SEEDS: AgentSeed[] = [
   { id: "gemini", name: "Gemini", short: "Gemini" },
   { id: "pi", name: "Pi", short: "Pi" },
   { id: "omp", name: "Oh My Pi", short: "OMP" },
+  {
+    id: "antigravity",
+    name: "Antigravity",
+    short: "AGY",
+    projConvention: ".agents/skills",
+  },
 ];
+
+/**
+ * Antigravity Desktop/IDE reads `~/.gemini/antigravity/skills`, while the
+ * Antigravity CLI (`agy`) reads `~/.gemini/antigravity-cli/skills`. Prefer the
+ * CLI dir when `.gemini/antigravity-cli` is present and `.gemini/antigravity/skills`
+ * is absent; otherwise default to `.gemini/antigravity/skills`.
+ */
+function antigravityGlobalRel(home: string): string {
+  const hasCli =
+    existsSync(join(home, ".gemini", "antigravity-cli", "skills")) ||
+    existsSync(join(home, ".gemini", "antigravity-cli"));
+  const hasDesktopSkills = existsSync(join(home, ".gemini", "antigravity", "skills"));
+  if (hasCli && !hasDesktopSkills) return ".gemini/antigravity-cli/skills";
+  return ".gemini/antigravity/skills";
+}
 
 const AGENT_IDS = AGENT_SEEDS.map((a) => a.id);
 
@@ -139,7 +162,7 @@ export function computeAgentsReport(
   // Merge the built-in seeds with custom/overridden config agents (ADR-0010 delta
   // 4): a matching id OVERRIDES a seed, a new id APPENDS, `hidden:true` removes it.
   // Seed order is preserved; custom-only agents follow in config order.
-  const merged = mergeAgents(opts.agents ?? []);
+  const merged = mergeAgents(opts.agents ?? [], home);
   const ids = merged.map((a) => a.id);
 
   // Persisted-but-empty project scopes (ADR-0010 §5a) are unioned in by the fold
@@ -185,10 +208,13 @@ export function computeAgentsReport(
  * preserved; custom-only ids appended in config order). Shared by the report's
  * `agents[]` and the widened surface-detection id set.
  */
-function mergeAgents(custom: AgentConfigEntry[]): AgentConfigEntry[] {
+function mergeAgents(custom: AgentConfigEntry[], home: string = homedir()): AgentConfigEntry[] {
   const byId = new Map<string, AgentConfigEntry>();
   for (const seed of AGENT_SEEDS) {
-    byId.set(seed.id, { id: seed.id, name: seed.name, short: seed.short });
+    byId.set(seed.id, {
+      ...seed,
+      ...(seed.id === "antigravity" ? { global: `~/${antigravityGlobalRel(home)}` } : {}),
+    });
   }
   for (const c of custom) {
     if (!c || typeof c.id !== "string" || c.id.trim() === "") continue;
@@ -223,15 +249,21 @@ export function agentDeployDir(
 ): string {
   const agent = custom.find((a) => a.id === agentId);
   if (agent && !validAgentConfig(agent)) throw new Error(`invalid paths for agent "${agentId}"`);
+  const seed = AGENT_SEEDS.find((a) => a.id === agentId);
   if (scope === "global") {
-    if (!agent?.global) return globalDir(agentId, home);
-    return agent.global.startsWith("~/")
-      ? resolve(home, agent.global.slice(2)) : resolve(agent.global);
+    const globalPath = agent?.global ?? seed?.global;
+    if (!globalPath) {
+      if (agentId === "antigravity") return join(home, ...antigravityGlobalRel(home).split("/"));
+      return globalDir(agentId, home);
+    }
+    return globalPath.startsWith("~/")
+      ? resolve(home, globalPath.slice(2)) : resolve(globalPath);
   }
   // a named project: resolve as an absolute path, or a dir under cwd.
   const proj = scope.project;
   const root = proj.startsWith(sep) ? proj : join(cwd, proj);
-  return join(root, ...(agent?.projConvention ?? `.${agentId}/skills`).split(/[\\/]/));
+  const projConvention = agent?.projConvention ?? seed?.projConvention ?? `.${agentId}/skills`;
+  return join(root, ...projConvention.split(/[\\/]/));
 }
 
 /** True if `id` is a known agent. */

@@ -178,6 +178,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skl rm` no longer deletes a live skill without `--force` when an `active` + `_retired` twin exists.
 - `skl refresh` treats a link to the library root itself as `foreign` (left), not `pruned`.
 
+## [0.7.3] - 2026-11-16
+
+### Added
+- **Antigravity (`antigravity` / `AGY`) and Oh My Pi (`omp`) agent support.** Detects both
+  Antigravity Desktop/IDE (`~/.gemini/antigravity/skills`) and Antigravity CLI
+  (`~/.gemini/antigravity-cli/skills`) global paths plus `.agents/skills` project surfaces.
+- **`skl agents add --short <label>`** lets custom-agent registrations specify a compact label
+  for dense UI headers.
+
+### Fixed
+- `configuredSurface` now checks longest `projConvention` first so specific paths like
+  `.claude/skills` take precedence over bare `skills`.
+
+## [app-v0.3.6] - 2026-11-16
+
+### Added
+- **One-click presets in `+ Add custom agent`** (Antigravity, Antigravity CLI, Windsurf,
+  GitHub Copilot, Cline, Roo Code, Goose, Amp, Kiro, Trae, Hermes) plus a `Short` field and a
+  `Remove` action for custom agent entries.
+- Tauri filesystem watcher now monitors `~/.gemini/antigravity-cli/skills` and
+  `~/.gemini/antigravity/skills` alongside the existing global agent directories.
+
 ## [0.7.2] - 2026-10-14
 
 ### Changed
@@ -234,7 +256,9 @@ Initial release.
   host-agent reasoning, `--apply` to write proposals into overlays, and a provider-agnostic
   OpenAI-compatible API mode (`--provider` / `--base-url`).
 
-[Unreleased]: https://github.com/Wang-Cankun/skillshelf/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/Wang-Cankun/skillshelf/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/Wang-Cankun/skillshelf/compare/v0.7.2...v0.7.3
+[app-v0.3.6]: https://github.com/Wang-Cankun/skillshelf/compare/app-v0.3.5...app-v0.3.6
 [0.7.2]: https://github.com/Wang-Cankun/skillshelf/compare/v0.7.1...v0.7.2
 [app-v0.3.5]: https://github.com/Wang-Cankun/skillshelf/compare/app-v0.3.4...app-v0.3.5
 [0.2.0]: https://github.com/Wang-Cankun/skillshelf/compare/v0.1.0...v0.2.0

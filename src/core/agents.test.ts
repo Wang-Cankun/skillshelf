@@ -112,8 +112,8 @@ describe("computeAgentsReport", () => {
   };
   const r = computeAgentsReport(report, HOME);
 
-  test("registers the 7 known agents (installed=false under a fake HOME)", () => {
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp"]);
+  test("registers the 8 known agents (installed=false under a fake HOME)", () => {
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp", "antigravity"]);
     expect(r.agents.every((a) => a.installed === false)).toBe(true);
     expect(r.agents[0]!.global).toBe("~/.claude/skills");
   });
@@ -150,6 +150,7 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
       "gemini",
       "pi",
       "omp",
+      "antigravity",
       "walrus",
     ]);
   });
@@ -188,7 +189,7 @@ describe("computeAgentsReport — opts (ADR-0010)", () => {
   });
   test("no opts is backward-compatible (seed-only, default extraScopes)", () => {
     const r = computeAgentsReport(baseReport, HOME);
-    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp"]);
+    expect(r.agents.map((a) => a.id)).toEqual(["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp", "antigravity"]);
   });
 
   test("inheritsGlobal: all seeds default true; report carries the flag", () => {
@@ -253,6 +254,30 @@ describe("Pi and OMP scope-specific paths", () => {
     expect(all.extraSurfaces).not.toContain("/cwd/.pi/agent/skills");
     expect(all.extraSurfaces).toContain("/cwd/.omp/skills");
     expect(all.extraSurfaces).not.toContain("/cwd/.omp/agent/skills");
+  });
+});
+
+describe("Antigravity scope-specific paths", () => {
+  test("global defaults to ~/.gemini/antigravity/skills while projects use .agents/skills", () => {
+    expect(agentDeployDir("antigravity", "global", HOME, "/cwd")).toBe("/home/u/.gemini/antigravity/skills");
+    expect(agentDeployDir("antigravity", { project: "/tmp/p" }, HOME, "/cwd")).toBe("/tmp/p/.agents/skills");
+    expect(agentDeployDir("antigravity", { project: "rel" }, HOME, "/cwd")).toBe("/cwd/rel/.agents/skills");
+    const report = computeAgentsReport({ surfaces: [], sites: [], problems: [] }, HOME);
+    const agy = report.agents.find((a) => a.id === "antigravity")!;
+    expect(agy.short).toBe("AGY");
+    expect(agy.global).toBe("~/.gemini/antigravity/skills");
+    expect(agy.projConvention).toBe(".agents/skills");
+  });
+
+  test("implicit project, explicit project, and read targets agree", () => {
+    for (const flags of [[], ["--project", "/cwd"]]) {
+      const parsed = parseDeployTarget(["alpha", "--agent", "antigravity", ...flags], HOME, "/cwd");
+      if ("error" in parsed) throw new Error(parsed.error);
+      expect(parsed.target.dir).toBe("/cwd/.agents/skills");
+    }
+    const read = resolveReadTarget(["--agent", "antigravity", "--project", "/cwd"], HOME, "/other");
+    if ("error" in read) throw new Error(read.error);
+    expect(read.extraSurfaces).toEqual(["/cwd/.agents/skills"]);
   });
 });
 

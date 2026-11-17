@@ -24,17 +24,18 @@ import {
 } from "@core/agent-matrix.ts";
 
 // Registry seeds — the agents this user actually deploys to: Claude Code,
-// Codex, Pi, and Oh My Pi. `installed` is overridden at runtime if the real
-// feed knows better; these are the defaults. (To add more agents, append here
-// AND extend the inferHome regex below + the Rust agent surface set.)
+// Codex, Pi, Oh My Pi, and Antigravity. `installed` is overridden at runtime if
+// the real feed knows better; these are the defaults. (To add more agents,
+// append here AND extend the inferHome regex below + the Rust agent surface set.)
 //
 // This list INTENTIONALLY diverges from the ENGINE seed list in
-// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, pi, omp). The
-// engine errs toward broad on-disk detection; the app shows the user's real
-// agents and reconstructs the report in the browser dev fallback. The two are
-// NOT meant to match exactly — net-new/overridden agents flow through the
-// config `agents` block (delta 4) on both sides. Keep this comment in sync with
-// its twin over AGENT_SEEDS in src/core/agents.ts when changing either list.
+// `src/core/agents.ts` (claude, codex, cursor, opencode, gemini, pi, omp,
+// antigravity). The engine errs toward broad on-disk detection; the app shows
+// the user's real agents and reconstructs the report in the browser dev
+// fallback. The two are NOT meant to match exactly — net-new/overridden agents
+// flow through the config `agents` block (delta 4) on both sides. Keep this
+// comment in sync with its twin over AGENT_SEEDS in src/core/agents.ts when
+// changing either list.
 export const AGENT_SEEDS: AgentInfo[] = [
   {
     id: "claude",
@@ -72,9 +73,124 @@ export const AGENT_SEEDS: AgentInfo[] = [
     installed: true,
     inheritsGlobal: true,
   },
+  {
+    id: "antigravity",
+    name: "Antigravity",
+    short: "AGY",
+    global: "~/.gemini/antigravity/skills",
+    projConvention: ".agents/skills",
+    installed: true,
+    inheritsGlobal: true,
+  },
 ];
 
 const AGENT_IDS = AGENT_SEEDS.map((a) => a.id);
+
+export interface AgentPreset {
+  id: string;
+  name: string;
+  short: string;
+  global: string;
+  projConvention: string;
+  icon?: string;
+  inheritsGlobal: boolean;
+}
+
+/** Built-in presets for the "+ Add custom agent" picker (no manual path guessing). */
+export const AGENT_PRESETS: AgentPreset[] = [
+  {
+    id: "antigravity",
+    name: "Antigravity",
+    short: "AGY",
+    global: "~/.gemini/antigravity/skills",
+    projConvention: ".agents/skills",
+    icon: "gemini",
+    inheritsGlobal: true,
+  },
+  {
+    id: "antigravity-cli",
+    name: "Antigravity CLI",
+    short: "AGY",
+    global: "~/.gemini/antigravity-cli/skills",
+    projConvention: ".agents/skills",
+    icon: "gemini",
+    inheritsGlobal: true,
+  },
+  {
+    id: "windsurf",
+    name: "Windsurf",
+    short: "Wind",
+    global: "~/.codeium/windsurf/skills",
+    projConvention: ".windsurf/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "copilot",
+    name: "GitHub Copilot",
+    short: "Copilot",
+    global: "~/.copilot/skills",
+    projConvention: ".github/skills",
+    icon: "githubcopilot",
+    inheritsGlobal: true,
+  },
+  {
+    id: "cline",
+    name: "Cline",
+    short: "Cline",
+    global: "~/.cline/skills",
+    projConvention: ".cline/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "roo",
+    name: "Roo Code",
+    short: "Roo",
+    global: "~/.roo/skills",
+    projConvention: ".roo/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "goose",
+    name: "Goose",
+    short: "Goose",
+    global: "~/.config/goose/skills",
+    projConvention: ".goose/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "amp",
+    name: "Amp",
+    short: "Amp",
+    global: "~/.config/agents/skills",
+    projConvention: ".agents/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "kiro",
+    name: "Kiro",
+    short: "Kiro",
+    global: "~/.kiro/skills",
+    projConvention: ".kiro/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "trae",
+    name: "Trae",
+    short: "Trae",
+    global: "~/.trae/skills",
+    projConvention: ".trae/skills",
+    inheritsGlobal: true,
+  },
+  {
+    id: "hermes",
+    name: "Hermes",
+    short: "Hermes",
+    global: "~/.hermes/skills",
+    projConvention: ".hermes/skills",
+    icon: "hermes",
+    inheritsGlobal: true,
+  },
+];
 
 /**
  * Merge custom-agent config entries onto the built-in seeds (ADR-0010 §9 /
@@ -133,7 +249,13 @@ function inferHome(surfaces: string[]): string | null {
     }
     // pi and omp nest skills under agent/skills (~/.<id>/agent/skills), not ~/.<id>/skills.
     const nested = s.match(/^(.*)\/\.(pi|omp)\/agent\/skills?$/);
-    if (nested) parents.push(nested[1]);
+    if (nested) {
+      parents.push(nested[1]);
+      continue;
+    }
+    // antigravity nests skills under ~/.gemini/antigravity-cli/skills (or antigravity/skills).
+    const agy = s.match(/^(.*)\/\.gemini\/antigravity(?:-cli)?\/skills?$/);
+    if (agy) parents.push(agy[1]);
   }
   if (!parents.length) return null;
   if (parents.length === 1) return parents[0];

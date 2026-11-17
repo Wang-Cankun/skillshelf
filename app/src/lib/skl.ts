@@ -239,6 +239,7 @@ export function addAgentCmd(entry: AppConfig["agents"][number]) {
     "--proj-convention",
     entry.projConvention,
   ];
+  if (entry.short && entry.short !== entry.name) args.push("--short", entry.short);
   if (entry.icon) args.push("--icon", entry.icon);
   if (entry.color) args.push("--color", entry.color);
   // Global→project inheritance (ADR-0010): default TRUE. Only forward the opt-out

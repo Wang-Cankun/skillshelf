@@ -189,6 +189,7 @@ async function runConfigSubverb(argv: string[], ctx: Ctx): Promise<number> {
 
   // add
   const name = flag(argv, "--name") ?? id;
+  const short = flag(argv, "--short") ?? name;
   const global = flag(argv, "--global");
   const projConvention = flag(argv, "--proj-convention");
   const icon = flag(argv, "--icon");
@@ -210,7 +211,7 @@ async function runConfigSubverb(argv: string[], ctx: Ctx): Promise<number> {
   const entry: AgentConfigEntry = {
     id,
     name,
-    short: name,
+    short,
     ...(global ? { global } : {}),
     ...(projConvention ? { projConvention } : {}),
     ...(icon ? { icon } : {}),

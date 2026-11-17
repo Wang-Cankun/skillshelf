@@ -186,4 +186,18 @@ describe("deriveAgentsReport — merged-ids routing (parity with engine)", () =>
     });
     expect(withCustom.deployments.x!.zeta!.p!.proj).toBe("clean");
   });
+
+  test("detects Antigravity global and project surfaces and infers home", () => {
+    const where: DeploymentReport = {
+      surfaces: ["/home/u/.gemini/antigravity-cli/skills"],
+      sites: [
+        site({ name: "alpha", surface: "/home/u/.gemini/antigravity-cli/skills", kind: "linked" }),
+        site({ name: "beta", surface: "/work/proj/.agents/skills", kind: "linked" }),
+      ],
+      problems: [],
+    };
+    const r = deriveAgentsReport(where);
+    expect(r.deployments.alpha?.antigravity?.g).toBe("clean");
+    expect(r.deployments.beta?.antigravity?.p?.proj).toBe("clean");
+  });
 });

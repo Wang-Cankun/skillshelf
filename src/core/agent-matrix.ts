@@ -37,6 +37,17 @@ export interface AgentMatrix {
   deployments: Record<string, Record<string, AgentDeployment>>;
 }
 
+const ANTIGRAVITY_DOT_PATHS = ["/.gemini/antigravity-cli", "/.gemini/antigravity"] as const;
+const ANTIGRAVITY_MARKERS = ["/.agents", "/.agent", "/.antigravity"] as const;
+
+function hasSegmentPrefix(surface: string, prefix: string): boolean {
+  return (
+    surface.includes(`${prefix}/`) ||
+    surface.endsWith(prefix) ||
+    surface.endsWith(`${prefix}/skills`)
+  );
+}
+
 /**
  * Which agent owns a surface path (by its `/.<id>/` dotdir segment), or null.
  * `/`-separated string math ONLY (no node:path sep — this runs in the browser
@@ -44,14 +55,18 @@ export interface AgentMatrix {
  * caller controls precedence by ordering the widened (seeds + custom) id set.
  */
 export function agentIdForSurface(surface: string, ids: readonly string[]): string | null {
+  // Antigravity stores global skills under ~/.gemini/antigravity-cli/skills (and
+  // ~/.gemini/antigravity/skills) — check those before `/.gemini/` matches `gemini`.
+  if (ids.includes("antigravity") && ANTIGRAVITY_DOT_PATHS.some((p) => hasSegmentPrefix(surface, p))) {
+    return "antigravity";
+  }
   for (const id of ids) {
-    if (
-      surface.includes(`/.${id}/`) ||
-      surface.endsWith(`/.${id}`) ||
-      surface.endsWith(`/.${id}/skills`)
-    ) {
+    if (hasSegmentPrefix(surface, `/.${id}`)) {
       return id;
     }
+  }
+  if (ids.includes("antigravity") && ANTIGRAVITY_MARKERS.some((p) => hasSegmentPrefix(surface, p))) {
+    return "antigravity";
   }
   return null;
 }
@@ -73,8 +88,12 @@ export function configuredSurface(
     const global = agent.global?.replace(/^~(?=\/)/, home ?? "~").replace(/\\/g, "/").replace(/\/$/, "");
     if (global === path) return { agentId: agent.id, scope: "Global" };
   }
-  for (const agent of agents) {
-    const convention = agent.projConvention?.replace(/\\/g, "/");
+  // Check longest projConvention first so a specific `.claude/skills` beats a bare `skills`.
+  const byProjLen = [...agents].sort(
+    (a, b) => (b.projConvention?.length ?? 0) - (a.projConvention?.length ?? 0),
+  );
+  for (const agent of byProjLen) {
+    const convention = agent.projConvention?.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     if (convention && path.endsWith(`/${convention}`)) {
       const root = path.slice(0, -convention.length - 1);
       return { agentId: agent.id, scope: root.split("/").filter(Boolean).pop() ?? "Global" };
@@ -95,11 +114,22 @@ export function scopeForSurface(
   agentId: string,
   home: string | null,
 ): string {
-  const homeDot = home ? `${home}/.${agentId}` : null;
-  if (homeDot && (surface === homeDot || surface.startsWith(homeDot + "/"))) return "Global";
-  // strip from the `/.<id>` segment to get the project root, then take its name.
-  const marker = `/.${agentId}`;
-  const idx = surface.indexOf(marker);
+  const globalPrefixes = agentId === "antigravity"
+    ? [...ANTIGRAVITY_DOT_PATHS, "/.antigravity"]
+    : [`/.${agentId}`];
+  if (home) {
+    for (const prefix of globalPrefixes) {
+      const homeDot = `${home}${prefix}`;
+      if (surface === homeDot || surface.startsWith(homeDot + "/")) return "Global";
+    }
+  }
+  // strip from the `/.<id>` (or Antigravity `.agents`) segment to get the project root, then take its name.
+  const markers = agentId === "antigravity" ? ANTIGRAVITY_MARKERS : [`/.${agentId}`];
+  let idx = -1;
+  for (const marker of markers) {
+    idx = surface.indexOf(marker);
+    if (idx >= 0) break;
+  }
   const root = idx >= 0 ? surface.slice(0, idx) : surface;
   const base = root.split("/").filter(Boolean).pop();
   return base || "Global";

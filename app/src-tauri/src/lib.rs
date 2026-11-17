@@ -266,6 +266,9 @@ fn watched_dirs() -> Vec<PathBuf> {
         // pi and omp nest skills under agent/skills/ (not .<id>/skills/)
         dirs.push(home.join(".pi").join("agent").join("skills"));
         dirs.push(home.join(".omp").join("agent").join("skills"));
+        // antigravity stores global skills under .gemini/antigravity-cli/skills/ (or antigravity/skills/)
+        dirs.push(home.join(".gemini").join("antigravity-cli").join("skills"));
+        dirs.push(home.join(".gemini").join("antigravity").join("skills"));
     }
 
     if let Some(agents) = cfg.as_ref().and_then(|c| c.get("agents")).and_then(|v| v.as_array()) {

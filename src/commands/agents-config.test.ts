@@ -55,6 +55,8 @@ describe("skl agents add|rm write verbs (ADR-0010 delta 4)", () => {
         "cursor",
         "--name",
         "Cursor",
+        "--short",
+        "Cur",
         "--global",
         "~/.cursor/skills",
         "--proj-convention",
@@ -66,9 +68,10 @@ describe("skl agents add|rm write verbs (ADR-0010 delta 4)", () => {
       ctx,
     );
     expect(code).toBe(0);
-    const out = json[0] as { agents: Array<{ id: string; icon?: string }>; added: boolean };
+    const out = json[0] as { agents: Array<{ id: string; short: string; icon?: string }>; added: boolean };
     expect(out.added).toBe(true);
     expect(out.agents.map((a) => a.id)).toContain("cursor");
+    expect(out.agents.find((a) => a.id === "cursor")?.short).toBe("Cur");
     expect(out.agents.find((a) => a.id === "cursor")?.icon).toBe("cursor");
   });
 

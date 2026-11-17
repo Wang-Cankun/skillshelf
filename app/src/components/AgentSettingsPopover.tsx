@@ -15,7 +15,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAgents, qk } from "../state/queries";
 import { useStore } from "../state/store";
-import { addAgentCmd, setAgentHiddenCmd } from "../lib/skl";
+import { addAgentCmd, removeAgentCmd, setAgentHiddenCmd } from "../lib/skl";
+import { AGENT_PRESETS, type AgentPreset } from "../lib/agents";
 import { iconFor, providerIconKeys, providerIconUrl } from "../lib/agentIcon";
 import { getIconMetadata } from "../assets/provider-icons/metadata";
 import type { AgentInfo } from "../lib/types";
@@ -48,9 +49,33 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
     ));
   };
 
+  const onRemoveCustom = async (a: AgentInfo) => {
+    const res = await removeAgentCmd(a.id);
+    if (!res.ok) {
+      dispatch({
+        type: "setError",
+        error: res.stderr.trim() || `could not remove agent "${a.name}"`,
+      });
+      return;
+    }
+    await Promise.all([qk.config, qk.agents, qk.where, qk.library].map((queryKey) =>
+      qc.invalidateQueries({ queryKey }),
+    ));
+    dispatch({
+      type: "showToast",
+      toast: {
+        msg: `Removed custom agent "${a.name}"`,
+        cmd: `skl agents rm ${a.id}`,
+        undo: null,
+      },
+    });
+  };
+
   // add-custom form.
   const [showForm, setShowForm] = useState(false);
+  const [presetId, setPresetId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [short, setShort] = useState("");
   const [globalPath, setGlobalPath] = useState("");
   const [projConv, setProjConv] = useState("");
   const [icon, setIcon] = useState<string | null>(null);
@@ -79,26 +104,53 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
     };
   }, [onClose]);
 
-  const resetForm = () => {
+  const applyPreset = (preset: AgentPreset) => {
+    setPresetId(preset.id);
+    setName(preset.name);
+    setShort(preset.short);
+    setGlobalPath(preset.global);
+    setProjConv(preset.projConvention);
+    setIcon(preset.icon ?? null);
+    setInheritsGlobal(preset.inheritsGlobal);
+  };
+
+  const clearFormFields = () => {
+    setPresetId(null);
     setName("");
+    setShort("");
     setGlobalPath("");
     setProjConv("");
     setIcon(null);
     setIconQuery("");
     setInheritsGlobal(true);
+  };
+
+  const resetForm = () => {
+    clearFormFields();
     setShowForm(false);
   };
 
-  const id = name.trim().toLowerCase().replace(/\s+/g, "-");
+  const derivedId = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const selectedPreset = AGENT_PRESETS.find((p) => p.id === presetId);
+  const id =
+    selectedPreset && selectedPreset.name === name.trim()
+      ? selectedPreset.id
+      : derivedId;
   const canSave = !!id && !!globalPath.trim() && !!projConv.trim();
 
   const onSave = async () => {
     if (!canSave || saving) return;
     setSaving(true);
+    const trimmedName = name.trim();
+    const trimmedShort = short.trim() || trimmedName;
     const entry: AgentInfo = {
       id,
-      name: name.trim(),
-      short: name.trim(),
+      name: trimmedName,
+      short: trimmedShort,
       global: globalPath.trim(),
       projConvention: projConv.trim(),
       installed: true,
@@ -254,6 +306,24 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
               >
                 {isHidden ? "Show" : "Hide"}
               </button>
+              {a.custom ? (
+                <button
+                  onClick={() => void onRemoveCustom(a)}
+                  title="Remove custom config"
+                  style={{
+                    background: "none",
+                    border: "1px solid #E7E7E9",
+                    borderRadius: 6,
+                    padding: "2px 7px",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    color: "#DC2626",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Remove
+                </button>
+              ) : null}
             </div>
           );
         })}
@@ -279,13 +349,83 @@ export function AgentSettingsPopover({ onClose }: { onClose: () => void }) {
             + Add custom agent
           </button>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <Field
-              label="Name"
-              value={name}
-              onChange={setName}
-              placeholder="e.g. Cursor"
-            />
+          <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 280, overflow: "auto" }}>
+            <div>
+              <div style={{ fontSize: 10.5, color: "#A1A1AA", marginBottom: 4 }}>
+                Presets (auto-fills paths)
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {AGENT_PRESETS.map((preset) => {
+                  const active = presetId === preset.id;
+                  const exists = agents.some((a) => a.id === preset.id);
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      aria-pressed={active}
+                      title={`${preset.global} · ${preset.projConvention}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "2px 7px",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        border: active ? "1px solid #2563EB" : "1px solid #E7E7E9",
+                        background: active ? "#EAF1FD" : "#FAFAFA",
+                        color: active ? "#1D4ED8" : "#3F3F46",
+                      }}
+                    >
+                      <span>{preset.name}</span>
+                      {exists ? (
+                        <span style={{ fontSize: 9.5, color: "#9A9AA2" }}>✓</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={clearFormFields}
+                  aria-pressed={presetId === null && !name}
+                  style={{
+                    padding: "2px 7px",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    border: presetId === null ? "1px solid #2563EB" : "1px solid #E7E7E9",
+                    background: presetId === null ? "#EAF1FD" : "#FFFFFF",
+                    color: presetId === null ? "#1D4ED8" : "#71717A",
+                  }}
+                >
+                  Custom…
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ flex: 2, minWidth: 0 }}>
+                <Field
+                  label="Name"
+                  value={name}
+                  onChange={(v) => {
+                    setName(v);
+                    if (presetId && v.trim() !== selectedPreset?.name) setPresetId(null);
+                  }}
+                  placeholder="e.g. Windsurf"
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Field
+                  label="Short"
+                  value={short}
+                  onChange={setShort}
+                  placeholder="e.g. Wind"
+                />
+              </div>
+            </div>
             <Field
               label="Global path"
               value={globalPath}

@@ -6,6 +6,7 @@ import { test, expect, describe } from "bun:test";
 import type { DeploymentSite } from "../types.ts";
 import {
   agentIdForSurface,
+  configuredSurface,
   scopeForSurface,
   stateForSite,
   isAgentMatrixSurface,
@@ -14,7 +15,7 @@ import {
 } from "./agent-matrix.ts";
 
 const HOME = "/home/u";
-const IDS = ["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp"] as const;
+const IDS = ["claude", "codex", "cursor", "opencode", "gemini", "pi", "omp", "antigravity"] as const;
 
 function site(p: Partial<DeploymentSite> & { name: string; surface: string }): DeploymentSite {
   return {
@@ -39,6 +40,9 @@ describe("agentIdForSurface honors `ids` ordering", () => {
   test("matches segment, trailing dotdir, and trailing /skills", () => {
     expect(agentIdForSurface("/home/u/.claude/skills", IDS)).toBe("claude");
     expect(agentIdForSurface("/x/proj/.codex", IDS)).toBe("codex");
+    expect(agentIdForSurface("/home/u/.gemini/antigravity-cli/skills", IDS)).toBe("antigravity");
+    expect(agentIdForSurface("/home/u/.gemini/skills", IDS)).toBe("gemini");
+    expect(agentIdForSurface("/work/proj/.agents/skills", IDS)).toBe("antigravity");
     expect(agentIdForSurface("/Volumes/x/foo/skills", IDS)).toBeNull();
   });
 });
@@ -46,9 +50,11 @@ describe("agentIdForSurface honors `ids` ordering", () => {
 describe("scopeForSurface", () => {
   test("Global when directly under HOME", () => {
     expect(scopeForSurface("/home/u/.claude/skills", "claude", HOME)).toBe("Global");
+    expect(scopeForSurface("/home/u/.gemini/antigravity-cli/skills", "antigravity", HOME)).toBe("Global");
   });
   test("project name when enclosed in a project dir", () => {
     expect(scopeForSurface("/work/infra-repo/.claude/skills", "claude", HOME)).toBe("infra-repo");
+    expect(scopeForSurface("/work/infra-repo/.agents/skills", "antigravity", HOME)).toBe("infra-repo");
   });
   test("home=null never reads Global — falls back to the basename, no crash", () => {
     // The app's inferHome heuristic can miss; a null home must not throw and must
@@ -149,5 +155,20 @@ describe("foldAgentMatrix", () => {
     const sites = [site({ name: "x", surface: "/work/proj/.walrus/skills", kind: "linked" })];
     const m = foldAgentMatrix(sites, { home: HOME, agentIds: [...IDS, "walrus"] });
     expect(m.deployments.x!.walrus!.p!.proj).toBe("clean");
+  });
+
+  test("configuredSurface matches longest projConvention first", () => {
+    const agents = [
+      { id: "openclaw", global: "~/.openclaw/skills", projConvention: "skills" },
+      { id: "claude", global: "~/.claude/skills", projConvention: ".claude/skills" },
+    ];
+    expect(configuredSurface("/work/proj/.claude/skills", HOME, agents)).toEqual({
+      agentId: "claude",
+      scope: "proj",
+    });
+    expect(configuredSurface("/work/proj/skills", HOME, agents)).toEqual({
+      agentId: "openclaw",
+      scope: "proj",
+    });
   });
 });
